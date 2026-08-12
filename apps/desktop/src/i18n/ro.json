@@ -4,6 +4,7 @@
         "tagline": "Companion pentru TikTok LIVE"
     },
     "nav": {
+        "primary": "Principal",
         "live": "Live",
         "people": "Persoane",
         "analytics": "Statistici",
@@ -372,6 +373,7 @@
         "save": "Salvează",
         "cancel": "Anulează",
         "close": "Închide",
+        "dismiss": "Închide",
         "delete": "Șterge",
         "confirm": "Confirmă",
         "copy": "Copiază",

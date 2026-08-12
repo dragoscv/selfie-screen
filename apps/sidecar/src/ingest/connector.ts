@@ -14,6 +14,13 @@ const log = logger.scoped("[connector]");
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000] as const;
 
 /**
+ * Stop reconnecting after this many consecutive failures (~5 minutes with the
+ * table above). Retrying forever makes a typo in the username indistinguishable
+ * from a creator who is simply offline.
+ */
+const MAX_RECONNECT_ATTEMPTS = 12;
+
+/**
  * Minimal structural views of the protobuf payloads we consume. The library
  * types are extremely wide (100+ fields, mostly `any`), so narrowing to the
  * handful of fields we actually read keeps this file honest about its
@@ -253,8 +260,14 @@ export class ConnectorSource implements ChatSource {
         conn.on(WebcastEvent.STREAM_END, () => {
             log.info("stream ended");
             handlers.onStatus({ state: "ended" });
-            // The creator ended the broadcast — retrying immediately is pointless.
+            // The creator ended the broadcast — retrying is pointless, and
+            // holding the connection open leaks a socket that can never
+            // recover, so tear it down rather than just flagging it.
             this.#stopping = true;
+            this.#running = false;
+            const ended = this.#conn;
+            this.#conn = null;
+            if (ended) void Promise.resolve(ended.disconnect()).catch(() => undefined);
         });
 
         conn.on(ControlEvent.ERROR, (error) => {
@@ -271,6 +284,20 @@ export class ConnectorSource implements ChatSource {
 
     #scheduleReconnect(): void {
         if (this.#stopping || !this.#running || this.#reconnectTimer) return;
+
+        // Retrying forever hides a permanently wrong username behind a silent
+        // loop. Give up after the backoff table is exhausted twice over and
+        // tell the user why.
+        if (this.#attempt >= MAX_RECONNECT_ATTEMPTS) {
+            log.warn(`giving up after ${this.#attempt} reconnect attempts`);
+            this.#running = false;
+            this.#handlers?.onStatus({
+                state: "error",
+                error: `Could not reconnect after ${this.#attempt} attempts. Check the username and try again.`,
+            });
+            return;
+        }
+
         const delay = BACKOFF_MS[Math.min(this.#attempt, BACKOFF_MS.length - 1)] ?? 30_000;
         this.#attempt += 1;
         log.info(`reconnecting in ${delay}ms (attempt ${this.#attempt})`);

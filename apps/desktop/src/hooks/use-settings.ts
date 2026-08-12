@@ -102,6 +102,40 @@ export function useSettingsSync(): void {
         media.addEventListener("change", onChange);
         return () => media.removeEventListener("change", onChange);
     }, [settings.appearance]);
+
+    // ---- native behaviour: tray, autostart, global hotkeys -------------
+    // These are the settings the webview cannot honour by itself; without
+    // pushing them the toggles would change stored state and nothing else.
+    const { closeToTray, minimiseToTray } = settings.behaviour;
+    useEffect(() => {
+        if (!loaded) return;
+        void invoke("set_behaviour", { closeToTray, minimiseToTray }).catch(() => undefined);
+    }, [loaded, closeToTray, minimiseToTray]);
+
+    const { autostart } = settings.behaviour;
+    useEffect(() => {
+        if (!loaded) return;
+        void invoke("set_autostart", { enabled: autostart }).catch((error: unknown) => {
+            console.error("[settings] autostart failed", error);
+        });
+    }, [loaded, autostart]);
+
+    const { hotkeyToggleOverlay, hotkeyMuteVoice, hotkeyPushToTalk } = settings.behaviour;
+    useEffect(() => {
+        if (!loaded) return;
+        // Debounced: the accelerators come from free-text inputs, and every
+        // keystroke would otherwise re-register a partial combination.
+        const id = window.setTimeout(() => {
+            void invoke("set_hotkeys", {
+                toggleOverlay: hotkeyToggleOverlay,
+                muteVoice: hotkeyMuteVoice,
+                pushToTalk: hotkeyPushToTalk,
+            }).catch((error: unknown) => {
+                console.error("[settings] hotkeys failed", error);
+            });
+        }, 600);
+        return () => window.clearTimeout(id);
+    }, [loaded, hotkeyToggleOverlay, hotkeyMuteVoice, hotkeyPushToTalk]);
 }
 
 /**

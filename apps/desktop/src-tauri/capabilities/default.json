@@ -35,16 +35,6 @@
         "process:allow-exit",
         "log:default",
         "global-shortcut:default",
-        "autostart:default",
-        {
-            "identifier": "shell:allow-spawn",
-            "allow": [
-                {
-                    "name": "node",
-                    "cmd": "node",
-                    "args": true
-                }
-            ]
-        }
+        "autostart:default"
     ]
 }

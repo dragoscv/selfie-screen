@@ -2,7 +2,7 @@ import { eventDiamonds, initialOf, type ChatEvent } from "@tiksee/core";
 import { Button, Card, EmptyState, cn } from "@tiksee/ui";
 import { AnimatePresence, motion } from "motion/react";
 import { Gift, MessageSquare, Sparkles, Trophy, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { MAIN_STREAM, selectEvents, useAppStore } from "../store/app-store.js";
@@ -142,6 +142,16 @@ function GiveawayCard({ people }: { people: Person[] }) {
     const { t } = useTranslation();
     const [winner, setWinner] = useState<Person | null>(null);
     const [rolling, setRolling] = useState(false);
+    const timerRef = useRef<number | null>(null);
+
+    // The roll is a 1s interval; navigating away mid-draw would otherwise
+    // leave it ticking against an unmounted tree.
+    useEffect(
+        () => () => {
+            if (timerRef.current !== null) window.clearInterval(timerRef.current);
+        },
+        [],
+    );
 
     // Only viewers who actually chatted are eligible — passive joins are bots
     // as often as not.
@@ -160,6 +170,7 @@ function GiveawayCard({ people }: { people: Person[] }) {
             ticks += 1;
             if (ticks >= 14) {
                 window.clearInterval(timer);
+                timerRef.current = null;
                 // crypto.getRandomValues is the honest choice for the final pick.
                 const buffer = new Uint32Array(1);
                 crypto.getRandomValues(buffer);
@@ -168,6 +179,7 @@ function GiveawayCard({ people }: { people: Person[] }) {
                 setRolling(false);
             }
         }, 70);
+        timerRef.current = timer;
     };
 
     return (

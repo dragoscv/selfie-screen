@@ -38,6 +38,7 @@ export function AppShell() {
     const [route, setRoute] = useState<RouteId>("live");
     const status = useAppStore(selectStatus(MAIN_STREAM));
     const sidecarConnected = useAppStore((s) => s.sidecarConnected);
+    const sidecarError = useAppStore((s) => s.sidecarError);
 
     return (
         <div className="flex h-screen flex-col overflow-hidden">
@@ -45,7 +46,7 @@ export function AppShell() {
                 <span className="select-none text-[0.8125rem] font-bold tracking-wide text-fg">
                     TikSee
                 </span>
-                <nav className="no-drag flex items-center gap-0.5" aria-label={t("nav.live")}>
+                <nav className="no-drag flex items-center gap-0.5" aria-label={t("nav.primary")}>
                     {ROUTES.map(({ id, icon: Icon }) => (
                         <button
                             key={id}
@@ -61,7 +62,9 @@ export function AppShell() {
                             )}
                         >
                             <Icon className="size-3.5" />
-                            <span className="hidden @2xl:inline">{t(`nav.${id}`)}</span>
+                            {/* The titlebar is not a @container, so a container
+                                query here never matched. Use the viewport. */}
+                            <span className="hidden lg:inline">{t(`nav.${id}`)}</span>
                             {route === id && (
                                 <motion.span
                                     layoutId="nav-active"
@@ -79,6 +82,7 @@ export function AppShell() {
             </Titlebar>
 
             {!sidecarConnected && <SidecarBanner />}
+            {sidecarConnected && sidecarError !== null && <ErrorBanner message={sidecarError} />}
 
             <main className="@container min-h-0 flex-1">
                 <AnimatePresence mode="wait" initial={false}>
@@ -135,3 +139,29 @@ function RouteFallback() {
         </div>
     );
 }
+
+/**
+ * A sidecar-reported failure. Distinct from the "service is down" banner:
+ * here the service is alive but something it attempted has failed, and the
+ * message was previously stored in the app store and never shown.
+ */
+function ErrorBanner({ message }: { message: string }) {
+    const { t } = useTranslation();
+    const setError = useAppStore((s) => s.setSidecarError);
+
+    return (
+        <div
+            role="alert"
+            className="flex shrink-0 items-center gap-2.5 border-b border-danger/30 bg-danger/10 px-4 py-2"
+        >
+            <AlertTriangle className="size-4 shrink-0 text-danger" />
+            <p className="min-w-0 flex-1 truncate text-xs text-fg" title={message}>
+                {message}
+            </p>
+            <Button size="sm" variant="ghost" onClick={() => setError(null)}>
+                {t("common.dismiss")}
+            </Button>
+        </div>
+    );
+}
+

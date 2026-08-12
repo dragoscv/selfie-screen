@@ -21,6 +21,12 @@ export class ObsController {
     #settings: Settings | null = null;
     #lastTrigger = 0;
 
+    /** Stable reference so the listener can be removed before re-adding. */
+    #onClosed = (): void => {
+        this.#connected = false;
+        log.info("OBS connection closed");
+    };
+
     get connected(): boolean {
         return this.#connected;
     }
@@ -49,10 +55,11 @@ export class ObsController {
             await this.#obs.connect(url, password || undefined);
             this.#connected = true;
             log.info(`connected to OBS at ${url}`);
-            this.#obs.on("ConnectionClosed", () => {
-                this.#connected = false;
-                log.info("OBS connection closed");
-            });
+            // The client is long-lived and reused across reconnects, so the
+            // previous listener must go or they accumulate one per connect
+            // until Node warns about a leak.
+            this.#obs.off("ConnectionClosed", this.#onClosed);
+            this.#obs.on("ConnectionClosed", this.#onClosed);
         } catch (error) {
             this.#connected = false;
             // Expected whenever OBS simply isn't running; keep it quiet.

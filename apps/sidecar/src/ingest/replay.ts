@@ -141,7 +141,10 @@ export class ReplayStore {
             total: file.events.length,
         };
         this.#playback = state;
-        const startedAt = Date.now();
+        // Rebased on each loop pass rather than captured once, so looping does
+        // not need to re-enter `play` (which would re-read the file, reset
+        // playback state and never fire `onFinished`).
+        let startedAt = Date.now();
 
         const step = (): void => {
             if (this.#playback !== state) return;
@@ -161,7 +164,8 @@ export class ReplayStore {
             if (state.index >= file.events.length) {
                 if (loop) {
                     state.index = 0;
-                    void this.play(name, streamId, speed, loop, emit, onFinished);
+                    startedAt = Date.now();
+                    state.timer = setTimeout(step, 50);
                     return;
                 }
                 this.stopPlayback();

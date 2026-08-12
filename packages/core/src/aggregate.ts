@@ -29,13 +29,21 @@ export interface AggregateOptions {
 const DEFAULT_MERGE_WINDOW_MS = 30_000;
 const MERGED_TEXT_LIMIT = 220;
 
+/**
+ * How many names a ticker names explicitly before collapsing to "+N".
+ *
+ * Collection and display must use the same number: collecting more than are
+ * shown silently discards them.
+ */
+const TICKER_NAMES = 2;
+
 /** `"Ana, Mihai +6 joined"`, or `"8 people joined"` when names are unknown. */
 export function tickerLabel(ticker: Ticker, verb: string): string {
     // With no names at all the count IS the subject, so there is no overflow to
     // append — otherwise this reads "3 people +3 liked".
     if (ticker.names.length === 0) return `${ticker.total} people ${verb}`;
-    const shown = ticker.names.slice(0, 2).join(", ");
-    const extra = ticker.total - Math.min(ticker.names.length, 2);
+    const shown = ticker.names.slice(0, TICKER_NAMES).join(", ");
+    const extra = ticker.total - Math.min(ticker.names.length, TICKER_NAMES);
     return extra > 0 ? `${shown} +${extra} ${verb}` : `${shown} ${verb}`;
 }
 
@@ -82,8 +90,8 @@ function buildTicker(kind: ChatKind, names: Set<string>): Ticker {
     const all = [...names];
     return {
         kind,
-        // Last three distinct users, newest first.
-        names: all.slice(-3).reverse(),
+        // Most recent distinct users, newest first.
+        names: all.slice(-TICKER_NAMES).reverse(),
         total: all.length,
     };
 }

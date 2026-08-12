@@ -21,6 +21,14 @@ const log = logger.scoped("[streams]");
  */
 const FLUSH_INTERVAL_MS = 16;
 
+/**
+ * Ceiling on distinct viewer handles retained per stream.
+ *
+ * A busy multi-hour LIVE would otherwise grow this set without bound. 100k
+ * handles is far beyond any realistic audience while still capping memory.
+ */
+const MAX_TRACKED_VIEWERS = 100_000;
+
 export interface StreamSinks {
     onEvents: (events: ChatEvent[]) => void;
     onStatus: (status: ConnectionStatus) => void;
@@ -109,7 +117,12 @@ export class StreamManager {
                     if (!current) return;
                     current.status = { ...current.status, ...patch };
                     if (typeof patch.viewerCount === "number") {
-                        current.stats.peakViewers = Math.max(current.stats.peakViewers, patch.viewerCount);
+                        // Copy-on-write, matching #tally: `flush` compares by
+                        // reference, so an in-place bump is never broadcast.
+                        const peak = Math.max(current.stats.peakViewers, patch.viewerCount);
+                        if (peak !== current.stats.peakViewers) {
+                            current.stats = { ...current.stats, peakViewers: peak };
+                        }
                     }
                     this.#sinks.onStatus(current.status);
                 },
@@ -188,8 +201,14 @@ export class StreamManager {
         }
 
         if (event.user.uniqueId !== "") {
-            entry.viewers.add(event.user.uniqueId);
-            stats.uniqueViewers = entry.viewers.size;
+            // The set is the source of truth for the count, so it must stay
+            // authoritative: dropping handles while still incrementing would
+            // double-count returning viewers. Instead the tally saturates —
+            // accurate up to the cap, bounded above it.
+            if (entry.viewers.size < MAX_TRACKED_VIEWERS) {
+                entry.viewers.add(event.user.uniqueId);
+                stats.uniqueViewers = entry.viewers.size;
+            }
         }
 
         entry.stats = stats;

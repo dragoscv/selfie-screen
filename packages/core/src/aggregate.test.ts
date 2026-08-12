@@ -51,11 +51,22 @@ describe("aggregate", () => {
         expect(result.joinTicker?.total).toBe(1);
     });
 
-    it("shows the three most recent distinct names, newest first", () => {
+    it("keeps the most recent distinct names, newest first", () => {
         const input = ["A", "B", "C", "D", "E"].map((n, i) => ev("join", n, "joined", i));
         const result = aggregate(input, ALL_ON);
-        expect(result.joinTicker?.names).toEqual(["E", "D", "C"]);
+        expect(result.joinTicker?.names).toEqual(["E", "D"]);
         expect(result.joinTicker?.total).toBe(5);
+    });
+
+    it("collects exactly as many names as the label renders", () => {
+        // Guards the earlier bug where a third name was collected and then
+        // silently dropped by `tickerLabel`.
+        const input = ["A", "B", "C", "D", "E"].map((n, i) => ev("join", n, "joined", i));
+        const ticker = aggregate(input, ALL_ON).joinTicker;
+        expect(ticker).not.toBeNull();
+        for (const name of ticker?.names ?? []) {
+            expect(tickerLabel(ticker!, "joined")).toContain(name);
+        }
     });
 
     it("collapses likes independently of joins", () => {

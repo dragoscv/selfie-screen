@@ -222,3 +222,47 @@ All claims below were observed, not inferred.
 ## 8. Open questions
 
 _None currently. All blocking questions answered — see §4._
+
+---
+
+## 9. Hardening pass (post-review)
+
+A deep review of the first working build found real gaps beyond the two
+reported bugs. All of them are fixed and verified.
+
+### 9.1 Correctness
+
+| Gap | Fix |
+| --- | --- |
+| Duplicate `client attached` on every reload — the WS effect re-ran because its deps changed identity | Effect made dependency-stable; a module-level singleton guards double-connect under React StrictMode + HMR |
+| `unlisten` crash on teardown (`Cannot read properties of undefined`) | Teardown captures the resolved handle and no-ops if the listener never resolved |
+| `CommandPalette` infinite render loop (`getSnapshot should be cached`) | Selector returns a stable reference instead of a fresh array each call |
+| Autostart error on launch (`The system cannot find the file specified`) | Autostart is now gated to packaged builds and failures degrade to a warning, never a toast |
+| Sidecar path broke under UNC-prefixed paths (`EISDIR: lstat 'E:'`) | Sidecar resolution strips the `\\?\` prefix before spawning Node |
+| Replay could double-start and interleave two sessions | Replay is single-flight; starting again cancels the in-flight run first |
+| Panel writer could overlap frames on a slow COM port | Frame pushes are serialized behind a write lock; late frames coalesce |
+
+### 9.2 Robustness
+
+- Sidecar port is negotiated dynamically and reported to the shell, so a stale
+  process never wedges startup.
+- The connector reconnects with capped exponential backoff and surfaces state
+  transitions to the UI instead of failing silently.
+- OBS browser-source clients are tracked and receive a full config snapshot on
+  attach, so a source added mid-stream renders immediately.
+- Every long-lived stream has an explicit teardown path; no orphaned listeners
+  survive a disconnect.
+
+### 9.3 Verification after hardening
+
+| Claim | Evidence |
+| --- | --- |
+| Whole monorepo green | `pnpm verify` → 14/14 turbo tasks, all tests passing |
+| No console errors on launch | dev log clean: sidecar ready → client attached (1), nothing else |
+| Single WS client per reload | `client attached (1)` exactly once per page load |
+| No autostart failure | launch log has no autostart error line |
+| Clean shutdown | app exits without orphaned `tiksee.exe` or project `node.exe` |
+
+Only remaining lint output is one intentional warning: React Compiler skips
+memoizing `chat-feed.tsx` because TanStack Virtual's `useVirtualizer()` returns
+non-memoizable functions. That is expected and documented upstream.

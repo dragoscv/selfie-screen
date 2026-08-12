@@ -2,11 +2,38 @@ mod secrets;
 mod sidecar;
 mod windows_ext;
 
+use std::sync::Mutex;
+
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+};
 
 use sidecar::{SidecarState, SidecarStatus};
+
+/// Window-behaviour preferences the shell needs on the Rust side.
+///
+/// The renderer owns the settings file; it pushes the handful of values that
+/// only native code can act on. Without this the close-to-tray toggle was
+/// decorative — the window always hid.
+#[derive(Debug, Clone)]
+pub struct Behaviour {
+    pub close_to_tray: bool,
+    pub minimise_to_tray: bool,
+}
+
+impl Default for Behaviour {
+    fn default() -> Self {
+        Self {
+            close_to_tray: true,
+            minimise_to_tray: true,
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct BehaviourState(pub Mutex<Behaviour>);
 
 /// Where the renderer should connect. Emitted again on demand because the
 /// `sidecar://ready` event may fire before the webview finishes loading.
@@ -84,6 +111,91 @@ fn set_overlay_click_through(app: AppHandle, enabled: bool) -> Result<(), String
         .map_err(|e| e.to_string())
 }
 
+/// Push the window-behaviour preferences the shell has to enforce natively.
+#[tauri::command]
+fn set_behaviour(
+    state: tauri::State<'_, BehaviourState>,
+    close_to_tray: bool,
+    minimise_to_tray: bool,
+) -> Result<(), String> {
+    let mut behaviour = state.0.lock().map_err(|e| e.to_string())?;
+    behaviour.close_to_tray = close_to_tray;
+    behaviour.minimise_to_tray = minimise_to_tray;
+    Ok(())
+}
+
+/// Enable or disable launching TikSee when the user signs in.
+#[tauri::command]
+fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let manager = app.autolaunch();
+
+    // Both calls are errors when the entry is already in the requested state
+    // (disabling a non-existent registry entry reports "cannot find the file
+    // specified"), so make this idempotent — it runs on every settings load.
+    let current = manager.is_enabled().unwrap_or(false);
+    if current == enabled {
+        return Ok(());
+    }
+
+    if enabled {
+        manager.enable().map_err(|e| e.to_string())
+    } else {
+        manager.disable().map_err(|e| e.to_string())
+    }
+}
+
+/// Re-register the global hotkeys.
+///
+/// Accelerators are re-registered wholesale rather than diffed: the set is
+/// three entries, and unregister-all is the only way to drop a binding the
+/// user has cleared.
+#[tauri::command]
+fn set_hotkeys(
+    app: AppHandle,
+    toggle_overlay: String,
+    mute_voice: String,
+    push_to_talk: String,
+) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+    let shortcuts = app.global_shortcut();
+    let _ = shortcuts.unregister_all();
+
+    // One malformed accelerator must not silently drop the other two, so
+    // failures are collected and reported together.
+    let mut failures: Vec<String> = Vec::new();
+
+    for (accelerator, action) in [
+        (toggle_overlay, "overlay"),
+        (mute_voice, "mute"),
+        (push_to_talk, "ptt"),
+    ] {
+        if accelerator.trim().is_empty() {
+            continue;
+        }
+        let action = action.to_string();
+        let handle = app.clone();
+        let result = shortcuts.on_shortcut(accelerator.as_str(), move |_app, _shortcut, event| {
+            // Fire on press only; otherwise every hotkey triggers twice.
+            if event.state() != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                return;
+            }
+            let _ = handle.emit("hotkey", action.clone());
+        });
+        if let Err(error) = result {
+            failures.push(format!("{accelerator}: {error}"));
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
 /// Open the TikTok login page in a dedicated window.
 ///
 /// Tauri's WebView2 keeps cookies in the app's data directory, so the session
@@ -137,12 +249,16 @@ pub fn run() {
 
     let app = builder
         .manage(SidecarState::default())
+        .manage(BehaviourState::default())
         .invoke_handler(tauri::generate_handler![
             sidecar_status,
             restart_sidecar,
             set_surface,
             toggle_overlay,
             set_overlay_click_through,
+            set_behaviour,
+            set_autostart,
+            set_hotkeys,
             open_tiktok_login,
             secrets::secret_set,
             secrets::secret_get,
@@ -173,13 +289,30 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // Closing the main window hides to tray; quitting happens from
-                // the tray menu. Secondary windows just close.
-                if window.label() == "main" {
-                    let _ = window.hide();
-                    api.prevent_close();
+            if window.label() != "main" {
+                return;
+            }
+            let close_to_tray = window
+                .app_handle()
+                .try_state::<BehaviourState>()
+                .and_then(|state| state.0.lock().ok().map(|b| b.close_to_tray))
+                .unwrap_or(true);
+
+            match event {
+                // Hiding to tray is a preference, not a law: with it off the
+                // close button must actually exit.
+                WindowEvent::CloseRequested { api, .. } => {
+                    if close_to_tray {
+                        let _ = window.hide();
+                        api.prevent_close();
+                    } else {
+                        if let Some(state) = window.app_handle().try_state::<SidecarState>() {
+                            state.kill();
+                        }
+                        window.app_handle().exit(0);
+                    }
                 }
+                _ => {}
             }
         })
         .build(tauri::generate_context!())

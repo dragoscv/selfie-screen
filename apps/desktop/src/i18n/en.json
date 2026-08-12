@@ -4,6 +4,7 @@
         "tagline": "TikTok LIVE companion"
     },
     "nav": {
+        "primary": "Primary",
         "live": "Live",
         "people": "People",
         "analytics": "Analytics",
@@ -368,6 +369,7 @@
         "save": "Save",
         "cancel": "Cancel",
         "close": "Close",
+        "dismiss": "Dismiss",
         "delete": "Delete",
         "confirm": "Confirm",
         "copy": "Copy",

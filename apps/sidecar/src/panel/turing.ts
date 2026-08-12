@@ -130,7 +130,7 @@ export class TuringPanel {
         const port = this.#port;
         if (!port?.isOpen) return Promise.reject(new Error("Panel is not open"));
 
-        this.#writing = this.#writing.then(
+        const result = this.#writing.then(
             () =>
                 new Promise<void>((resolve, reject) => {
                     port.write(data, (error) => {
@@ -142,7 +142,13 @@ export class TuringPanel {
                     });
                 }),
         );
-        return this.#writing;
+
+        // The chain exists purely to order writes, so it must never hold a
+        // rejection: a single transient serial error would otherwise be
+        // inherited by every subsequent write and brick the panel until
+        // reconnect. The caller still sees the real failure via `result`.
+        this.#writing = result.catch(() => undefined);
+        return result;
     }
 
     /**

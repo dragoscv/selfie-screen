@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, type Server as HttpServer } from "node:http";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -39,6 +39,9 @@ class Sidecar {
     #settings: Settings = defaultSettings();
     #session: TikTokSession | null = null;
     #clients = new Set<WebSocket>();
+    /** Retained so shutdown can release the port rather than leaking it. */
+    #http: HttpServer | null = null;
+    #wss: WebSocketServer | null = null;
 
     #streams: StreamManager;
     #panel: PanelService;
@@ -92,6 +95,8 @@ class Sidecar {
 
         const wss = new WebSocketServer({ server: http, path: "/ws" });
         wss.on("connection", (socket) => this.#onClient(socket));
+        this.#http = http;
+        this.#wss = wss;
 
         await new Promise<void>((resolve, reject) => {
             http.once("error", reject);
@@ -274,6 +279,31 @@ class Sidecar {
 
     async dispose(): Promise<void> {
         log.info("shutting down");
+
+        // Close listeners before the subsystems: a client that reconnects
+        // mid-teardown would otherwise be handed a half-disposed sidecar.
+        for (const client of this.#clients) {
+            try {
+                client.close(1001, "sidecar shutting down");
+            } catch {
+                client.terminate();
+            }
+        }
+        this.#clients.clear();
+
+        const wss = this.#wss;
+        this.#wss = null;
+        if (wss) await new Promise<void>((resolve) => wss.close(() => resolve()));
+
+        const http = this.#http;
+        this.#http = null;
+        if (http?.listening) {
+            // `close()` waits for keep-alive sockets, which can outlive the
+            // grace period the shell allows; force them shut.
+            http.closeAllConnections?.();
+            await new Promise<void>((resolve) => http.close(() => resolve()));
+        }
+
         await Promise.allSettled([
             this.#streams.dispose(),
             this.#panel.dispose(),
@@ -302,9 +332,15 @@ process.stdin.on("close", () => void shutdown(0));
 process.stdin.resume();
 
 process.on("uncaughtException", (error) => {
-    log.error("uncaught exception", error);
+    // Carrying on in an undefined state is worse than dying for a process that
+    // owns a serial port and two listening sockets: shut down cleanly so the
+    // shell sees the exit and can respawn us.
+    log.error("uncaught exception — shutting down", error);
+    void shutdown(1);
 });
 process.on("unhandledRejection", (reason) => {
+    // Rejections are far more often recoverable (a transient OBS or network
+    // failure), so these are logged and survived.
     log.error("unhandled rejection", reason);
 });
 

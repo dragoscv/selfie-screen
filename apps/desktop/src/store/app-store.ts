@@ -51,6 +51,12 @@ interface AppState {
     replayRecording: boolean;
     replayProgress: number;
 
+    /* OBS */
+    obsConnected: boolean;
+    obsError: string | null;
+    obsScenes: string[];
+    obsScene: string;
+
     /* voice */
     speakingEventId: string | null;
     speechQueued: number;
@@ -91,6 +97,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     replayPlaying: false,
     replayRecording: false,
     replayProgress: 0,
+
+    obsConnected: false,
+    obsError: null,
+    obsScenes: [],
+    obsScene: "",
 
     speakingEventId: null,
     speechQueued: 0,
@@ -148,6 +159,16 @@ export const useAppStore = create<AppState>((set, get) => ({
             case "replays":
                 set({ replays: message.replays });
                 break;
+
+            case "obsStatus":
+                // Previously fell through to `default`, so a failed connect
+                // looked identical to a successful one.
+                set({ obsConnected: message.connected, obsError: message.error ?? null });
+                break;
+            case "obsScenes":
+                set({ obsScenes: message.scenes, obsScene: message.current });
+                break;
+
             case "replayStatus":
                 set({
                     replayPlaying: message.playing,
