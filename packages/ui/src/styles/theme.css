@@ -1,0 +1,380 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * TikSee theme system.
+ *
+ * Three ORTHOGONAL axes live on <html>, never merged into one class:
+ *
+ *   <html class="dark" data-accent="cyan" data-surface="mica">
+ *
+ *   mode     .dark / (light default)   -> neutral ramp + elevation
+ *   accent   [data-accent]             -> OKLCH hue + chroma channels
+ *   surface  [data-surface]            -> panel fill, blur, border, shadow
+ *
+ * That gives 3 x 7 x 4 looks from O(3+7+4) rules instead of a combinatorial
+ * explosion. Accent is stored as CHANNELS rather than finished colours, so a
+ * custom colour from the picker is two numbers written to the root element,
+ * and every derived token follows automatically.
+ */
+
+@source "../**/*.{ts,tsx}";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ *
+ * Layer 0 — primitives
+ * ------------------------------------------------------------------ */
+:root {
+    /* Accent channels. Overridden by [data-accent] and by inline custom values. */
+    --accent-h: 200;
+    --accent-c: 0.14;
+
+    --radius-card: 1.25rem;
+    --radius-panel: 1rem;
+    --radius-control: 0.75rem;
+    --radius-chip: 0.625rem;
+
+    --space-card: 1.125rem;
+
+    /* Motion tokens. Compose these; never hardcode a duration in a component. */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    --dur-instant: 110ms;
+    --dur-fast: 180ms;
+    --dur-normal: 240ms;
+    --dur-slow: 340ms;
+
+    /* Event-kind colours. Fixed hues: they carry meaning, not branding, and
+     must stay recognisable across every accent and both modes. */
+    --kind-chat: oklch(0.79 0.13 226);
+    --kind-gift: oklch(0.82 0.14 74);
+    --kind-follow: oklch(0.82 0.17 148);
+    --kind-join: oklch(0.75 0.15 293);
+    --kind-like: oklch(0.72 0.16 19);
+    --kind-share: oklch(0.78 0.13 234);
+}
+
+/* ------------------------------------------------------------------ *
+ * Layer 1 — accent presets
+ * ------------------------------------------------------------------ */
+[data-accent="cyan"] {
+    --accent-h: 226;
+    --accent-c: 0.13;
+}
+
+[data-accent="violet"] {
+    --accent-h: 293;
+    --accent-c: 0.16;
+}
+
+[data-accent="amber"] {
+    --accent-h: 74;
+    --accent-c: 0.14;
+}
+
+[data-accent="emerald"] {
+    --accent-h: 156;
+    --accent-c: 0.14;
+}
+
+[data-accent="rose"] {
+    --accent-h: 16;
+    --accent-c: 0.16;
+}
+
+[data-accent="sky"] {
+    --accent-h: 245;
+    --accent-c: 0.15;
+}
+
+/* ------------------------------------------------------------------ *
+ * Layer 2 — mode (light default, .dark override)
+ *
+ * Neutrals carry a trace of the accent hue so the whole UI feels tinted
+ * rather than grey-with-a-coloured-button.
+ * ------------------------------------------------------------------ */
+:root {
+    color-scheme: light;
+    --l-accent: 0.55;
+
+    --bg: oklch(0.976 0.004 var(--accent-h));
+    --bg-elevated: oklch(1 0 0);
+    --fg: oklch(0.21 0.014 var(--accent-h));
+    --fg-muted: oklch(0.5 0.016 var(--accent-h));
+    --fg-subtle: oklch(0.63 0.014 var(--accent-h));
+
+    --panel: oklch(1 0 0);
+    --panel-alt: oklch(0.965 0.005 var(--accent-h));
+    --border: oklch(0.9 0.008 var(--accent-h));
+    --border-strong: oklch(0.82 0.012 var(--accent-h));
+
+    --overlay-scrim: oklch(0.21 0.02 var(--accent-h) / 0.35);
+    --shadow-color: 220 30% 20%;
+    --shadow-strength: 6%;
+
+    --danger: oklch(0.58 0.19 25);
+    --warning: oklch(0.72 0.15 70);
+    --success: oklch(0.62 0.16 150);
+}
+
+.dark {
+    color-scheme: dark;
+    --l-accent: 0.72;
+
+    --bg: oklch(0.17 0.014 var(--accent-h));
+    --bg-elevated: oklch(0.205 0.016 var(--accent-h));
+    --fg: oklch(0.97 0.005 var(--accent-h));
+    --fg-muted: oklch(0.71 0.018 var(--accent-h));
+    --fg-subtle: oklch(0.58 0.018 var(--accent-h));
+
+    --panel: oklch(0.225 0.018 var(--accent-h));
+    --panel-alt: oklch(0.265 0.02 var(--accent-h));
+    --border: oklch(0.32 0.02 var(--accent-h));
+    --border-strong: oklch(0.42 0.024 var(--accent-h));
+
+    --overlay-scrim: oklch(0.12 0.02 var(--accent-h) / 0.55);
+    --shadow-color: 220 40% 2%;
+    --shadow-strength: 26%;
+
+    --danger: oklch(0.7 0.18 22);
+    --warning: oklch(0.8 0.15 74);
+    --success: oklch(0.78 0.17 152);
+}
+
+/* Accent ramp, derived from the channels above. Defined after mode so it can
+   read --l-accent. */
+:root,
+.dark {
+    --accent: oklch(var(--l-accent) var(--accent-c) var(--accent-h));
+    --accent-hover: oklch(from var(--accent) calc(l + 0.05) c h);
+    --accent-active: oklch(from var(--accent) calc(l - 0.05) c h);
+    --accent-fg: oklch(from var(--accent) clamp(0, (0.62 - l) * 1000, 1) 0 h);
+    --accent-subtle: color-mix(in oklab, var(--accent) 14%, transparent);
+    --accent-muted: color-mix(in oklab, var(--accent) 28%, transparent);
+    --ring: color-mix(in oklab, var(--accent) 62%, transparent);
+}
+
+/* ------------------------------------------------------------------ *
+ * Layer 3 — surface treatment
+ * ------------------------------------------------------------------ */
+[data-surface="solid"] {
+    --surface: var(--panel);
+    --surface-blur: none;
+    --surface-border: var(--border);
+    --surface-shadow: 0 1px 2px hsl(var(--shadow-color) / var(--shadow-strength)),
+        0 4px 12px -4px hsl(var(--shadow-color) / var(--shadow-strength));
+    --app-bg: var(--bg);
+}
+
+[data-surface="glass"] {
+    --surface: color-mix(in oklab, var(--panel) 62%, transparent);
+    --surface-blur: blur(22px) saturate(1.7);
+    --surface-border: color-mix(in oklab, var(--fg) 12%, transparent);
+    --surface-shadow: 0 8px 32px -8px hsl(var(--shadow-color) / calc(var(--shadow-strength) * 1.6));
+    --app-bg: var(--bg);
+}
+
+/* Mica: the window itself is translucent (painted by the OS), so panels sit
+   on near-transparent fills and the desktop shows through. */
+[data-surface="mica"] {
+    --surface: color-mix(in oklab, var(--panel) 78%, transparent);
+    --surface-blur: blur(10px) saturate(1.2);
+    --surface-border: color-mix(in oklab, var(--fg) 9%, transparent);
+    --surface-shadow: 0 2px 10px -4px hsl(var(--shadow-color) / var(--shadow-strength));
+    --app-bg: transparent;
+}
+
+/* High contrast: no translucency, no soft edges, maximal separation. */
+[data-surface="contrast"] {
+    --surface: var(--bg-elevated);
+    --surface-blur: none;
+    --surface-border: var(--fg);
+    --surface-shadow: none;
+    --app-bg: var(--bg);
+    --fg-muted: var(--fg);
+    --fg-subtle: var(--fg);
+    --border: var(--fg);
+    --border-strong: var(--fg);
+}
+
+/* ------------------------------------------------------------------ *
+ * Layer 4 — expose everything to Tailwind utilities
+ * ------------------------------------------------------------------ */
+@theme inline {
+    --color-bg: var(--bg);
+    --color-bg-elevated: var(--bg-elevated);
+    --color-fg: var(--fg);
+    --color-fg-muted: var(--fg-muted);
+    --color-fg-subtle: var(--fg-subtle);
+
+    --color-panel: var(--panel);
+    --color-panel-alt: var(--panel-alt);
+    --color-surface: var(--surface);
+    --color-border: var(--border);
+    --color-border-strong: var(--border-strong);
+
+    --color-accent: var(--accent);
+    --color-accent-hover: var(--accent-hover);
+    --color-accent-active: var(--accent-active);
+    --color-accent-fg: var(--accent-fg);
+    --color-accent-subtle: var(--accent-subtle);
+    --color-accent-muted: var(--accent-muted);
+    --color-ring: var(--ring);
+
+    --color-danger: var(--danger);
+    --color-warning: var(--warning);
+    --color-success: var(--success);
+
+    --color-kind-chat: var(--kind-chat);
+    --color-kind-gift: var(--kind-gift);
+    --color-kind-follow: var(--kind-follow);
+    --color-kind-join: var(--kind-join);
+    --color-kind-like: var(--kind-like);
+    --color-kind-share: var(--kind-share);
+
+    --radius-card: var(--radius-card);
+    --radius-panel: var(--radius-panel);
+    --radius-control: var(--radius-control);
+    --radius-chip: var(--radius-chip);
+
+    --ease-out: var(--ease-out);
+    --ease-standard: var(--ease-standard);
+
+    --font-sans:
+        "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+}
+
+/* ------------------------------------------------------------------ *
+ * Base
+ * ------------------------------------------------------------------ */
+@layer base {
+    * {
+        border-color: var(--border);
+    }
+
+    html {
+        /* Density and font-scale both fold into the root font size, so every
+       rem-based token scales coherently. */
+        font-size: calc(16px * var(--font-scale, 1));
+    }
+
+    html[data-density="compact"] {
+        --radius-card: 0.875rem;
+        --radius-panel: 0.75rem;
+        --space-card: 0.75rem;
+        font-size: calc(15px * var(--font-scale, 1));
+    }
+
+    body {
+        background: var(--app-bg);
+        color: var(--fg);
+        font-family: var(--font-sans);
+        font-synthesis-weight: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+        overscroll-behavior: none;
+    }
+
+    /* Chrome-less desktop window: nothing should feel like a web page. */
+    ::selection {
+        background: var(--accent-muted);
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+
+    /* Non-interactive chrome must never steal a text cursor or a drag. */
+    .drag-region {
+        -webkit-app-region: drag;
+        user-select: none;
+    }
+
+    .no-drag {
+        -webkit-app-region: no-drag;
+    }
+
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: color-mix(in oklab, var(--fg) 18%, transparent);
+        border: 3px solid transparent;
+        background-clip: content-box;
+        border-radius: 999px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: color-mix(in oklab, var(--fg) 32%, transparent);
+        background-clip: content-box;
+    }
+}
+
+@layer components {
+
+    /* The single surface primitive every panel/card composes. */
+    .surface {
+        background: var(--surface);
+        border: 1px solid var(--surface-border);
+        box-shadow: var(--surface-shadow);
+        backdrop-filter: var(--surface-blur);
+    }
+}
+
+@layer utilities {
+
+    /* Ultra-wide guard: caps a reading column while letting the shell fill the
+     screen. Without this a 5120x1440 monitor renders 300-character lines. */
+    .measure {
+        max-inline-size: 72ch;
+    }
+
+    .measure-wide {
+        max-inline-size: 110ch;
+    }
+
+    .text-balance {
+        text-wrap: balance;
+    }
+
+    .text-pretty {
+        text-wrap: pretty;
+    }
+}
+
+/*
+ * Reduced motion. Honoured from BOTH the OS setting and the in-app override,
+ * because a streamer may want stillness on a capture even when Windows does
+ * not request it.
+ */
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+}

@@ -1,0 +1,38 @@
+{
+    "name": "@tiksee/sidecar",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "start": "node dist/index.js",
+        "build": "tsup",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "panel:test": "tsx src/panel/selftest.ts",
+        "lint": "eslint src",
+        "test": "vitest run",
+        "clean": "rimraf dist .turbo"
+    },
+    "dependencies": {
+        "@hono/node-server": "catalog:",
+        "@napi-rs/canvas": "catalog:",
+        "@tiksee/core": "workspace:*",
+        "hono": "catalog:",
+        "obs-websocket-js": "catalog:",
+        "serialport": "catalog:",
+        "tiktok-live-connector": "catalog:",
+        "ws": "catalog:",
+        "zod": "catalog:"
+    },
+    "devDependencies": {
+        "@tiksee/config": "workspace:*",
+        "@types/node": "catalog:",
+        "@types/ws": "catalog:",
+        "eslint": "catalog:",
+        "tsup": "catalog:",
+        "tsx": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    }
+}

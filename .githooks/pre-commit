@@ -1,0 +1,26 @@
+#!/bin/sh
+# TikSee pre-commit gate.
+#
+# Runs the same checks CI would: typecheck, lint, tests and builds across the
+# whole workspace via turbo (which caches, so a no-op commit is fast).
+#
+# Bypass deliberately with `git commit --no-verify` when committing docs only.
+
+set -e
+
+echo "[pre-commit] running workspace verification..."
+
+# Block accidental secret commits before spending time on the build.
+if git diff --cached --name-only | grep -Eq '(^|/)(local\.properties|\.env(\..*)?$)'; then
+  echo "[pre-commit] refusing: a secrets file is staged" >&2
+  exit 1
+fi
+
+if git diff --cached --name-only | grep -Eq '(^|/)(node_modules|target|dist)/'; then
+  echo "[pre-commit] refusing: build output or dependencies are staged" >&2
+  exit 1
+fi
+
+pnpm verify
+
+echo "[pre-commit] ok"

@@ -1,0 +1,10 @@
+{
+  "extends": "@tiksee/config/tsconfig/react.json",
+  "compilerOptions": {
+    "types": [],
+    "allowImportingTsExtensions": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}

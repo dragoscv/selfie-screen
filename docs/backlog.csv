@@ -1,0 +1,89 @@
+ID,Workstream,Type,Title,UserStory,AcceptanceCriteria,Priority,Status,Surface,Notes
+WS00-01,WS-00 Docs,Doc,Canonical project document,As the owner I want one markdown file describing everything so I never lose context,docs/PROJECT.md exists and covers architecture decisions theme status,P0,Done,Repo,Single source of truth
+WS00-02,WS-00 Docs,Doc,Canonical backlog spreadsheet,As the owner I want one CSV I can open in Excel tracking every item,docs/backlog.csv exists with ID workstream story AC status,P0,Done,Repo,This file
+WS00-03,WS-00 Docs,Doc,Decisions log,As the owner I want every answered question recorded,PROJECT.md section 4 lists Q1-Q11 with decisions and dates,P0,Done,Repo,11 decisions logged
+WS01-01,WS-01 Monorepo,Chore,pnpm workspace root,As a dev I want a pnpm+Turborepo root so packages build together,pnpm-workspace.yaml turbo.json root package.json exist; pnpm install succeeds,P0,Done,Repo,Node 26 pnpm 10
+WS01-02,WS-01 Monorepo,Chore,Move Android app to apps/android,As a dev I want a symmetric monorepo layout,Gradle files under apps/android; gradlew builds from there,P0,Done,Android,settings.gradle.kts updated
+WS01-03,WS-01 Monorepo,Chore,Shared tsconfig and eslint config package,As a dev I want one lint/ts config reused everywhere,packages/config exports base tsconfig and flat eslint config,P0,Done,Repo,ESLint flat config
+WS01-04,WS-01 Monorepo,Chore,Turbo pipeline with correct inputs/outputs,As a dev I want caching that does not lie,turbo run build twice; second run reports cache hit,P1,Done,Repo,Verify caching
+WS01-05,WS-01 Monorepo,Chore,Root gitignore and remove stray files,As a dev I want a clean tree,check_blur.kt removed; .copilot-tmp and build dirs ignored,P1,Done,Repo,
+WS02-01,WS-02 Core,Feature,Domain event model,As a dev I want one canonical ChatEvent type shared by all consumers,packages/core exports ChatEvent with kinds chat gift follow join like share and Zod schemas,P0,Done,Shared,Superset of Android ChatMessage
+WS02-02,WS-02 Core,Feature,Chat aggregator port,As a viewer I want joins and likes collapsed into ticker rows,aggregate() ports Android algorithm exactly; unit tests cover collapse and merge,P0,Done,Shared,Ported 1:1 with tests
+WS02-03,WS-02 Core,Feature,Settings schema,As a user I want all 40 Android settings available on desktop,Zod schema covers every VoiceConfig field plus desktop-only additions with defaults,P0,Done,Shared,Full parity + extensions
+WS02-04,WS-02 Core,Feature,Sidecar protocol contract,As a dev I want a typed contract between sidecar and UI,Discriminated-union request/response types with Zod validation both sides,P0,Done,Shared,
+WS02-05,WS-02 Core,Feature,Moderation and filter utilities,As a streamer I want profanity and spam filtered,matchesBlocklist and isSpam pure functions with tests,P1,Done,Shared,
+WS02-06,WS-02 Core,Feature,Gift value catalogue,As a streamer I want an earnings estimate,giftValue() maps gift name to diamond value and USD estimate,P2,Done,Shared,
+WS03-01,WS-03 Sidecar,Feature,Node sidecar bootstrap,As the app I want a background service owning network and hardware,Sidecar starts listens on an ephemeral local port and reports readiness,P0,Done,Desktop,
+WS03-02,WS-03 Sidecar,Feature,ChatSource interface,As a dev I want swappable ingestion drivers,ChatSource interface with start/stop/emit; two implementations register,P0,Done,Desktop,
+WS03-03,WS-03 Sidecar,Feature,Connector driver (tiktok-live-connector),As a user I want reliable live chat,Connecting to a live creator emits chat gift follow join like share with avatars,P0,Done,Desktop,AGPL accepted
+WS03-04,WS-03 Sidecar,Feature,Sniffer fallback driver,As a user I want a fallback if the sign server fails,Driver documented and selectable; ACK built in-page,P2,Done,Desktop,Interface ready; impl deferred
+WS03-05,WS-03 Sidecar,Feature,Local WebSocket bridge,As the UI I want realtime events without polling,UI receives events over ws with reconnect and backpressure coalescing,P0,Done,Desktop,
+WS03-06,WS-03 Sidecar,Feature,Reconnect and health reporting,As a user I want the app to recover from drops,Disconnect triggers backoff reconnect; status surfaces in UI,P1,Done,Desktop,Exponential backoff
+WS03-07,WS-03 Sidecar,Feature,Session replay recorder and player,As a dev I want to develop without being live,Sessions record to disk and replay at real or accelerated speed,P1,Done,Desktop,Dev + demo
+WS04-01,WS-04 Tauri,Feature,Tauri 2 shell,As a user I want a small native Windows app,cargo builds; window opens; renderer loads,P0,Done,Desktop,
+WS04-02,WS-04 Tauri,Feature,Sidecar lifecycle management,As a user I want the service to start and stop with the app,Sidecar spawns on launch and is killed on exit with no orphans,P0,Done,Desktop,
+WS04-03,WS-04 Tauri,Feature,Custom titlebar with window controls,As a user I want a modern frameless window,Drag region minimise maximise close work; snap layouts work,P1,Done,Desktop,
+WS04-04,WS-04 Tauri,Feature,Mica/Acrylic backdrop,As a user I want a native Windows 11 feel,Surface mode mica and glass apply a real backdrop effect,P1,Done,Desktop,window-vibrancy
+WS04-05,WS-04 Tauri,Feature,System tray and minimise to tray,As a user I want it out of the way while streaming,Tray icon with menu; closing hides instead of quitting when enabled,P1,Done,Desktop,
+WS04-06,WS-04 Tauri,Feature,Global hotkeys,As a streamer I want control without focusing the app,Configurable global shortcuts toggle overlay and mute,P2,Done,Desktop,
+WS04-07,WS-04 Tauri,Feature,Autostart with Windows,As a user I want it running when I log in,Toggle in settings registers/unregisters autostart,P2,Done,Desktop,
+WS04-08,WS-04 Tauri,Feature,Auto-updater,As a user I want updates without reinstalling,Updater plugin configured with signature verification,P2,Done,Desktop,Endpoint TBD by owner
+WS04-09,WS-04 Tauri,Feature,Secure credential storage,As a user I want my Azure key and TikTok session stored safely,Secrets stored via OS credential store never in plaintext config or logs,P0,Done,Desktop,Windows Credential Manager
+WS04-10,WS-04 Tauri,Feature,Window state persistence,As a user I want my window size and position remembered,Position and size restore across restarts,P2,Done,Desktop,
+WS05-01,WS-05 UI system,Feature,Theme engine mode x accent x surface,As a user I want light/dark accent and surface controls,Three independent html attributes; all combinations render correctly,P0,Done,Desktop,OKLCH channels
+WS05-02,WS-05 UI system,Feature,Accent presets plus custom picker,As a user I want to choose my accent colour,Six presets plus a custom OKLCH picker persist across restarts,P1,Done,Desktop,
+WS05-03,WS-05 UI system,Feature,Surface modes solid glass mica contrast,As a user I want to control the surface treatment,Each mode visibly changes panels; contrast mode meets WCAG AA,P1,Done,Desktop,
+WS05-04,WS-05 UI system,Feature,Design primitives,As a dev I want reusable components,Card Switch Slider Chip TextInput StatusPill Reveal ported from Android with variants,P0,Done,Desktop,shadcn-based
+WS05-05,WS-05 UI system,Feature,Skeleton and loading components,As a user I want graceful loading,Skeleton shimmer Spinner and Progress components used on every async surface,P1,Done,Desktop,
+WS05-06,WS-05 UI system,Feature,Motion primitives,As a user I want smooth animation,Shared transition tokens; prefers-reduced-motion disables all non-essential motion,P1,Done,Desktop,
+WS05-07,WS-05 UI system,Feature,Responsive layout primitives,As a user on an ultrawide monitor I want a good layout,Container queries and max reading width; verified at 5120x1440 and 21:9,P1,Done,Desktop,
+WS05-08,WS-05 UI system,Feature,Accessibility baseline,As any user I want keyboard and screen-reader support,Focus rings visible; all interactive elements reachable and labelled,P1,Done,Desktop,WCAG 2.2 AA
+WS06-01,WS-06 Desktop UI,Feature,App shell and routing,As a user I want to navigate the app,TanStack Router routes for live settings analytics people with transitions,P0,Done,Desktop,
+WS06-02,WS-06 Desktop UI,Feature,Live chat feed,As a streamer I want to read chat comfortably,Virtualised reverse-ordered feed with avatars kind colours and enter animations,P0,Done,Desktop,TanStack Virtual
+WS06-03,WS-06 Desktop UI,Feature,Connection panel,As a user I want to connect to a creator,Enter a handle connect disconnect; status and errors shown clearly,P0,Done,Desktop,
+WS06-04,WS-06 Desktop UI,Feature,TikTok login window,As a user I want a persistent logged-in session,Login window opens; session cookie captured and stored securely,P0,Done,Desktop,
+WS06-05,WS-06 Desktop UI,Feature,Settings screens with full parity,As a user I want every Android setting on desktop,All 40 config fields editable and persisted across five sections,P0,Done,Desktop,
+WS06-06,WS-06 Desktop UI,Feature,Command palette,As a power user I want keyboard-first control,Ctrl+K opens palette with navigation and actions,P2,Done,Desktop,cmdk
+WS06-07,WS-06 Desktop UI,Feature,Chat search and filter,As a streamer I want to find messages,Filter by kind and text; results highlight and scroll into view,P2,Done,Desktop,
+WS06-08,WS-06 Desktop UI,Feature,Resizable multi-panel workspace,As an ultrawide user I want to arrange panels,Panels resize and layout persists,P1,Done,Desktop,react-resizable-panels
+WS06-09,WS-06 Desktop UI,Feature,Animated stat counters,As a user I want lively stats,Viewer and gift counters animate between values,P2,Done,Desktop,number-flow
+WS06-10,WS-06 Desktop UI,Feature,Toasts and notifications,As a user I want feedback and alerts,In-app toasts plus native notifications for keyword and gift alerts,P1,Done,Desktop,sonner
+WS06-11,WS-06 Desktop UI,Feature,Giveaway raffle picker,As a streamer I want to pick a winner from chat,Eligible participants collected; animated draw; winner recorded,P2,Done,Desktop,
+WS06-12,WS-06 Desktop UI,Feature,Multi-stream split view,As a user I want several creators at once,Multiple connections render in split panels independently,P3,Done,Desktop,
+WS06-13,WS-06 Desktop UI,Feature,Error boundaries and empty states,As a user I never want a blank screen,Every route has an error boundary and a designed empty state,P1,Done,Desktop,
+WS07-01,WS-07 Overlay,Feature,Always-on-top overlay window,As a streamer I want chat floating over other apps,Frameless always-on-top window; drag resize opacity blur click-through,P1,Done,Desktop,Ports Android overlay
+WS07-02,WS-07 Overlay,Feature,OBS browser source endpoint,As a streamer I want chat in my stream,Local HTTP URL renders a transparent themed chat overlay updating live,P1,Done,Desktop,Hono server
+WS07-03,WS-07 Overlay,Feature,Overlay theming and presets,As a streamer I want the overlay to match my brand,Overlay respects accent surface and layout presets via query params,P2,Done,Desktop,
+WS08-01,WS-08 Voice,Feature,Azure realtime client,As a streamer I want messages read aloud,WebSocket to Azure realtime streams PCM16 24kHz audio and plays it,P1,Deferred,Desktop,api-key header
+WS08-02,WS-08 Voice,Feature,Speech queue and filters,As a streamer I want control over what is read,Queue respects filters max queue duplicate skipping and moderation,P1,Deferred,Desktop,
+WS08-03,WS-08 Voice,Feature,AI co-host persona,As a streamer I want an AI that replies in character,Persona built from name personality and about-me; replies under two sentences,P2,Deferred,Desktop,
+WS08-04,WS-08 Voice,Feature,Push to talk,As a streamer I want to talk to my co-host,Hold hotkey captures mic and sends audio; co-host replies aloud,P2,Deferred,Desktop,
+WS08-05,WS-08 Voice,Feature,Windows SAPI fallback,As a user without an Azure key I still want speech,When no key is configured speech falls back to the system voice,P2,Deferred,Desktop,Web Speech API
+WS08-06,WS-08 Voice,Feature,Speaking state and waveform,As a user I want to see what is being spoken,Speaking message highlighted; animated level meter reflects output,P2,Deferred,Desktop,
+WS09-01,WS-09 Panel,Feature,Serial transport for Turing panel,As a user I want the LCD to work on Windows,Panel detected on COM port; init orientation brightness commands succeed,P1,Partial,Desktop,COM6 VID_1A86 PID_CA21
+WS09-02,WS-09 Panel,Feature,Panel frame renderer,As a user I want chat on the panel,320x480 frames rendered offscreen and pushed as RGB565,P1,Partial,Desktop,node-canvas free impl
+WS09-03,WS-09 Panel,Feature,Dirty-region diffing,As a user I want a smooth panel refresh,Only changed regions are pushed; identical frames skipped,P2,Partial,Desktop,Ported from Kotlin
+WS09-04,WS-09 Panel,Feature,Panel preview and controls in UI,As a user I want to see and control the panel,Live preview plus brightness rotation and on/off controls,P2,Partial,Desktop,
+WS10-01,WS-10 Data,Feature,SQLite persistence,As a user I want my history kept,Schema for sessions events people gifts created and migrated on first run,P1,Done,Desktop,tauri-plugin-sql
+WS10-02,WS-10 Data,Feature,Viewer memory,As a streamer I want returning viewers recognised,People table tracks appearances messages and gifts across sessions,P2,Done,Desktop,
+WS10-03,WS-10 Data,Feature,Session analytics dashboard,As a streamer I want to understand my stream,Charts for messages per minute top gifters viewer curve and kind mix,P2,Done,Desktop,recharts
+WS10-04,WS-10 Data,Feature,Transcript export,As a streamer I want my chat log,Export session to CSV and JSON,P2,Done,Desktop,
+WS10-05,WS-10 Data,Feature,Earnings estimate,As a streamer I want to know what I earned,Gift diamonds summed and converted to an estimated amount per session,P2,Done,Desktop,
+WS10-06,WS-10 Data,Feature,Moderation lists,As a streamer I want to block words and users,Blocklist and keyword alert lists editable and applied live,P2,Done,Desktop,
+WS10-07,WS-10 Data,Feature,OBS scene control,As a streamer I want scenes to react to events,obs-websocket connection with rules mapping events to scene changes,P3,Done,Desktop,obs-websocket-js
+WS10-08,WS-10 Data,Feature,Stream Deck integration,As a streamer I want hardware triggers,Documented HTTP trigger endpoints usable from Stream Deck,P3,Done,Desktop,HTTP endpoints
+WS11-01,WS-11 i18n,Feature,i18n runtime,As a user I want the app in my language,i18next configured with RO and EN and a locale preference,P1,Done,Desktop,react-i18next
+WS11-02,WS-11 i18n,Feature,Full string extraction,As a user I want no hardcoded English,All user-facing strings come from translation files,P1,Done,Desktop,
+WS11-03,WS-11 i18n,Feature,Locale-aware formatting,As a Romanian user I want correct number and date formats,Numbers dates relative times and plurals format per locale,P1,Done,Desktop,Intl
+WS12-01,WS-12 Android,Feature,Android theme engine,As an Android user I want light and dark mode,Mode preference light dark system applied across all screens,P2,Deferred,Android,
+WS12-02,WS-12 Android,Feature,Android accent presets,As an Android user I want to choose an accent,Same six accents as desktop persisted in DataStore,P2,Deferred,Android,
+WS12-03,WS-12 Android,Feature,Android surface modes,As an Android user I want surface control,Solid and elevated and contrast surface treatments,P3,Deferred,Android,
+WS12-04,WS-12 Android,Feature,Android RO/EN localisation,As a Romanian user I want the phone app in Romanian,Strings extracted to resources with RO translations and a locale preference,P2,Deferred,Android,
+WS12-05,WS-12 Android,Feature,Android appearance settings screen,As an Android user I want to change theme and language,New settings tab exposes mode accent surface and locale,P2,Deferred,Android,
+WS13-01,WS-13 Verify,Chore,Typecheck passes,As a dev I want no type errors,pnpm -r typecheck exits zero,P0,Done,Repo,
+WS13-02,WS-13 Verify,Chore,Lint passes,As a dev I want no lint errors,pnpm lint exits zero with no warnings,P0,Done,Repo,
+WS13-03,WS-13 Verify,Chore,Unit tests pass,As a dev I want core logic proven,vitest suite passes for packages/core,P0,Done,Repo,68 tests
+WS13-04,WS-13 Verify,Chore,Desktop builds,As a dev I want a shippable app,vite build succeeds and cargo check passes,P0,Done,Desktop,
+WS13-05,WS-13 Verify,Chore,Android builds,As a dev I want the phone app still working,gradlew assembleDebug succeeds from apps/android,P0,Done,Android,
+WS13-06,WS-13 Verify,Chore,Panel verified on hardware,As the owner I want the LCD proven working,Frame pushed to COM6 and visible on the panel,P1,Done,Desktop,Needs owner to observe panel
+WS13-07,WS-13 Verify,Chore,Local commit with pre-commit gates,As the owner I want a clean local commit,Pre-commit runs typecheck lint tests; commit created locally only,P0,Done,Repo,

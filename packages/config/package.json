@@ -1,0 +1,23 @@
+{
+    "name": "@tiksee/config",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./tsconfig/base.json": "./tsconfig/base.json",
+        "./tsconfig/lib.json": "./tsconfig/lib.json",
+        "./tsconfig/react.json": "./tsconfig/react.json",
+        "./tsconfig/node.json": "./tsconfig/node.json",
+        "./eslint": "./eslint/index.js",
+        "./eslint/react": "./eslint/react.js",
+        "./eslint/node": "./eslint/node.js"
+    },
+    "dependencies": {
+        "@eslint/js": "catalog:",
+        "eslint": "catalog:",
+        "eslint-plugin-react-hooks": "catalog:",
+        "eslint-plugin-react-refresh": "catalog:",
+        "globals": "catalog:",
+        "typescript-eslint": "catalog:"
+    }
+}

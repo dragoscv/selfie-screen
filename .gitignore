@@ -1,0 +1,37 @@
+# Secrets — never commit
+local.properties
+*.keystore
+*.jks
+.env
+.env.*
+!.env.example
+
+# Build output — JS
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Build output — Rust / Tauri
+target/
+apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/gen/
+
+# Build output — Android / Gradle
+build/
+.gradle/
+.kotlin/
+app/build/
+captures/
+
+# Scratch / agent temp artifacts
+.copilot-tmp/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+.pnpm-cache/

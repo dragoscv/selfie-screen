@@ -1,0 +1,1120 @@
+import {
+    ACCENT_PRESETS,
+    AUDIO_OUTPUTS,
+    DENSITIES,
+    LOCALES,
+    OVERLAY_LAYOUTS,
+    SPEECH_ENGINES,
+    SPEECH_LANGUAGES,
+    SURFACE_MODES,
+    THEME_MODES,
+    VOICES,
+    type AccentPreset,
+} from "@tiksee/core";
+import {
+    ACCENT_LABELS,
+    Button,
+    Card,
+    ChipSelector,
+    Reveal,
+    SliderRow,
+    StatusPill,
+    SwitchRow,
+    TextInput,
+    accentSwatch,
+    cn,
+} from "@tiksee/ui";
+import { invoke } from "@tauri-apps/api/core";
+import {
+    Bell,
+    Cable,
+    Copy,
+    Eye,
+    Gauge,
+    KeyRound,
+    Languages,
+    Layers,
+    Mic,
+    MonitorSmartphone,
+    Palette,
+    Shield,
+    Sparkles,
+    Video,
+    Volume2,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+
+import { useSettingsUpdate } from "../hooks/use-settings.js";
+import { sidecarClient } from "../lib/sidecar-client.js";
+import { useAppStore } from "../store/app-store.js";
+
+const SECTIONS = [
+    { id: "appearance", icon: Palette },
+    { id: "voice", icon: Volume2 },
+    { id: "filters", icon: Mic },
+    { id: "assistant", icon: Sparkles },
+    { id: "safety", icon: Shield },
+    { id: "display", icon: Eye },
+    { id: "overlay", icon: Layers },
+    { id: "obs", icon: Video },
+    { id: "panel", icon: MonitorSmartphone },
+    { id: "alerts", icon: Bell },
+    { id: "behaviour", icon: Gauge },
+    { id: "data", icon: Cable },
+] as const;
+
+type SectionId = (typeof SECTIONS)[number]["id"];
+
+export function SettingsRoute() {
+    const { t } = useTranslation();
+    const [section, setSection] = useState<SectionId>("appearance");
+
+    return (
+        <div className="flex h-full min-h-0">
+            <nav
+                className="w-52 shrink-0 overflow-y-auto border-r border-border/60 p-2"
+                aria-label={t("settings.title")}
+            >
+                {SECTIONS.map(({ id, icon: Icon }) => (
+                    <button
+                        key={id}
+                        type="button"
+                        onClick={() => setSection(id)}
+                        aria-current={section === id ? "page" : undefined}
+                        className={cn(
+                            "no-drag mb-0.5 flex w-full items-center gap-2.5 rounded-[--radius-chip] px-3 py-2",
+                            "text-left text-[0.8125rem] outline-none transition-colors duration-[--dur-fast]",
+                            "focus-visible:ring-2 focus-visible:ring-ring",
+                            section === id
+                                ? "bg-accent-subtle font-semibold text-accent"
+                                : "text-fg-muted hover:bg-panel-alt hover:text-fg",
+                        )}
+                    >
+                        <Icon className="size-4 shrink-0" />
+                        <span className="truncate">{t(`settings.sections.${id}`)}</span>
+                    </button>
+                ))}
+            </nav>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="measure-wide mx-auto flex flex-col gap-3 p-5">
+                    {section === "appearance" && <AppearanceSection />}
+                    {section === "voice" && <VoiceSection />}
+                    {section === "filters" && <FiltersSection />}
+                    {section === "assistant" && <AssistantSection />}
+                    {section === "safety" && <SafetySection />}
+                    {section === "display" && <DisplaySection />}
+                    {section === "overlay" && <OverlaySection />}
+                    {section === "obs" && <ObsSection />}
+                    {section === "panel" && <PanelSection />}
+                    {section === "alerts" && <AlertsSection />}
+                    {section === "behaviour" && <BehaviourSection />}
+                    {section === "data" && <DataSection />}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function AppearanceSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const a = useAppStore((s) => s.settings.appearance);
+    const custom = a.customAccentHue !== undefined;
+
+    return (
+        <>
+            <Card title={t("settings.appearance.theme")} subtitle={t("settings.appearance.themeHint")} icon={<Palette />}>
+                <ChipSelector
+                    options={THEME_MODES}
+                    value={a.mode}
+                    onSelect={(mode) => update("appearance", { mode })}
+                    display={(mode) => t(`settings.appearance.mode.${mode}`)}
+                />
+            </Card>
+
+            <Card
+                title={t("settings.appearance.accent")}
+                subtitle={t("settings.appearance.accentHint")}
+                icon={<Palette />}
+                tint="var(--accent)"
+            >
+                <div className="flex flex-wrap gap-2">
+                    {ACCENT_PRESETS.map((preset: AccentPreset) => {
+                        const selected = !custom && a.accent === preset;
+                        return (
+                            <button
+                                key={preset}
+                                type="button"
+                                onClick={() =>
+                                    update("appearance", {
+                                        accent: preset,
+                                        customAccentHue: undefined,
+                                        customAccentChroma: undefined,
+                                    })
+                                }
+                                aria-pressed={selected}
+                                title={ACCENT_LABELS[preset]}
+                                className={cn(
+                                    "no-drag grid size-9 place-items-center rounded-full outline-none",
+                                    "transition-transform duration-[--dur-fast] hover:scale-110",
+                                    "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+                                )}
+                                style={{
+                                    background: accentSwatch(preset),
+                                    boxShadow: selected ? "0 0 0 2px var(--bg), 0 0 0 4px var(--accent)" : undefined,
+                                }}
+                            >
+                                <span className="sr-only">{ACCENT_LABELS[preset]}</span>
+                            </button>
+                        );
+                    })}
+                    <button
+                        type="button"
+                        onClick={() =>
+                            update("appearance", {
+                                customAccentHue: custom ? undefined : 300,
+                                customAccentChroma: custom ? undefined : 0.16,
+                            })
+                        }
+                        aria-pressed={custom}
+                        title={t("settings.appearance.customAccent")}
+                        className={cn(
+                            "no-drag grid size-9 place-items-center rounded-full text-xs font-bold outline-none",
+                            "bg-[conic-gradient(from_0deg,oklch(0.7_0.18_0),oklch(0.7_0.18_120),oklch(0.7_0.18_240),oklch(0.7_0.18_360))]",
+                            "transition-transform duration-[--dur-fast] hover:scale-110",
+                            "focus-visible:ring-2 focus-visible:ring-ring",
+                        )}
+                        style={custom ? { boxShadow: "0 0 0 2px var(--bg), 0 0 0 4px var(--accent)" } : undefined}
+                    >
+                        <span className="sr-only">{t("settings.appearance.customAccent")}</span>
+                    </button>
+                </div>
+
+                <Reveal show={custom}>
+                    <SliderRow
+                        label={t("settings.appearance.hue")}
+                        value={a.customAccentHue ?? 300}
+                        min={0}
+                        max={360}
+                        step={1}
+                        format={(v) => `${Math.round(v)}°`}
+                        onCommit={(customAccentHue) => update("appearance", { customAccentHue })}
+                    />
+                    <SliderRow
+                        label={t("settings.appearance.chroma")}
+                        value={a.customAccentChroma ?? 0.16}
+                        min={0.02}
+                        max={0.32}
+                        step={0.005}
+                        format={(v) => `${Math.round((v / 0.32) * 100)}%`}
+                        onCommit={(customAccentChroma) => update("appearance", { customAccentChroma })}
+                    />
+                </Reveal>
+            </Card>
+
+            <Card title={t("settings.appearance.surface")} subtitle={t("settings.appearance.surfaceHint")} icon={<Layers />}>
+                <ChipSelector
+                    options={SURFACE_MODES}
+                    value={a.surface}
+                    onSelect={(surface) => update("appearance", { surface })}
+                    display={(surface) => t(`settings.appearance.surfaces.${surface}`)}
+                />
+            </Card>
+
+            <Card title={t("settings.appearance.language")} icon={<Languages />} tint="var(--kind-join)">
+                <ChipSelector
+                    options={LOCALES}
+                    value={a.locale}
+                    onSelect={(locale) => update("appearance", { locale })}
+                    display={(locale) => t(`settings.appearance.languages.${locale}`)}
+                    tint="var(--kind-join)"
+                />
+                <ChipSelector
+                    label={t("settings.appearance.density")}
+                    options={DENSITIES}
+                    value={a.density}
+                    onSelect={(density) => update("appearance", { density })}
+                    display={(density) => t(`settings.appearance.densities.${density}`)}
+                    tint="var(--kind-join)"
+                />
+                <SliderRow
+                    label={t("settings.appearance.fontScale")}
+                    value={a.fontScale}
+                    min={0.8}
+                    max={1.4}
+                    step={0.05}
+                    format={(v) => `${Math.round(v * 100)}%`}
+                    onCommit={(fontScale) => update("appearance", { fontScale })}
+                    tint="var(--kind-join)"
+                />
+                <SwitchRow
+                    label={t("settings.appearance.reducedMotion")}
+                    description={t("settings.appearance.reducedMotionHint")}
+                    checked={a.reducedMotion}
+                    onChange={(reducedMotion) => update("appearance", { reducedMotion })}
+                    tint="var(--kind-join)"
+                />
+            </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function VoiceSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const voice = useAppStore((s) => s.settings.voice);
+    const connection = useAppStore((s) => s.settings.connection);
+    const [apiKey, setApiKey] = useState("");
+    const [keySaved, setKeySaved] = useState(false);
+
+    useEffect(() => {
+        void invoke<boolean>("secret_has", { key: "azure-api-key" })
+            .then(setKeySaved)
+            .catch(() => setKeySaved(false));
+    }, []);
+
+    const saveKey = (value: string) => {
+        setApiKey(value);
+        void invoke("secret_set", { key: "azure-api-key", value })
+            .then(() => setKeySaved(value !== ""))
+            .catch(() => toast.error(t("common.error")));
+    };
+
+    return (
+        <>
+            <Card title={t("settings.sections.voice")} subtitle={t("settings.voice.enabledHint")} icon={<Volume2 />}>
+                <SwitchRow
+                    label={t("settings.voice.enabled")}
+                    checked={voice.enabled}
+                    onChange={(enabled) => update("voice", { enabled })}
+                />
+                <Reveal show={voice.enabled}>
+                    <ChipSelector
+                        label={t("settings.voice.engine")}
+                        options={SPEECH_ENGINES}
+                        value={voice.engine}
+                        onSelect={(engine) => update("voice", { engine })}
+                        display={(engine) => t(`settings.voice.engines.${engine}`)}
+                    />
+                </Reveal>
+            </Card>
+
+            <Reveal show={voice.enabled && voice.engine !== "off"}>
+                <Card title={t("settings.voice.voice")} icon={<Mic />} tint="var(--kind-gift)">
+                    {voice.engine === "azure" && (
+                        <ChipSelector
+                            options={VOICES}
+                            value={voice.voice}
+                            onSelect={(v) => update("voice", { voice: v })}
+                            display={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+                            tint="var(--kind-gift)"
+                        />
+                    )}
+                    <SliderRow
+                        label={t("settings.voice.speed")}
+                        value={voice.speed}
+                        min={0.5}
+                        max={1.5}
+                        step={0.05}
+                        format={(v) => `${v.toFixed(2)}×`}
+                        onCommit={(speed) => update("voice", { speed })}
+                        tint="var(--kind-gift)"
+                    />
+                    <SliderRow
+                        label={t("settings.voice.pitch")}
+                        value={voice.pitch}
+                        min={0.6}
+                        max={1.4}
+                        step={0.05}
+                        format={(v) =>
+                            v < 0.95
+                                ? t("settings.voice.pitchLower")
+                                : v > 1.05
+                                    ? t("settings.voice.pitchHigher")
+                                    : t("settings.voice.pitchNatural")
+                        }
+                        onCommit={(pitch) => update("voice", { pitch })}
+                        tint="var(--kind-gift)"
+                    />
+                    <SliderRow
+                        label={t("settings.voice.volume")}
+                        value={voice.volume}
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        format={(v) => `${Math.round(v * 100)}%`}
+                        onCommit={(volume) => update("voice", { volume })}
+                        tint="var(--kind-gift)"
+                    />
+                    <ChipSelector
+                        label={t("settings.voice.language")}
+                        options={SPEECH_LANGUAGES}
+                        value={voice.language}
+                        onSelect={(language) => update("voice", { language })}
+                        display={(l) => (l === "auto" ? t("settings.voice.languageAuto") : l.toUpperCase())}
+                        tint="var(--kind-gift)"
+                    />
+                    <ChipSelector
+                        label={t("settings.voice.audioOutput")}
+                        options={AUDIO_OUTPUTS}
+                        value={voice.audioOutput}
+                        onSelect={(audioOutput) => update("voice", { audioOutput })}
+                        display={(o) => t(`settings.voice.outputs.${o}`)}
+                        tint="var(--kind-gift)"
+                    />
+                </Card>
+            </Reveal>
+
+            <Reveal show={voice.enabled && voice.engine === "azure"}>
+                <Card
+                    title={t("settings.voice.credentials")}
+                    subtitle={t("settings.voice.credentialsHint")}
+                    icon={<KeyRound />}
+                    tint="var(--danger)"
+                    actions={keySaved ? <StatusPill tone="success">{t("common.on")}</StatusPill> : undefined}
+                >
+                    <TextInput
+                        label={t("settings.voice.endpoint")}
+                        value={connection.azureEndpoint}
+                        onChange={(azureEndpoint) => update("connection", { azureEndpoint })}
+                        placeholder="yourresource.openai.azure.com"
+                    />
+                    <TextInput
+                        label={t("settings.voice.apiKey")}
+                        value={apiKey}
+                        onChange={saveKey}
+                        secret
+                        placeholder={keySaved ? "••••••••••••" : "paste your Azure key"}
+                        hint={keySaved && apiKey === "" ? t("settings.voice.apiKeySet") : undefined}
+                    />
+                    <TextInput
+                        label={t("settings.voice.ttsDeployment")}
+                        value={connection.ttsDeployment}
+                        onChange={(ttsDeployment) => update("connection", { ttsDeployment })}
+                    />
+                    <TextInput
+                        label={t("settings.voice.aiDeployment")}
+                        value={connection.aiDeployment}
+                        onChange={(aiDeployment) => update("connection", { aiDeployment })}
+                    />
+                </Card>
+            </Reveal>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function FiltersSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const voice = useAppStore((s) => s.settings.voice);
+    const safety = useAppStore((s) => s.settings.safety);
+    const f = voice.filters;
+    const setFilter = (patch: Partial<typeof f>) =>
+        update("voice", { filters: { ...f, ...patch } });
+
+    return (
+        <>
+            <Card title={t("settings.filters.title")} icon={<Mic />}>
+                <SwitchRow label={t("settings.filters.chat")} checked={f.chat} onChange={(chat) => setFilter({ chat })} tint="var(--kind-chat)" />
+                <SwitchRow label={t("settings.filters.gifts")} checked={f.gifts} onChange={(gifts) => setFilter({ gifts })} tint="var(--kind-gift)" />
+                <SwitchRow label={t("settings.filters.follows")} checked={f.follows} onChange={(follows) => setFilter({ follows })} tint="var(--kind-follow)" />
+                <SwitchRow label={t("settings.filters.shares")} checked={f.shares} onChange={(shares) => setFilter({ shares })} tint="var(--kind-share)" />
+                <SwitchRow
+                    label={t("settings.filters.joins")}
+                    description={t("settings.filters.joinsHint")}
+                    checked={f.joins}
+                    onChange={(joins) => setFilter({ joins })}
+                    tint="var(--kind-join)"
+                />
+                <SwitchRow
+                    label={t("settings.filters.likes")}
+                    description={t("settings.filters.likesHint")}
+                    checked={f.likes}
+                    onChange={(likes) => setFilter({ likes })}
+                    tint="var(--kind-like)"
+                />
+            </Card>
+
+            <Card title={t("settings.filters.style")} icon={<Sparkles />} tint="var(--kind-gift)">
+                <SwitchRow
+                    label={t("settings.filters.readUsernames")}
+                    description={t("settings.filters.readUsernamesHint")}
+                    checked={voice.readUsernames}
+                    onChange={(readUsernames) => update("voice", { readUsernames })}
+                    tint="var(--kind-gift)"
+                />
+                <SwitchRow
+                    label={t("settings.filters.thankGifts")}
+                    checked={safety.thankGifts}
+                    onChange={(thankGifts) => update("safety", { thankGifts })}
+                    tint="var(--kind-gift)"
+                />
+                <SwitchRow
+                    label={t("settings.filters.greetReturning")}
+                    checked={safety.greetReturningViewers}
+                    onChange={(greetReturningViewers) => update("safety", { greetReturningViewers })}
+                    tint="var(--kind-gift)"
+                />
+                <SwitchRow
+                    label={t("settings.filters.skipDuplicates")}
+                    checked={safety.skipDuplicates}
+                    onChange={(skipDuplicates) => update("safety", { skipDuplicates })}
+                    tint="var(--kind-gift)"
+                />
+                <SliderRow
+                    label={t("settings.filters.minGift")}
+                    value={voice.minGiftValueToRead}
+                    min={0}
+                    max={500}
+                    step={1}
+                    format={(v) => (v === 0 ? t("common.none") : `${Math.round(v)} 💎`)}
+                    onCommit={(minGiftValueToRead) => update("voice", { minGiftValueToRead })}
+                    tint="var(--kind-gift)"
+                />
+            </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function AssistantSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const a = useAppStore((s) => s.settings.assistant);
+
+    return (
+        <>
+            <Card title={t("settings.sections.assistant")} icon={<Sparkles />} tint="var(--kind-join)">
+                <SwitchRow
+                    label={t("settings.assistant.replies")}
+                    description={t("settings.assistant.repliesHint")}
+                    checked={a.aiReplies}
+                    onChange={(aiReplies) => update("assistant", { aiReplies })}
+                    tint="var(--kind-join)"
+                />
+                <SwitchRow
+                    label={t("settings.assistant.initiates")}
+                    description={t("settings.assistant.initiatesHint")}
+                    checked={a.aiInitiates}
+                    onChange={(aiInitiates) => update("assistant", { aiInitiates })}
+                    tint="var(--kind-join)"
+                />
+                <Reveal show={a.aiInitiates}>
+                    <SliderRow
+                        label={t("settings.assistant.idleAfter")}
+                        value={a.idleChatterSeconds}
+                        min={30}
+                        max={600}
+                        step={10}
+                        format={(v) => `${Math.floor(v / 60)}m ${String(Math.round(v) % 60).padStart(2, "0")}s`}
+                        onCommit={(idleChatterSeconds) => update("assistant", { idleChatterSeconds })}
+                        tint="var(--kind-join)"
+                    />
+                </Reveal>
+                <SwitchRow
+                    label={t("settings.assistant.pushToTalk")}
+                    description={t("settings.assistant.pushToTalkHint")}
+                    checked={a.pushToTalk}
+                    onChange={(pushToTalk) => update("assistant", { pushToTalk })}
+                    tint="var(--kind-join)"
+                />
+            </Card>
+
+            <Card title={t("settings.assistant.persona")} icon={<Sparkles />} tint="var(--kind-follow)">
+                <TextInput
+                    label={t("settings.assistant.name")}
+                    value={a.personaName}
+                    onChange={(personaName) => update("assistant", { personaName })}
+                    placeholder="Aria"
+                />
+                <TextInput
+                    label={t("settings.assistant.personality")}
+                    value={a.personality}
+                    onChange={(personality) => update("assistant", { personality })}
+                    placeholder="friendly, witty, concise"
+                />
+                <TextInput
+                    label={t("settings.assistant.aboutMe")}
+                    value={a.aboutMe}
+                    onChange={(aboutMe) => update("assistant", { aboutMe })}
+                    multiline
+                    hint={t("settings.assistant.aboutMeHint")}
+                />
+            </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function SafetySection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const s = useAppStore((state) => state.settings.safety);
+    const toLines = (list: readonly string[]) => list.join("\n");
+    const fromLines = (value: string) =>
+        value.split("\n").map((line) => line.trim()).filter(Boolean);
+
+    return (
+        <>
+            <Card title={t("settings.sections.safety")} icon={<Shield />} tint="var(--danger)">
+                <SwitchRow
+                    label={t("settings.safety.moderation")}
+                    description={t("settings.safety.moderationHint")}
+                    checked={s.moderation}
+                    onChange={(moderation) => update("safety", { moderation })}
+                    tint="var(--danger)"
+                />
+                <SwitchRow
+                    label={t("settings.safety.hideSpam")}
+                    checked={s.hideSpam}
+                    onChange={(hideSpam) => update("safety", { hideSpam })}
+                    tint="var(--danger)"
+                />
+                <SliderRow
+                    label={t("settings.safety.spamWindow")}
+                    value={s.spamWindowMs / 1000}
+                    min={1}
+                    max={120}
+                    step={1}
+                    format={(v) => t("common.seconds", { count: Math.round(v) })}
+                    onCommit={(v) => update("safety", { spamWindowMs: Math.round(v) * 1000 })}
+                    tint="var(--danger)"
+                />
+                <SliderRow
+                    label={t("settings.safety.maxQueue")}
+                    value={s.maxQueue}
+                    min={3}
+                    max={20}
+                    step={1}
+                    format={(v) => String(Math.round(v))}
+                    onCommit={(maxQueue) => update("safety", { maxQueue: Math.round(maxQueue) })}
+                    tint="var(--danger)"
+                />
+            </Card>
+
+            <Card title={t("settings.safety.blockedWords")} icon={<Shield />} tint="var(--danger)">
+                <TextInput
+                    value={toLines(s.blockedWords)}
+                    onChange={(value) => update("safety", { blockedWords: fromLines(value) })}
+                    multiline
+                    hint={t("settings.safety.blockedWordsHint")}
+                />
+                <TextInput
+                    label={t("settings.safety.blockedUsers")}
+                    value={toLines(s.blockedUsers)}
+                    onChange={(value) => update("safety", { blockedUsers: fromLines(value) })}
+                    multiline
+                    hint={t("settings.safety.blockedUsersHint")}
+                />
+                <TextInput
+                    label={t("settings.safety.alertKeywords")}
+                    value={toLines(s.alertKeywords)}
+                    onChange={(value) => update("safety", { alertKeywords: fromLines(value) })}
+                    multiline
+                    hint={t("settings.safety.alertKeywordsHint")}
+                />
+            </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function DisplaySection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const d = useAppStore((s) => s.settings.display);
+
+    return (
+        <>
+            <Card title={t("settings.display.collapse")} subtitle={t("settings.display.collapseHint")} icon={<Eye />} tint="var(--kind-join)">
+                <p className="text-xs font-semibold text-fg-muted">{t("settings.display.feed")}</p>
+                <SwitchRow label={t("settings.display.collapseJoins")} checked={d.collapseJoinsFeed} onChange={(v) => update("display", { collapseJoinsFeed: v })} tint="var(--kind-join)" />
+                <SwitchRow label={t("settings.display.collapseLikes")} checked={d.collapseLikesFeed} onChange={(v) => update("display", { collapseLikesFeed: v })} tint="var(--kind-join)" />
+
+                <p className="pt-2 text-xs font-semibold text-fg-muted">{t("settings.display.overlaySurface")}</p>
+                <SwitchRow label={t("settings.display.collapseJoins")} checked={d.collapseJoinsOverlay} onChange={(v) => update("display", { collapseJoinsOverlay: v })} tint="var(--kind-chat)" />
+                <SwitchRow label={t("settings.display.collapseLikes")} checked={d.collapseLikesOverlay} onChange={(v) => update("display", { collapseLikesOverlay: v })} tint="var(--kind-chat)" />
+
+                <p className="pt-2 text-xs font-semibold text-fg-muted">{t("settings.display.panelSurface")}</p>
+                <SwitchRow label={t("settings.display.collapseJoins")} checked={d.collapseJoinsPanel} onChange={(v) => update("display", { collapseJoinsPanel: v })} tint="var(--kind-share)" />
+                <SwitchRow label={t("settings.display.collapseLikes")} checked={d.collapseLikesPanel} onChange={(v) => update("display", { collapseLikesPanel: v })} tint="var(--kind-share)" />
+
+                <div className="pt-2">
+                    <SwitchRow
+                        label={t("settings.display.mergeSameUser")}
+                        description={t("settings.display.mergeSameUserHint")}
+                        checked={d.mergeSameUser}
+                        onChange={(mergeSameUser) => update("display", { mergeSameUser })}
+                        tint="var(--kind-follow)"
+                    />
+                </div>
+            </Card>
+
+            <Card title={t("settings.sections.display")} icon={<Eye />}>
+                <SwitchRow label={t("settings.display.showAvatars")} checked={d.showAvatars} onChange={(showAvatars) => update("display", { showAvatars })} />
+                <SwitchRow label={t("settings.display.showTimestamps")} checked={d.showTimestamps} onChange={(showTimestamps) => update("display", { showTimestamps })} />
+                <SliderRow
+                    label={t("settings.display.maxEvents")}
+                    value={d.maxFeedEvents}
+                    min={50}
+                    max={5000}
+                    step={50}
+                    format={(v) => String(Math.round(v))}
+                    onCommit={(v) => update("display", { maxFeedEvents: Math.round(v) })}
+                />
+            </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function OverlaySection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const o = useAppStore((s) => s.settings.overlay);
+
+    const setEnabled = (enabled: boolean) => {
+        update("overlay", { enabled });
+        void invoke("toggle_overlay", { show: enabled }).catch(() => toast.error(t("common.error")));
+    };
+
+    return (
+        <Card title={t("settings.overlay.enabled")} subtitle={t("settings.overlay.enabledHint")} icon={<Layers />}>
+            <SwitchRow label={t("settings.overlay.enabled")} checked={o.enabled} onChange={setEnabled} />
+            <Reveal show={o.enabled}>
+                <SliderRow
+                    label={t("settings.overlay.opacity")}
+                    value={o.opacity}
+                    min={0.15}
+                    max={1}
+                    step={0.01}
+                    format={(v) => `${Math.round(v * 100)}%`}
+                    onCommit={(opacity) => update("overlay", { opacity })}
+                />
+                <SliderRow
+                    label={t("settings.overlay.blur")}
+                    value={o.blur}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    format={(v) => (v < 0.02 ? t("settings.overlay.blurOff") : `${Math.round(v * 100)}%`)}
+                    onCommit={(blur) => update("overlay", { blur })}
+                    tint="var(--kind-join)"
+                />
+                <SwitchRow
+                    label={t("settings.overlay.clickThrough")}
+                    description={t("settings.overlay.clickThroughHint")}
+                    checked={o.clickThrough}
+                    onChange={(clickThrough) => {
+                        update("overlay", { clickThrough });
+                        void invoke("set_overlay_click_through", { enabled: clickThrough }).catch(() => undefined);
+                    }}
+                />
+                <SwitchRow label={t("settings.overlay.alwaysOnTop")} checked={o.alwaysOnTop} onChange={(alwaysOnTop) => update("overlay", { alwaysOnTop })} />
+                <SwitchRow label={t("settings.overlay.compact")} checked={o.compact} onChange={(compact) => update("overlay", { compact })} />
+            </Reveal>
+        </Card>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function ObsSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const obs = useAppStore((s) => s.settings.obs);
+    const port = useAppStore((s) => s.overlayPort);
+    const url = port > 0 ? `http://127.0.0.1:${port}/overlay` : "";
+
+    return (
+        <>
+            <Card
+                title={t("settings.obs.browserSource")}
+                subtitle={t("settings.obs.browserSourceHint")}
+                icon={<Video />}
+                tint="var(--kind-share)"
+                actions={
+                    url !== "" ? (
+                        <Button
+                            size="sm"
+                            variant="soft"
+                            icon={<Copy />}
+                            onClick={() => {
+                                void navigator.clipboard.writeText(url);
+                                toast.success(t("settings.obs.copied"));
+                            }}
+                        >
+                            {t("settings.obs.copyUrl")}
+                        </Button>
+                    ) : undefined
+                }
+            >
+                <SwitchRow
+                    label={t("settings.obs.browserSource")}
+                    checked={obs.browserSourceEnabled}
+                    onChange={(browserSourceEnabled) => update("obs", { browserSourceEnabled })}
+                    tint="var(--kind-share)"
+                />
+                <Reveal show={obs.browserSourceEnabled}>
+                    {url !== "" && (
+                        <code className="block select-all truncate rounded-[--radius-chip] bg-panel-alt px-3 py-2 font-mono text-xs text-accent">
+                            {url}
+                        </code>
+                    )}
+                    <ChipSelector
+                        label={t("settings.obs.layout")}
+                        options={OVERLAY_LAYOUTS}
+                        value={obs.layout}
+                        onSelect={(layout) => update("obs", { layout })}
+                        display={(l) => t(`settings.obs.layouts.${l}`)}
+                        tint="var(--kind-share)"
+                    />
+                    <SwitchRow
+                        label={t("settings.obs.transparent")}
+                        checked={obs.transparent}
+                        onChange={(transparent) => update("obs", { transparent })}
+                        tint="var(--kind-share)"
+                    />
+                    <SliderRow
+                        label={t("settings.obs.maxRows")}
+                        value={obs.maxRows}
+                        min={3}
+                        max={30}
+                        step={1}
+                        format={(v) => String(Math.round(v))}
+                        onCommit={(v) => update("obs", { maxRows: Math.round(v) })}
+                        tint="var(--kind-share)"
+                    />
+                    <SliderRow
+                        label={t("settings.obs.rowTtl")}
+                        value={obs.rowTtlMs / 1000}
+                        min={0}
+                        max={120}
+                        step={1}
+                        format={(v) => (v === 0 ? t("settings.obs.rowTtlNever") : t("common.seconds", { count: Math.round(v) }))}
+                        onCommit={(v) => update("obs", { rowTtlMs: Math.round(v) * 1000 })}
+                        tint="var(--kind-share)"
+                    />
+                </Reveal>
+            </Card>
+
+            <Card title={t("settings.obs.control")} subtitle={t("settings.obs.controlHint")} icon={<Video />}>
+                <SwitchRow
+                    label={t("settings.obs.control")}
+                    checked={obs.controlEnabled}
+                    onChange={(controlEnabled) => update("obs", { controlEnabled })}
+                />
+                <Reveal show={obs.controlEnabled}>
+                    <TextInput
+                        label={t("settings.obs.controlUrl")}
+                        value={obs.controlUrl}
+                        onChange={(controlUrl) => update("obs", { controlUrl })}
+                        placeholder="ws://127.0.0.1:4455"
+                    />
+                    <Button
+                        size="sm"
+                        variant="soft"
+                        onClick={() => sidecarClient.send({ type: "obsConnect", url: obs.controlUrl })}
+                    >
+                        {t("settings.obs.connect")}
+                    </Button>
+                </Reveal>
+            </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function PanelSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const p = useAppStore((s) => s.settings.panel);
+    const status = useAppStore((s) => s.panel);
+    const ports = useAppStore((s) => s.panelPorts);
+    const preview = useAppStore((s) => s.panelPreview);
+
+    useEffect(() => {
+        sidecarClient.send({ type: "panelListPorts" });
+    }, []);
+
+    const busy = status.error?.toLowerCase().includes("access denied") === true;
+
+    return (
+        <Card
+            title={t("settings.panel.enabled")}
+            subtitle={t("settings.panel.enabledHint")}
+            icon={<MonitorSmartphone />}
+            tint="var(--kind-share)"
+            actions={
+                <StatusPill tone={status.connected ? "success" : busy ? "warning" : "neutral"} pulse={status.connected}>
+                    {status.connected ? t("common.on") : t("common.off")}
+                </StatusPill>
+            }
+        >
+            <SwitchRow
+                label={t("settings.panel.enabled")}
+                checked={p.enabled}
+                onChange={(enabled) => {
+                    update("panel", { enabled });
+                    sidecarClient.send(
+                        enabled ? { type: "panelConnect", portPath: p.portPath } : { type: "panelDisconnect" },
+                    );
+                }}
+                tint="var(--kind-share)"
+            />
+
+            <Reveal show={p.enabled}>
+                {busy && (
+                    <div className="rounded-[--radius-chip] bg-warning/12 px-3 py-2.5">
+                        <p className="text-xs font-semibold text-warning">{t("settings.panel.busy")}</p>
+                        <p className="mt-0.5 text-[0.6875rem] text-fg-muted">{t("settings.panel.busyHint")}</p>
+                    </div>
+                )}
+
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[0.8125rem] text-fg-muted">{t("settings.panel.port")}</span>
+                        <Button size="sm" variant="ghost" onClick={() => sidecarClient.send({ type: "panelListPorts" })}>
+                            {t("settings.panel.refreshPorts")}
+                        </Button>
+                    </div>
+                    {ports.length === 0 ? (
+                        <p className="text-xs text-fg-subtle">{t("settings.panel.noPorts")}</p>
+                    ) : (
+                        <div className="flex flex-wrap gap-2">
+                            <ChipSelector
+                                options={["", ...ports.map((port) => port.path)]}
+                                value={p.portPath}
+                                onSelect={(portPath) => {
+                                    update("panel", { portPath });
+                                    sidecarClient.send({ type: "panelConnect", portPath });
+                                }}
+                                display={(path) =>
+                                    path === ""
+                                        ? t("settings.panel.portAuto")
+                                        : ports.find((port) => port.path === path)?.isPanel
+                                            ? `${path} · ${t("settings.panel.detected")}`
+                                            : path
+                                }
+                                tint="var(--kind-share)"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <SliderRow
+                    label={t("settings.panel.brightness")}
+                    value={p.brightness}
+                    min={0}
+                    max={100}
+                    step={1}
+                    format={(v) => `${Math.round(v)}%`}
+                    onCommit={(v) => {
+                        update("panel", { brightness: Math.round(v) });
+                        sidecarClient.send({ type: "panelBrightness", level: Math.round(v) });
+                    }}
+                    tint="var(--kind-share)"
+                />
+                <SwitchRow
+                    label={t("settings.panel.showClock")}
+                    checked={p.showClock}
+                    onChange={(showClock) => update("panel", { showClock })}
+                    tint="var(--kind-share)"
+                />
+
+                {preview && (
+                    <div className="space-y-1.5">
+                        <span className="text-[0.8125rem] text-fg-muted">{t("settings.panel.preview")}</span>
+                        <img
+                            src={preview}
+                            alt={t("settings.panel.preview")}
+                            width={160}
+                            height={240}
+                            className="rounded-[--radius-chip] border border-border"
+                        />
+                    </div>
+                )}
+            </Reveal>
+        </Card>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function AlertsSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const a = useAppStore((s) => s.settings.alerts);
+
+    return (
+        <Card title={t("settings.sections.alerts")} icon={<Bell />} tint="var(--kind-gift)">
+            <SwitchRow label={t("settings.alerts.sound")} checked={a.soundEnabled} onChange={(soundEnabled) => update("alerts", { soundEnabled })} tint="var(--kind-gift)" />
+            <Reveal show={a.soundEnabled}>
+                <SliderRow
+                    label={t("settings.alerts.volume")}
+                    value={a.soundVolume}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    format={(v) => `${Math.round(v * 100)}%`}
+                    onCommit={(soundVolume) => update("alerts", { soundVolume })}
+                    tint="var(--kind-gift)"
+                />
+            </Reveal>
+            <SwitchRow label={t("settings.alerts.notifyGift")} checked={a.notifyOnGift} onChange={(notifyOnGift) => update("alerts", { notifyOnGift })} tint="var(--kind-gift)" />
+            <SwitchRow label={t("settings.alerts.notifyFollow")} checked={a.notifyOnFollow} onChange={(notifyOnFollow) => update("alerts", { notifyOnFollow })} tint="var(--kind-follow)" />
+            <SwitchRow label={t("settings.alerts.notifyKeyword")} checked={a.notifyOnKeyword} onChange={(notifyOnKeyword) => update("alerts", { notifyOnKeyword })} tint="var(--kind-chat)" />
+            <SliderRow
+                label={t("settings.alerts.giftThreshold")}
+                value={a.giftDiamondThreshold}
+                min={0}
+                max={1000}
+                step={1}
+                format={(v) => `${Math.round(v)} 💎`}
+                onCommit={(v) => update("alerts", { giftDiamondThreshold: Math.round(v) })}
+                tint="var(--kind-gift)"
+            />
+        </Card>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function BehaviourSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const b = useAppStore((s) => s.settings.behaviour);
+
+    return (
+        <>
+            <Card title={t("settings.sections.behaviour")} icon={<Gauge />}>
+                <SwitchRow label={t("settings.behaviour.autostart")} checked={b.autostart} onChange={(autostart) => update("behaviour", { autostart })} />
+                <SwitchRow label={t("settings.behaviour.startMinimised")} checked={b.startMinimised} onChange={(startMinimised) => update("behaviour", { startMinimised })} />
+                <SwitchRow label={t("settings.behaviour.minimiseToTray")} checked={b.minimiseToTray} onChange={(minimiseToTray) => update("behaviour", { minimiseToTray })} />
+                <SwitchRow label={t("settings.behaviour.closeToTray")} checked={b.closeToTray} onChange={(closeToTray) => update("behaviour", { closeToTray })} />
+                <SwitchRow label={t("settings.behaviour.autoReconnect")} checked={b.autoReconnect} onChange={(autoReconnect) => update("behaviour", { autoReconnect })} />
+            </Card>
+
+            <Card title={t("settings.behaviour.hotkeys")} icon={<KeyRound />} tint="var(--kind-join)">
+                <TextInput label={t("settings.behaviour.hotkeyOverlay")} value={b.hotkeyToggleOverlay} onChange={(v) => update("behaviour", { hotkeyToggleOverlay: v })} />
+                <TextInput label={t("settings.behaviour.hotkeyMute")} value={b.hotkeyMuteVoice} onChange={(v) => update("behaviour", { hotkeyMuteVoice: v })} />
+                <TextInput label={t("settings.behaviour.hotkeyTalk")} value={b.hotkeyPushToTalk} onChange={(v) => update("behaviour", { hotkeyPushToTalk: v })} />
+                <SwitchRow
+                    label={t("settings.behaviour.triggerServer")}
+                    description={t("settings.behaviour.triggerServerHint")}
+                    checked={b.triggerServerEnabled}
+                    onChange={(triggerServerEnabled) => update("behaviour", { triggerServerEnabled })}
+                    tint="var(--kind-join)"
+                />
+            </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function DataSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const d = useAppStore((s) => s.settings.data);
+    const recording = useAppStore((s) => s.replayRecording);
+    const replays = useAppStore((s) => s.replays);
+
+    useEffect(() => {
+        sidecarClient.send({ type: "replayList" });
+    }, []);
+
+    return (
+        <>
+            <Card title={t("settings.sections.data")} icon={<Cable />}>
+                <SwitchRow label={t("settings.data.persist")} checked={d.persistHistory} onChange={(persistHistory) => update("data", { persistHistory })} />
+                <SliderRow
+                    label={t("settings.data.retention")}
+                    value={d.retentionDays}
+                    min={0}
+                    max={730}
+                    step={1}
+                    format={(v) => (v === 0 ? t("settings.data.retentionForever") : t("common.days", { count: Math.round(v) }))}
+                    onCommit={(v) => update("data", { retentionDays: Math.round(v) })}
+                />
+                <SwitchRow label={t("settings.data.trackEarnings")} checked={d.trackEarnings} onChange={(trackEarnings) => update("data", { trackEarnings })} tint="var(--kind-gift)" />
+                <Reveal show={d.trackEarnings}>
+                    <SliderRow
+                        label={t("settings.data.diamondRate")}
+                        value={d.diamondRateUsd}
+                        min={0.001}
+                        max={0.02}
+                        step={0.001}
+                        format={(v) => `$${v.toFixed(3)}`}
+                        onCommit={(diamondRateUsd) => update("data", { diamondRateUsd })}
+                        tint="var(--kind-gift)"
+                    />
+                </Reveal>
+            </Card>
+
+            <Card title={t("replay.title")} subtitle={t("replay.hint")} icon={<Video />} tint="var(--kind-join)">
+                <div className="flex flex-wrap gap-2">
+                    <Button
+                        size="sm"
+                        variant={recording ? "danger" : "soft"}
+                        onClick={() =>
+                            sidecarClient.send(
+                                recording
+                                    ? { type: "recordStop" }
+                                    : { type: "recordStart", name: `session-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}` },
+                            )
+                        }
+                    >
+                        {recording ? t("replay.stopRecording") : t("replay.record")}
+                    </Button>
+                </div>
+                {replays.length === 0 ? (
+                    <p className="text-xs text-fg-subtle">{t("replay.empty")}</p>
+                ) : (
+                    <ul className="space-y-1.5">
+                        {replays.map((replay) => (
+                            <li
+                                key={replay.name}
+                                className="flex items-center gap-2 rounded-[--radius-chip] bg-panel-alt px-3 py-2"
+                            >
+                                <span className="min-w-0 flex-1 truncate text-xs text-fg">{replay.name}</span>
+                                <span className="shrink-0 text-[0.625rem] text-fg-subtle">
+                                    {t("replay.events", { count: replay.events })}
+                                </span>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() =>
+                                        sidecarClient.send({
+                                            type: "replayStart",
+                                            name: replay.name,
+                                            streamId: "main",
+                                            speed: 1,
+                                            loop: false,
+                                        })
+                                    }
+                                >
+                                    {t("replay.play")}
+                                </Button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </Card>
+        </>
+    );
+}

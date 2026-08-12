@@ -1,0 +1,24 @@
+# Normalise text in the repository, and pin LF for anything an interpreter
+# reads directly — a CRLF shebang line yields "bad interpreter: /bin/sh^M".
+* text=auto eol=lf
+
+.githooks/* text eol=lf
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+
+# Windows-only scripts keep CRLF.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary assets must never be line-ending converted.
+*.png  binary
+*.ico  binary
+*.icns binary
+*.jpg  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.jar  binary

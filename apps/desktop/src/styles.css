@@ -1,0 +1,39 @@
+@import "@tiksee/ui/styles.css";
+
+/* Scan this app's sources for utility classes in addition to the UI package's. */
+@source "./";
+
+@layer base {
+
+    /* Keyframes used by the shared skeleton and progress primitives. */
+    @keyframes shimmer {
+        100% {
+            transform: translateX(100%);
+        }
+    }
+
+    @keyframes indeterminate {
+        0% {
+            transform: translateX(-100%);
+        }
+
+        100% {
+            transform: translateX(400%);
+        }
+    }
+
+    /* A desktop app should not feel like a web page: no text selection or
+     native context menu except where it is genuinely useful. */
+    body {
+        user-select: none;
+        cursor: default;
+    }
+
+    input,
+    textarea,
+    [contenteditable],
+    code,
+    .selectable {
+        user-select: text;
+    }
+}

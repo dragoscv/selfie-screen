@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Turing Smart Screen rev A / TURZX 3.5" — CH340 -->
+    <usb-device vendor-id="6790" product-id="22306" />
+    <!-- 1a86:ca21 variant (CT21INCH controller family) -->
+    <usb-device vendor-id="6790" product-id="51745" />
+</resources>
