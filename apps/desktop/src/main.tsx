@@ -23,23 +23,37 @@ function App() {
         const offMessage = sidecarClient.onMessage(handleMessage);
         const offState = sidecarClient.onStateChange(setConnected);
 
+        // `listen()` is async. If this effect is torn down before it resolves
+        // (StrictMode double-invoke, or an HMR reload), calling the returned
+        // unlistener is unsafe — hence the explicit disposed flag rather than
+        // unlistening straight from the promise.
+        let disposed = false;
+        let stopReady: (() => void) | undefined;
+
         // The shell emits `sidecar://ready` when the service is listening, but it
         // may have fired before this webview loaded — so also poll once on mount.
-        const unlistenReady = listen<{ port: number }>("sidecar://ready", (event) => {
+        void listen<{ port: number }>("sidecar://ready", (event) => {
             sidecarClient.connect(event.payload.port);
-        });
+        })
+            .then((stop) => {
+                if (disposed) stop();
+                else stopReady = stop;
+            })
+            .catch(() => undefined);
 
         void invoke<{ running: boolean; port: number; error: string | null }>("sidecar_status")
             .then((status) => {
+                if (disposed) return;
                 if (status.port > 0) sidecarClient.connect(status.port);
                 if (status.error) setError(status.error);
             })
             .catch(() => undefined);
 
         return () => {
+            disposed = true;
             offMessage();
             offState();
-            void unlistenReady.then((fn) => fn());
+            stopReady?.();
         };
     }, [handleMessage, setConnected, setError]);
 
@@ -64,10 +78,22 @@ function App() {
 const container = document.getElementById("root");
 if (!container) throw new Error("#root is missing from index.html");
 
-createRoot(container).render(
+// This module re-executes on HMR, and calling createRoot twice on the same
+// container tears down the first root's DOM mid-flight. Cache it instead.
+declare global {
+    interface Window {
+        __tikseeRoot?: ReturnType<typeof createRoot>;
+    }
+}
+
+const root = (window.__tikseeRoot ??= createRoot(container));
+
+root.render(
     <StrictMode>
         <ErrorBoundary>
             <App />
         </ErrorBoundary>
     </StrictMode>,
 );
+
+

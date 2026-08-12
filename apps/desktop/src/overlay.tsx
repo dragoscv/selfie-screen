@@ -33,17 +33,32 @@ function Overlay() {
     useEffect(() => {
         const offMessage = sidecarClient.onMessage(handleMessage);
         const offState = sidecarClient.onStateChange(setConnected);
-        const unlisten = listen<{ port: number }>("sidecar://ready", (event) =>
+
+        // `listen()` resolves asynchronously; unmounting first would otherwise
+        // leave the cleanup calling an unresolved unlistener.
+        let disposed = false;
+        let stopReady: (() => void) | undefined;
+
+        void listen<{ port: number }>("sidecar://ready", (event) =>
             sidecarClient.connect(event.payload.port),
-        );
+        )
+            .then((stop) => {
+                if (disposed) stop();
+                else stopReady = stop;
+            })
+            .catch(() => undefined);
+
         void invoke<{ port: number }>("sidecar_status")
-            .then((s) => s.port > 0 && sidecarClient.connect(s.port))
+            .then((s) => {
+                if (!disposed && s.port > 0) sidecarClient.connect(s.port);
+            })
             .catch(() => undefined);
 
         return () => {
+            disposed = true;
             offMessage();
             offState();
-            void unlisten.then((fn) => fn());
+            stopReady?.();
         };
     }, [handleMessage, setConnected]);
 
@@ -185,7 +200,17 @@ function MiniSlider({
 const container = document.getElementById("root");
 if (!container) throw new Error("#root is missing from overlay.html");
 
-createRoot(container).render(
+// See main.tsx: creating a second root on the same container during HMR
+// tears down the first root's DOM mid-flight.
+declare global {
+    interface Window {
+        __tikseeOverlayRoot?: ReturnType<typeof createRoot>;
+    }
+}
+
+const root = (window.__tikseeOverlayRoot ??= createRoot(container));
+
+root.render(
     <StrictMode>
         <ErrorBoundary>
             <Overlay />
