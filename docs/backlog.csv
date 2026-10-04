@@ -16,7 +16,7 @@ WS02-06,WS-02 Core,Feature,Gift value catalogue,As a streamer I want an earnings
 WS03-01,WS-03 Sidecar,Feature,Node sidecar bootstrap,As the app I want a background service owning network and hardware,Sidecar starts listens on an ephemeral local port and reports readiness,P0,Done,Desktop,
 WS03-02,WS-03 Sidecar,Feature,ChatSource interface,As a dev I want swappable ingestion drivers,ChatSource interface with start/stop/emit; two implementations register,P0,Done,Desktop,
 WS03-03,WS-03 Sidecar,Feature,Connector driver (tiktok-live-connector),As a user I want reliable live chat,Connecting to a live creator emits chat gift follow join like share with avatars,P0,Done,Desktop,AGPL accepted
-WS03-04,WS-03 Sidecar,Feature,Sniffer fallback driver,As a user I want a fallback if the sign server fails,Driver documented and selectable; ACK built in-page,P2,Done,Desktop,Interface ready; impl deferred
+WS03-04,WS-03 Sidecar,Feature,Sniffer fallback driver,As a user I want a fallback if the sign server fails,Driver documented and selectable; ACK built in-page,P2,Partial,Desktop,Interface ready; impl deferred | Audit 2026-10-05: SnifferSource never implemented; connection.driver ignored
 WS03-05,WS-03 Sidecar,Feature,Local WebSocket bridge,As the UI I want realtime events without polling,UI receives events over ws with reconnect and backpressure coalescing,P0,Done,Desktop,
 WS03-06,WS-03 Sidecar,Feature,Reconnect and health reporting,As a user I want the app to recover from drops,Disconnect triggers backoff reconnect; status surfaces in UI,P1,Done,Desktop,Exponential backoff
 WS03-07,WS-03 Sidecar,Feature,Session replay recorder and player,As a dev I want to develop without being live,Sessions record to disk and replay at real or accelerated speed,P1,Done,Desktop,Dev + demo
@@ -25,9 +25,9 @@ WS04-02,WS-04 Tauri,Feature,Sidecar lifecycle management,As a user I want the se
 WS04-03,WS-04 Tauri,Feature,Custom titlebar with window controls,As a user I want a modern frameless window,Drag region minimise maximise close work; snap layouts work,P1,Done,Desktop,
 WS04-04,WS-04 Tauri,Feature,Mica/Acrylic backdrop,As a user I want a native Windows 11 feel,Surface mode mica and glass apply a real backdrop effect,P1,Done,Desktop,window-vibrancy
 WS04-05,WS-04 Tauri,Feature,System tray and minimise to tray,As a user I want it out of the way while streaming,Tray icon with menu; closing hides instead of quitting when enabled,P1,Done,Desktop,
-WS04-06,WS-04 Tauri,Feature,Global hotkeys,As a streamer I want control without focusing the app,Configurable global shortcuts toggle overlay and mute,P2,Done,Desktop,
+WS04-06,WS-04 Tauri,Feature,Global hotkeys,As a streamer I want control without focusing the app,Configurable global shortcuts toggle overlay and mute,P2,Partial,Desktop,Audit 2026-10-05: Rust emits hotkey but renderer never listens -> WS15-05
 WS04-07,WS-04 Tauri,Feature,Autostart with Windows,As a user I want it running when I log in,Toggle in settings registers/unregisters autostart,P2,Done,Desktop,
-WS04-08,WS-04 Tauri,Feature,Auto-updater,As a user I want updates without reinstalling,Updater plugin configured with signature verification,P2,Done,Desktop,Endpoint TBD by owner
+WS04-08,WS-04 Tauri,Feature,Auto-updater,As a user I want updates without reinstalling,Updater plugin configured with signature verification,P2,Todo,Desktop,Endpoint TBD by owner | Audit 2026-10-05: no updater plugin -> WS15-03
 WS04-09,WS-04 Tauri,Feature,Secure credential storage,As a user I want my Azure key and TikTok session stored safely,Secrets stored via OS credential store never in plaintext config or logs,P0,Done,Desktop,Windows Credential Manager
 WS04-10,WS-04 Tauri,Feature,Window state persistence,As a user I want my window size and position remembered,Position and size restore across restarts,P2,Done,Desktop,
 WS05-01,WS-05 UI system,Feature,Theme engine mode x accent x surface,As a user I want light/dark accent and surface controls,Three independent html attributes; all combinations render correctly,P0,Done,Desktop,OKLCH channels
@@ -41,15 +41,15 @@ WS05-08,WS-05 UI system,Feature,Accessibility baseline,As any user I want keyboa
 WS06-01,WS-06 Desktop UI,Feature,App shell and routing,As a user I want to navigate the app,TanStack Router routes for live settings analytics people with transitions,P0,Done,Desktop,
 WS06-02,WS-06 Desktop UI,Feature,Live chat feed,As a streamer I want to read chat comfortably,Virtualised reverse-ordered feed with avatars kind colours and enter animations,P0,Done,Desktop,TanStack Virtual
 WS06-03,WS-06 Desktop UI,Feature,Connection panel,As a user I want to connect to a creator,Enter a handle connect disconnect; status and errors shown clearly,P0,Done,Desktop,
-WS06-04,WS-06 Desktop UI,Feature,TikTok login window,As a user I want a persistent logged-in session,Login window opens; session cookie captured and stored securely,P0,Done,Desktop,
+WS06-04,WS-06 Desktop UI,Feature,TikTok login window,As a user I want a persistent logged-in session,Login window opens; session cookie captured and stored securely,P0,Partial,Desktop,Audit 2026-10-05: login window opens but cookie never captured or sent -> WS15-04
 WS06-05,WS-06 Desktop UI,Feature,Settings screens with full parity,As a user I want every Android setting on desktop,All 40 config fields editable and persisted across five sections,P0,Done,Desktop,
 WS06-06,WS-06 Desktop UI,Feature,Command palette,As a power user I want keyboard-first control,Ctrl+K opens palette with navigation and actions,P2,Done,Desktop,cmdk
 WS06-07,WS-06 Desktop UI,Feature,Chat search and filter,As a streamer I want to find messages,Filter by kind and text; results highlight and scroll into view,P2,Done,Desktop,
 WS06-08,WS-06 Desktop UI,Feature,Resizable multi-panel workspace,As an ultrawide user I want to arrange panels,Panels resize and layout persists,P1,Done,Desktop,react-resizable-panels
 WS06-09,WS-06 Desktop UI,Feature,Animated stat counters,As a user I want lively stats,Viewer and gift counters animate between values,P2,Done,Desktop,number-flow
-WS06-10,WS-06 Desktop UI,Feature,Toasts and notifications,As a user I want feedback and alerts,In-app toasts plus native notifications for keyword and gift alerts,P1,Done,Desktop,sonner
+WS06-10,WS-06 Desktop UI,Feature,Toasts and notifications,As a user I want feedback and alerts,In-app toasts plus native notifications for keyword and gift alerts,P1,Partial,Desktop,sonner | Audit 2026-10-05: alerts.* settings unread; no native notifications -> WS15-08
 WS06-11,WS-06 Desktop UI,Feature,Giveaway raffle picker,As a streamer I want to pick a winner from chat,Eligible participants collected; animated draw; winner recorded,P2,Done,Desktop,
-WS06-12,WS-06 Desktop UI,Feature,Multi-stream split view,As a user I want several creators at once,Multiple connections render in split panels independently,P3,Done,Desktop,
+WS06-12,WS-06 Desktop UI,Feature,Multi-stream split view,As a user I want several creators at once,Multiple connections render in split panels independently,P3,Todo,Desktop,Audit 2026-10-05: extraUsernames has no UI; only MAIN_STREAM used
 WS06-13,WS-06 Desktop UI,Feature,Error boundaries and empty states,As a user I never want a blank screen,Every route has an error boundary and a designed empty state,P1,Done,Desktop,
 WS07-01,WS-07 Overlay,Feature,Always-on-top overlay window,As a streamer I want chat floating over other apps,Frameless always-on-top window; drag resize opacity blur click-through,P1,Done,Desktop,Ports Android overlay
 WS07-02,WS-07 Overlay,Feature,OBS browser source endpoint,As a streamer I want chat in my stream,Local HTTP URL renders a transparent themed chat overlay updating live,P1,Done,Desktop,Hono server
@@ -64,14 +64,14 @@ WS09-01,WS-09 Panel,Feature,Serial transport for Turing panel,As a user I want t
 WS09-02,WS-09 Panel,Feature,Panel frame renderer,As a user I want chat on the panel,320x480 frames rendered offscreen and pushed as RGB565,P1,Partial,Desktop,node-canvas free impl
 WS09-03,WS-09 Panel,Feature,Dirty-region diffing,As a user I want a smooth panel refresh,Only changed regions are pushed; identical frames skipped,P2,Partial,Desktop,Ported from Kotlin
 WS09-04,WS-09 Panel,Feature,Panel preview and controls in UI,As a user I want to see and control the panel,Live preview plus brightness rotation and on/off controls,P2,Partial,Desktop,
-WS10-01,WS-10 Data,Feature,SQLite persistence,As a user I want my history kept,Schema for sessions events people gifts created and migrated on first run,P1,Done,Desktop,tauri-plugin-sql
-WS10-02,WS-10 Data,Feature,Viewer memory,As a streamer I want returning viewers recognised,People table tracks appearances messages and gifts across sessions,P2,Done,Desktop,
+WS10-01,WS-10 Data,Feature,SQLite persistence,As a user I want my history kept,Schema for sessions events people gifts created and migrated on first run,P1,Todo,Desktop,tauri-plugin-sql | Audit 2026-10-05: no SQLite anywhere -> WS20-09 (node:sqlite in sidecar)
+WS10-02,WS-10 Data,Feature,Viewer memory,As a streamer I want returning viewers recognised,People table tracks appearances messages and gifts across sessions,P2,Todo,Desktop,Audit 2026-10-05: no cross-session people table -> WS20-09
 WS10-03,WS-10 Data,Feature,Session analytics dashboard,As a streamer I want to understand my stream,Charts for messages per minute top gifters viewer curve and kind mix,P2,Done,Desktop,recharts
-WS10-04,WS-10 Data,Feature,Transcript export,As a streamer I want my chat log,Export session to CSV and JSON,P2,Done,Desktop,
+WS10-04,WS-10 Data,Feature,Transcript export,As a streamer I want my chat log,Export session to CSV and JSON,P2,Todo,Desktop,Audit 2026-10-05: no export UI or code
 WS10-05,WS-10 Data,Feature,Earnings estimate,As a streamer I want to know what I earned,Gift diamonds summed and converted to an estimated amount per session,P2,Done,Desktop,
 WS10-06,WS-10 Data,Feature,Moderation lists,As a streamer I want to block words and users,Blocklist and keyword alert lists editable and applied live,P2,Done,Desktop,
-WS10-07,WS-10 Data,Feature,OBS scene control,As a streamer I want scenes to react to events,obs-websocket connection with rules mapping events to scene changes,P3,Done,Desktop,obs-websocket-js
-WS10-08,WS-10 Data,Feature,Stream Deck integration,As a streamer I want hardware triggers,Documented HTTP trigger endpoints usable from Stream Deck,P3,Done,Desktop,HTTP endpoints
+WS10-07,WS-10 Data,Feature,OBS scene control,As a streamer I want scenes to react to events,obs-websocket connection with rules mapping events to scene changes,P3,Partial,Desktop,obs-websocket-js | Audit 2026-10-05: #trigger only logs; no rules UI
+WS10-08,WS-10 Data,Feature,Stream Deck integration,As a streamer I want hardware triggers,Documented HTTP trigger endpoints usable from Stream Deck,P3,Todo,Desktop,HTTP endpoints | Audit 2026-10-05: no trigger server -> WS22-03
 WS11-01,WS-11 i18n,Feature,i18n runtime,As a user I want the app in my language,i18next configured with RO and EN and a locale preference,P1,Done,Desktop,react-i18next
 WS11-02,WS-11 i18n,Feature,Full string extraction,As a user I want no hardcoded English,All user-facing strings come from translation files,P1,Done,Desktop,
 WS11-03,WS-11 i18n,Feature,Locale-aware formatting,As a Romanian user I want correct number and date formats,Numbers dates relative times and plurals format per locale,P1,Done,Desktop,Intl
@@ -85,7 +85,7 @@ WS13-02,WS-13 Verify,Chore,Lint passes,As a dev I want no lint errors,pnpm lint 
 WS13-03,WS-13 Verify,Chore,Unit tests pass,As a dev I want core logic proven,vitest suite passes for packages/core,P0,Done,Repo,68 tests
 WS13-04,WS-13 Verify,Chore,Desktop builds,As a dev I want a shippable app,vite build succeeds and cargo check passes,P0,Done,Desktop,
 WS13-05,WS-13 Verify,Chore,Android builds,As a dev I want the phone app still working,gradlew assembleDebug succeeds from apps/android,P0,Done,Android,
-WS13-06,WS-13 Verify,Chore,Panel verified on hardware,As the owner I want the LCD proven working,Frame pushed to COM6 and visible on the panel,P1,Done,Desktop,Needs owner to observe panel
+WS13-06,WS-13 Verify,Chore,Panel verified on hardware,As the owner I want the LCD proven working,Frame pushed to COM6 and visible on the panel,P1,Partial,Desktop,Needs owner to observe panel | AorusLcdService holds COM6; frame push unverified on hardware
 WS13-07,WS-13 Verify,Chore,Local commit with pre-commit gates,As the owner I want a clean local commit,Pre-commit runs typecheck lint tests; commit created locally only,P0,Done,Repo,
 WS14-01,WS-14 Hardening,Bug,Duplicate WebSocket client per reload,As a dev I want one sidecar connection per app instance so events are not processed twice,Sidecar log shows client attached (1) exactly once per page load,P0,Done,Desktop,Dep-stable effect plus module-level singleton guard for StrictMode and HMR
 WS14-02,WS-14 Hardening,Bug,Unlisten crash on teardown,As a dev I want clean unmount so HMR does not throw,No Cannot read properties of undefined handlerId error on reload,P0,Done,Desktop,Teardown captures resolved handle and no-ops when unresolved
@@ -95,3 +95,60 @@ WS14-05,WS-14 Hardening,Bug,Sidecar fails to spawn on UNC-prefixed path,As a dev
 WS14-06,WS-14 Hardening,Bug,Replay could double-start,As a user I want replay to be single-flight so sessions do not interleave,Starting replay twice cancels the first run,P1,Done,Sidecar,Single-flight guard
 WS14-07,WS-14 Hardening,Bug,Panel frame writes could overlap,As the owner I want no torn frames on a slow COM port,Frame pushes serialized behind a write lock and late frames coalesce,P1,Done,Sidecar,Turing writer lock
 WS14-08,WS-14 Hardening,Chore,Full verification after hardening,As the owner I want proof nothing regressed,pnpm verify green and launch log clean,P0,Done,Repo,14 of 14 turbo tasks; only expected React Compiler virtualizer warning
+WS15-01,WS-15 Live-ready,Bug,Cold-start invalid hook call,As a streamer I want the Live page to load on first launch,Fresh clone dev launch shows Live page with no render error,P0,Done,Desktop,optimizeDeps.include in vite.config.ts; verified 2026-10-05
+WS15-02,WS-15 Live-ready,Feature,Bundle sidecar as standalone exe,As a user I want the installer to work without Node installed,Installer contains tiksee-sidecar exe via externalBin; app starts sidecar on a clean machine,P0,Todo,Desktop,Node SEA single executable
+WS15-03,WS-15 Live-ready,Feature,Signed auto-updater,As a user I want updates without reinstalling,tauri-plugin-updater reads latest.json from public GCS bucket tiksee-releases; signed NSIS update installs,P0,Todo,Desktop,Q-R3 decision
+WS15-04,WS-15 Live-ready,Bug,TikTok session login wired,As a streamer I want my session used by the connector,Login window cookie captured in Rust and sent as session message; hasSession true,P1,Todo,Desktop,
+WS15-05,WS-15 Live-ready,Bug,Global hotkeys handled,As a streamer I want hotkeys to act while gaming,Renderer listens to hotkey events and runs the bound actions,P0,Todo,Desktop,
+WS15-06,WS-15 Live-ready,Feature,Sidecar auto-respawn,As a streamer I want the service to recover by itself,Crash triggers respawn with capped backoff and UI banner,P0,Todo,Desktop,
+WS15-07,WS-15 Live-ready,Bug,WebSocket pong timeout,As a user I want dead connections detected,Missing pong within 2 pings forces reconnect,P1,Todo,Desktop,
+WS15-08,WS-15 Live-ready,Bug,Wire or remove dead settings,As a user I want every setting to do something,Every settings field is read by code or removed; test asserts coverage,P1,Todo,Desktop,alerts behaviour data panel safety
+WS15-09,WS-15 Live-ready,Bug,No hardcoded strings + exact i18n parity,As a Romanian user I want everything translated,Overlay and settings strings in i18n; test fails on key drift,P1,Todo,Desktop,
+WS15-10,WS-15 Live-ready,Bug,Surface sidecar errors and OBS disconnect,As a user I want to see failures,ControlEvent ERROR shown as toast; OBS card has Disconnect,P1,Todo,Desktop,
+WS16-01,WS-16 Stack,Chore,Upgrade JS stack to latest stable,As the owner I want current dependencies,pnpm 12 Node 24 TS7 dual Vitest 5 tsdown React 19.3 Tauri 2.12 Motion 14 zod 4.6 tiktok-live-connector 2.5; verify green,P0,Todo,Repo,
+WS16-02,WS-16 Stack,Chore,Rust edition 2024 and crate bumps,As the owner I want a current Rust shell,edition 2024; cargo check and clippy clean,P0,Todo,Desktop,
+WS16-03,WS-16 Stack,Chore,Remove dead dependencies,As the owner I want small installs,Unused catalog and package deps removed (hono papaparse plugin-sql etc),P1,Todo,Repo,
+WS16-04,WS-16 Stack,Chore,Android build upgrade only,As the owner I want Android to still compile,AGP Kotlin compileSdk bumped; assembleDebug green; no features,P2,Todo,Android,
+WS17-01,WS-17 Gates,Chore,CI workflow,As the owner I want every push checked,GitHub Actions runs typecheck lint test build and cargo clippy,P0,Todo,Repo,
+WS17-02,WS-17 Gates,Chore,Auto-installed git hooks,As the owner I want hooks active on every clone,lefthook pre-commit and pre-push installed by prepare script,P1,Todo,Repo,
+WS17-03,WS-17 Gates,Chore,Bundle and perf budgets,As the owner I want small fast builds,Entry chunk and sidecar exe size budgets fail CI when exceeded,P1,Todo,Repo,
+WS17-04,WS-17 Gates,Doc,Agent instructions and skill,As an agent I want repo conventions written down,AGENTS.md plus .github instructions and a tiksee skill with gotchas and gates,P1,Todo,Repo,
+WS18-01,WS-18 Voice,Feature,Read chat aloud via codai TTS,As a streamer I want selected messages spoken,Speech queue plays codai TTS audio with filters and max queue,P0,Todo,Desktop,Replaces deferred WS08
+WS18-02,WS-18 Voice,Feature,Output device and ducking,As a streamer I want the voice on its own mixer strip,Selectable output device (Voicemeeter strip); ducks while streamer speaks,P1,Todo,Desktop,
+WS19-01,WS-19 codai,Feature,Romanian TTS lane with visemes,As any codai client I want RO voices with lip-sync data,codai-tts-ro returns audio plus viseme and word events via Azure Speech westeurope,P1,Todo,codai,New Azure Speech S0 resource
+WS19-02,WS-19 codai,Feature,STT language hint and live scope,As a client I want RO transcription with a scoped token,language param passed to codai-transcribe-live; ephemeral scope live,P1,Todo,codai,
+WS19-03,WS-19 codai,Feature,Deepgram Nova-3 RO lane (env-gated),As a client I want cheaper faster RO STT,Deepgram lane when DEEPGRAM_API_KEY set with Azure fallback; same event shape,P2,Todo,codai,Owner to create Deepgram account
+WS19-04,WS-19 codai,Feature,SDK realtime client,As a developer I want typed realtime access,codai-sdk realtime resource over global WebSocket; TS and Python parity,P1,Todo,codai,
+WS19-05,WS-19 codai,Feature,System One batch and fallback,As a client I want cheap instant triage,items[] batch; per-request timeout; opt-in codai-fast fallback; SDK helper,P1,Todo,codai,
+WS19-06,WS-19 codai,Feature,codai-live-agent package on npm,As any app I want a reusable live co-host runtime,Published SemVer package with scorer queue triage responder memory hooks; tsdown build,P1,Todo,codai,
+WS19-07,WS-19 codai,Chore,TikSee key and usage measurement,As the owner I want to measure TikSee usage and latency,Unrestricted tiksee key; usage-by-key report with ttfb per lane,P1,Todo,codai,
+WS20-01,WS-20 Co-host,Feature,Continuous streamer transcript,As a streamer I want the assistant to understand me,Mic streamed to codai-transcribe-live; partial and final transcript shown,P1,Todo,Desktop,
+WS20-02,WS-20 Co-host,Feature,Deterministic scorer and token bucket,As a streamer I want replies only to the right people,Score gifts questions first-timers mentions; about 4 per minute; never over the streamer,P1,Todo,Sidecar,
+WS20-03,WS-20 Co-host,Feature,Approvable reply queue,As a streamer I want control over what is said,Queue UI with approve skip edit and auto mode,P1,Todo,Desktop,
+WS20-04,WS-20 Co-host,Feature,Responder and moderation agents,As a viewer I want fast correct replies,Parallel triage moderation responder; first sentence spoken under 1.5 s,P1,Todo,Sidecar,
+WS20-05,WS-20 Co-host,Feature,Persona settings,As a streamer I want to shape the co-host,Name Codai; RO default; replies in viewer language; max 2 sentences; editable,P1,Todo,Desktop,
+WS20-06,WS-20 Co-host,Feature,Returning viewer card,As a streamer I want to impress returning viewers,Animated card with visits gifts facts and greeting suggestion on join,P1,Todo,Desktop,
+WS20-07,WS-20 Co-host,Feature,Teleprompter recommendations,As a streamer I want live coaching,Unanswered questions low energy quiet chat and pending thanks surfaced,P2,Todo,Desktop,
+WS20-08,WS-20 Co-host,Feature,Goals overlay,As a streamer I want gift and like goals,Animated goal bars in overlay and app,P2,Todo,Desktop,
+WS20-09,WS-20 Co-host,Feature,Viewer memory in SQLite,As a streamer I want viewers remembered,node:sqlite people sessions events facts; migrations; retention honoured,P1,Todo,Sidecar,
+WS20-10,WS-20 Co-host,Feature,Post-live summary and export,As a streamer I want to review my stream,Top moments viewers and stats with CSV and JSON export,P2,Todo,Desktop,
+WS20-11,WS-20 Co-host,Feature,Highlight markers,As a streamer I want clip points,Hotkey or voice marks timestamps listed after live,P2,Todo,Desktop,
+WS20-12,WS-20 Co-host,Feature,Spike detection,As a streamer I want to react to peaks,Chat or gift spike triggers a suggestion,P3,Todo,Desktop,
+WS20-13,WS-20 Co-host,Feature,Chat games,As a streamer I want polls quizzes and a giveaway wheel,Poll quiz and animated wheel driven by chat,P3,Todo,Desktop,
+WS20-14,WS-20 Co-host,Feature,Live translation,As a streamer I want foreign messages understood,Non-RO messages show translation inline,P3,Todo,Desktop,
+WS20-15,WS-20 Co-host,Feature,System One enrichment,As a streamer I want instant understanding,Batched s1 labels with 800 ms timeout and deterministic fallback; logged for training,P2,Todo,Sidecar,
+WS21-01,WS-21 vmui,Feature,Stream scenes and effect tools,As a streamer I want lights to react,scene_list scene_set flash_color MCP tools with HA restart scripts,P2,Todo,vmui,
+WS21-02,WS-21 vmui,Feature,Effect limiter and idempotency,As the owner I want no gift storms on the lights,Per-key per-effect cooldown burst merge idempotencyKey,P2,Todo,vmui,
+WS21-03,WS-21 vmui,Feature,stream key preset and O(1) key lookup,As the owner I want a narrow fast key,stream scope preset; key lookup id instead of scrypt over all keys,P2,Todo,vmui,
+WS21-04,WS-21 vmui,Feature,TikSee vmui client and chat commands,As a viewer I want !red to change the lights,Free commands small effects 60 s per user 3 s global; gift tiers big effects; whitelist; kill switch,P2,Todo,Sidecar,
+WS22-01,WS-22 Live Control,Feature,Live Control bar,As a streamer I want emergency controls,Mute assistant pause replies skip effects off Shop LIVE hide pets always visible,P0,Todo,Desktop,
+WS22-02,WS-22 Live Control,Feature,Hotkeys for every control,As a streamer I want hands-free control,Each control bound to a configurable global hotkey,P1,Todo,Desktop,
+WS22-03,WS-22 Live Control,Feature,Stream Deck HTTP triggers,As a streamer I want hardware buttons,Token-protected loopback HTTP endpoints for each control; documented,P2,Todo,Sidecar,
+WS23-01,WS-23 Pets 3D,Feature,Blender asset pipeline,As the owner I want reproducible premium assets,Python scripts build models rigs and actions headless; export glTF meshopt KTX2,P3,Todo,Assets,Blender 5.1 installed
+WS23-02,WS-23 Pets 3D,Feature,Shared rigs and animation library,As the owner I want animations reused across pets,Rig families quadruped bird dragon robot; shared clips idle blink look fly perch talk react sleep dance,P3,Todo,Assets,
+WS23-03,WS-23 Pets 3D,Feature,Seven pets,As a streamer I want many pets,Parrot cat dragon codai drone fox owl red panda,P3,Todo,Assets,
+WS23-04,WS-23 Pets 3D,Feature,Pet runtime and state machine,As a streamer I want pets that behave,three WebGPU renderer; state machine; speech bubble; viseme lip-sync; gift reactions,P3,Todo,Desktop,
+WS23-05,WS-23 Pets 3D,Feature,Shoulder tracking,As a streamer I want pets on my shoulders,MediaPipe pose; One-Euro smoothing; 1080p60 with frame budget measured,P3,Todo,Desktop,
+WS24-01,WS-24 Capture,Feature,Camera capture and filter chain,As a streamer I want to look my best,USB3.0 Video capture; WebGPU LUT AWB exposure skin smoothing background blur,P4,Todo,Desktop,
+WS24-02,WS-24 Capture,Feature,Composited output for OBS,As a streamer I want the composite on TikTok,Composite window captured by OBS to Virtual Camera to LIVE Studio at 1080p60,P4,Todo,Desktop,
+WS25-01,WS-25 Virtual cam,Feature,Native Windows virtual camera,As a streamer I want no OBS,MFCreateVirtualCamera source registered from TikSee; LIVE Studio sees it,P5,Todo,Desktop,

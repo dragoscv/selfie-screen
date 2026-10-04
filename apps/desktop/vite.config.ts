@@ -16,6 +16,18 @@ export default defineConfig({
     // Tauri serves the renderer from a fixed port and shows Rust errors itself,
     // so Vite must not clear the screen or silently pick another port.
     clearScreen: false,
+    // Discovering these lazily makes Vite re-optimize mid-load on a cold cache,
+    // which serves two React copies and throws "Invalid hook call" in <Group>.
+    optimizeDeps: {
+        include: [
+            "react",
+            "react-dom/client",
+            "zod",
+            "zustand",
+            "react-resizable-panels",
+            "@tanstack/react-virtual",
+        ],
+    },
     server: {
         // 5094-5293 falls inside a Hyper-V/WinNAT reserved exclusion range on
         // this machine, which surfaces as a confusing EACCES on ::1.

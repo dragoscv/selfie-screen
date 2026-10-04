@@ -3,7 +3,7 @@
 > **Single source of truth.** Every feature, goal, story, decision, answered
 > question and status lives here or in `docs/backlog.csv`. Nothing else.
 >
-> Last updated: 2026-08-12
+> Last updated: 2026-10-05
 
 ---
 
@@ -130,6 +130,27 @@ readable "port busy" error rather than failing silently.
 | Q9 | Tracking docs | `docs/PROJECT.md` + `docs/backlog.csv` | 2026-08-12 |
 | Q10 | Extra features | number-flow, resizable panels, updater, Sentry, SAPI fallback, gift $ tracking, replay, OBS control, multi-stream, chat search, autostart+tray, Stream Deck | 2026-08-12 |
 | Q11 | App name | **TikSee** | 2026-08-12 |
+| Q12 | Video path | **LIVE Studio Link/browser source overlay first**; then full capture in TikSee (filters + pets) → OBS Virtual Camera; then native Win11 virtual camera | 2026-10-05 |
+| Q13 | Pets renderer | **3D**: Blender 5.1 scripted pipeline → glTF (meshopt+KTX2) → three.js WebGPURenderer + R3F; shared rigs per family + shared animation library + state machine | 2026-10-05 |
+| Q14 | First pets | parrot, cat, dragon, codai drone (mascot), fox, owl, red panda | 2026-10-05 |
+| Q15 | GPU | **Local RTX 3060 Ti** (WebGPU), live encode on NVENC; cloud GPU only if measured insufficient | 2026-10-05 |
+| Q16 | STT | codai `codai-transcribe-live` (Azure, works today) with language hint; **Deepgram Nova-3 `ro` lane env-gated**, enabled when the owner creates an account | 2026-10-05 |
+| Q17 | TTS | Azure Speech ro-RO (Alina/Emil) via a new codai lane `codai-tts-ro` with viseme + word events; new Azure Speech S0 in westeurope | 2026-10-05 |
+| Q18 | Co-host brain | New npm package **`codai-live-agent`** in the codai repo (tsdown, SemVer), consumed by the sidecar | 2026-10-05 |
+| Q19 | Reply policy | Deterministic score + token bucket ≈4/min + never over the streamer + approvable queue | 2026-10-05 |
+| Q20 | Post to TikTok chat | **No** — voice + on-screen bubble only | 2026-10-05 |
+| Q21 | Smart home | vmui MCP; viewers may trigger small effects with `!commands` (60 s per user, 3 s global); gift tiers trigger big effects; whitelist + kill switch | 2026-10-05 |
+| Q22 | Stack | Everything to latest stable (pnpm 12, Node 24, TS 7 dual install, Vitest 5, tsdown, React 19.3, Tauri 2.12, Rust 2024, Motion 14) | 2026-10-05 |
+| Q23 | Android | Build upgrade only, no new features | 2026-10-05 |
+| Q24 | codai key | Dedicated unrestricted `tiksee` key; usage + latency measured per lane | 2026-10-05 |
+| Q25 | Studio assistant | Returning-viewer card, teleprompter, goals, post-live summary, highlights, spike detection, chat games, live translation — all in | 2026-10-05 |
+| Q26 | Viewer memory | SQLite in the sidecar via `node:sqlite` (no native module); optional summary sync to codai memory | 2026-10-05 |
+| Q27 | TTS audio out | Selectable output device, default a Voicemeeter strip; ducking while the streamer speaks | 2026-10-05 |
+| Q28 | Persona | "Codai", drone mascot, Romanian default, answers in the viewer's language, max 2 sentences, editable | 2026-10-05 |
+| Q29 | Distribution | Owner only: NSIS + signed updater from public GCS bucket `tiksee-releases`; Node bundled | 2026-10-05 |
+| Q30 | System One | Use it for async enrichment **and** improve it in codai (batch `items[]`, per-request timeout, opt-in fallback, SDK helper) | 2026-10-05 |
+| Q31 | Live Control | Always-visible bar: mute, pause replies, skip, effects off, Shop LIVE mode (no AI voice), hide pets — on hotkeys + Stream Deck | 2026-10-05 |
+| Q32 | Delivery order | P0 live-ready → P1 codai brain → P2 vmui effects → P3 3D pets → P4 capture + filters → P5 native virtual camera | 2026-10-05 |
 
 ---
 
@@ -221,7 +242,51 @@ All claims below were observed, not inferred.
 
 ## 8. Open questions
 
-_None currently. All blocking questions answered — see §4._
+- Deepgram account: owner may create one later; the lane ships env-gated (Q16).
+
+---
+
+## 10. Live studio (2026-10 plan)
+
+### 10.1 Audit findings (2026-10-05)
+
+A reality check found twelve backlog rows marked Done that were not (sniffer,
+hotkeys, updater, TikTok session, notifications, multi-stream, SQLite, viewer
+memory, export, OBS rules, Stream Deck, panel on hardware). They are corrected
+in `backlog.csv`. Other blockers: the installer did not ship the sidecar, the
+sidecar needed a system Node, no CI, ~20 settings stored but never read.
+
+### 10.2 Target architecture
+
+```
+mic ─► sidecar ─ws─► codai /v1/realtime (codai-transcribe-live, lang=ro) ─► transcript
+TikTok ─► sidecar ingest ─► scorer (deterministic, <5 ms) ─► token bucket ─► queue (UI approve/skip)
+                               │                                      │
+                               └─► System One (async, batch, 800 ms) ─┤
+                                                                      ▼
+                         codai-live-agent: triage ∥ moderation ∥ responder (codai-fast, streamed)
+                                                                      ▼
+                     sentence chunker ─► codai-tts-ro (audio + visemes) ─► output device (Voicemeeter)
+                                                                      ▼
+                     pets (three WebGPU, lip-sync) + speech bubble ─► overlay / composite
+gifts / !commands ─► effect limiter ─► vmui MCP (scene_set, flash_color) ─► Home Assistant
+viewer memory: node:sqlite in sidecar (people, sessions, events, facts)
+```
+
+Reusable parts live in codai: `codai-live-agent` (npm), SDK realtime client,
+`codai-tts-ro`, the `live` ephemeral scope and System One batching.
+Smart-home parts live in vmui's MCP catalogue.
+
+### 10.3 Phases
+
+| Phase | Scope | Backlog |
+| --- | --- | --- |
+| P0 | Live-ready: bugs, stack upgrade, sidecar exe, updater, gates/CI, read chat aloud, Live Control | WS15, WS16, WS17, WS18, WS22 |
+| P1 | codai brain: STT, triage, replies, queue, viewer memory, studio assistant | WS19, WS20 |
+| P2 | vmui effects and chat commands | WS21 |
+| P3 | 3D pets | WS23 |
+| P4 | Capture + beauty filters + composite | WS24 |
+| P5 | Native virtual camera | WS25 |
 
 ---
 
