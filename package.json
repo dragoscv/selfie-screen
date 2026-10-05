@@ -17,7 +17,9 @@
         "clean": "turbo run clean && rimraf node_modules",
         "desktop": "pnpm --filter @tiksee/desktop dev",
         "sidecar": "pnpm --filter @tiksee/sidecar dev",
-        "verify": "turbo run typecheck lint test build"
+        "verify": "turbo run typecheck lint test build",
+        "budgets": "node scripts/check-budgets.mjs",
+        "prepare": "git config core.hooksPath .githooks"
     },
     "devDependencies": {
         "@tiksee/config": "workspace:*",

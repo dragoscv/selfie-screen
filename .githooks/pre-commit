@@ -22,5 +22,6 @@ if git diff --cached --name-only | grep -Eq '(^|/)(node_modules|target|dist)/'; 
 fi
 
 pnpm verify
+node scripts/check-budgets.mjs
 
 echo "[pre-commit] ok"
