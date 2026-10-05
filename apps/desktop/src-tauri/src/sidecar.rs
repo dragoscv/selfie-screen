@@ -10,23 +10,12 @@ use tauri_plugin_shell::ShellExt;
 /// Line the sidecar prints on stdout once it is listening.
 const READY_PREFIX: &str = "TIKSEE_SIDECAR_READY ";
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct SidecarStatus {
     pub running: bool,
     pub port: u16,
     pub version: String,
     pub error: Option<String>,
-}
-
-impl Default for SidecarStatus {
-    fn default() -> Self {
-        Self {
-            running: false,
-            port: 0,
-            version: String::new(),
-            error: None,
-        }
-    }
 }
 
 #[derive(Default)]
@@ -118,26 +107,26 @@ impl SidecarState {
 }
 
 fn handle_line(app: &AppHandle, line: &str) {
-    if let Some(payload) = line.strip_prefix(READY_PREFIX) {
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) {
-            let port = value.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
-            let version = value
-                .get("version")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+    if let Some(payload) = line.strip_prefix(READY_PREFIX)
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(payload)
+    {
+        let port = value.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+        let version = value
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
-            if let Some(state) = app.try_state::<SidecarState>() {
-                let mut status = state.status.lock().unwrap();
-                status.running = true;
-                status.port = port;
-                status.version = version.clone();
-                status.error = None;
-            }
-            log::info!("[sidecar] ready on port {port} (v{version})");
-            let _ = app.emit("sidecar://ready", serde_json::json!({ "port": port }));
-            return;
+        if let Some(state) = app.try_state::<SidecarState>() {
+            let mut status = state.status.lock().unwrap();
+            status.running = true;
+            status.port = port;
+            status.version = version.clone();
+            status.error = None;
         }
+        log::info!("[sidecar] ready on port {port} (v{version})");
+        let _ = app.emit("sidecar://ready", serde_json::json!({ "port": port }));
+        return;
     }
     if !line.trim().is_empty() {
         log::info!("[sidecar] {line}");
@@ -149,10 +138,10 @@ fn handle_line(app: &AppHandle, line: &str) {
 /// In a packaged build it ships as a resource; in development it is the tsup
 /// output in the sibling workspace, so the same code path works for both.
 fn resolve_script(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    if let Ok(path) = app.path().resolve("sidecar/index.js", BaseDirectory::Resource) {
-        if path.exists() {
-            return Ok(path);
-        }
+    if let Ok(path) = app.path().resolve("sidecar/index.js", BaseDirectory::Resource)
+        && path.exists()
+    {
+        return Ok(path);
     }
 
     let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

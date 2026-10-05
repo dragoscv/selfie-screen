@@ -14,7 +14,7 @@
                 "package.json",
                 "tsconfig*.json",
                 "vite.config.*",
-                "tsup.config.*"
+                "tsdown.config.*"
             ],
             "outputs": [
                 "dist/**"

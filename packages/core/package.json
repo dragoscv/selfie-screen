@@ -15,8 +15,8 @@
         "dist"
     ],
     "scripts": {
-        "build": "tsup",
-        "dev": "tsup --watch",
+        "build": "tsdown",
+        "dev": "tsdown --watch",
         "typecheck": "tsc --noEmit -p tsconfig.json",
         "lint": "eslint src",
         "test": "vitest run",
@@ -28,8 +28,9 @@
     },
     "devDependencies": {
         "@tiksee/config": "workspace:*",
+        "@typescript/native": "catalog:",
         "eslint": "catalog:",
-        "tsup": "catalog:",
+        "tsdown": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:"
     }

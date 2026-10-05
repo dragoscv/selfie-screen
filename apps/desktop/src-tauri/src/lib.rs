@@ -278,13 +278,13 @@ pub fn run() {
 
             build_tray(&handle)?;
 
-            if let Some(state) = app.try_state::<SidecarState>() {
-                if let Err(error) = state.spawn(&handle) {
-                    // A missing sidecar must not prevent the UI from opening —
-                    // the renderer shows a recoverable error instead.
-                    log::error!("sidecar failed to start: {error}");
-                    state.status.lock().unwrap().error = Some(error);
-                }
+            if let Some(state) = app.try_state::<SidecarState>()
+                && let Err(error) = state.spawn(&handle)
+            {
+                // A missing sidecar must not prevent the UI from opening —
+                // the renderer shows a recoverable error instead.
+                log::error!("sidecar failed to start: {error}");
+                state.status.lock().unwrap().error = Some(error);
             }
             Ok(())
         })
@@ -298,31 +298,28 @@ pub fn run() {
                 .and_then(|state| state.0.lock().ok().map(|b| b.close_to_tray))
                 .unwrap_or(true);
 
-            match event {
-                // Hiding to tray is a preference, not a law: with it off the
-                // close button must actually exit.
-                WindowEvent::CloseRequested { api, .. } => {
-                    if close_to_tray {
-                        let _ = window.hide();
-                        api.prevent_close();
-                    } else {
-                        if let Some(state) = window.app_handle().try_state::<SidecarState>() {
-                            state.kill();
-                        }
-                        window.app_handle().exit(0);
+            // Hiding to tray is a preference, not a law: with it off the
+            // close button must actually exit.
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if close_to_tray {
+                    let _ = window.hide();
+                    api.prevent_close();
+                } else {
+                    if let Some(state) = window.app_handle().try_state::<SidecarState>() {
+                        state.kill();
                     }
+                    window.app_handle().exit(0);
                 }
-                _ => {}
             }
         })
         .build(tauri::generate_context!())
         .expect("failed to build TikSee");
 
     app.run(|handle, event| {
-        if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event {
-            if let Some(state) = handle.try_state::<SidecarState>() {
-                state.kill();
-            }
+        if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event
+            && let Some(state) = handle.try_state::<SidecarState>()
+        {
+            state.kill();
         }
     });
 }

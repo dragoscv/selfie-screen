@@ -3,8 +3,8 @@ name = "tiksee"
 version = "0.1.0"
 description = "TikSee — TikTok LIVE streamer companion"
 authors = ["Dragos Catalin Vladulescu"]
-edition = "2021"
-rust-version = "1.82"
+edition = "2024"
+rust-version = "1.90"
 
 [lib]
 name = "tiksee_lib"

@@ -16,7 +16,6 @@
     },
     "dependencies": {
         "@number-flow/react": "catalog:",
-        "@tanstack/react-router": "catalog:",
         "@tanstack/react-virtual": "catalog:",
         "@tauri-apps/api": "catalog:",
         "@tauri-apps/plugin-autostart": "catalog:",
@@ -49,6 +48,7 @@
         "@tiksee/config": "workspace:*",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
+        "@typescript/native": "catalog:",
         "@vitejs/plugin-react": "catalog:",
         "eslint": "catalog:",
         "tailwindcss": "catalog:",
