@@ -37,7 +37,9 @@
         "errorPrefix": "Could not connect",
         "sidecarDown": "Background service is not running",
         "sidecarDownHint": "Chat, the panel and the OBS source are unavailable until it restarts.",
-        "restartService": "Restart service"
+        "restartService": "Restart service",
+        "signOutTikTok": "Sign out of TikTok",
+        "signedOut": "Signed out of TikTok"
     },
     "feed": {
         "title": "Live chat",
@@ -96,7 +98,10 @@
             "panel": "LCD panel",
             "alerts": "Alerts",
             "behaviour": "Behaviour",
-            "data": "Data"
+            "data": "Data",
+            "audio": "Audio devices",
+            "codai": "codai",
+            "effects": "Effects"
         },
         "appearance": {
             "theme": "Theme",
@@ -139,11 +144,11 @@
             "enabledHint": "Master switch for the whole voice pipeline",
             "engine": "Engine",
             "engines": {
-                "azure": "Azure realtime",
                 "system": "Windows voice",
-                "off": "Off"
+                "off": "Off",
+                "codai": "codai voice"
             },
-            "engineHint": "Azure sounds far better; the Windows voice needs no key",
+            "engineHint": "codai sounds natural and drives the pets' lips; the Windows voice works offline",
             "voice": "Voice",
             "systemVoice": "Windows voice",
             "speed": "Speed",
@@ -154,21 +159,14 @@
             "volume": "Volume",
             "language": "Language",
             "languageAuto": "Auto-detect",
-            "audioOutput": "Audio output",
-            "outputs": {
-                "auto": "Auto",
-                "speaker": "Speaker",
-                "headset": "Headset"
-            },
-            "credentials": "Azure credentials",
-            "credentialsHint": "Stored in Windows Credential Manager, never on disk",
-            "endpoint": "Endpoint",
-            "apiKey": "API key",
-            "apiKeySet": "A key is saved. Type to replace it.",
-            "ttsDeployment": "Speech deployment",
-            "aiDeployment": "Assistant deployment",
             "test": "Test voice",
-            "testPhrase": "Voice is working. Chat will be read aloud like this."
+            "testPhrase": "Voice is working. Chat will be read aloud like this.",
+            "voices": {
+                "alina": "Alina",
+                "emil": "Emil"
+            },
+            "systemVoiceAuto": "Romanian if available",
+            "shopModeNote": "Shop LIVE mode is on: nothing is spoken until you turn it off."
         },
         "filters": {
             "title": "What gets read aloud",
@@ -201,7 +199,21 @@
             "name": "Assistant name",
             "personality": "Personality",
             "aboutMe": "About you",
-            "aboutMeHint": "Context the co-host uses when talking about your stream"
+            "aboutMeHint": "Context the co-host uses when talking about your stream",
+            "replyMode": "Reply mode",
+            "repliesPerMinute": "Reply rate",
+            "perMinute_one": "{{count}} / min",
+            "perMinute_other": "{{count}} / min",
+            "quietAfter": "Stay quiet after you speak",
+            "secondsDecimal": "{{value}} s",
+            "useSystemOne": "Smart triage",
+            "useSystemOneHint": "Use System One to spot questions, intent and mood before replying",
+            "listening": "Listening",
+            "listeningHint": "Lets the co-host understand you and avoid talking over you",
+            "transcribe": "Transcribe my microphone",
+            "transcribeHint": "Streams your voice to codai while you talk; nothing is recorded",
+            "namePlaceholder": "Codai",
+            "personalityPlaceholder": "friendly, witty, concise"
         },
         "safety": {
             "moderation": "Moderation filter",
@@ -262,7 +274,8 @@
             "controlUrl": "obs-websocket URL",
             "connect": "Connect",
             "connected": "Connected to OBS",
-            "disconnected": "Not connected"
+            "disconnected": "Not connected",
+            "disconnect": "Disconnect"
         },
         "panel": {
             "enabled": "USB LCD panel",
@@ -290,18 +303,26 @@
         },
         "behaviour": {
             "autostart": "Start with Windows",
-            "startMinimised": "Start minimised",
             "minimiseToTray": "Minimise to tray",
             "closeToTray": "Close to tray",
             "autoReconnect": "Reconnect on launch",
             "hotkeys": "Global shortcuts",
             "hotkeyOverlay": "Toggle overlay",
-            "hotkeyMute": "Mute voice",
+            "hotkeyMute": "Mute assistant",
             "hotkeyTalk": "Push to talk",
             "triggerServer": "HTTP triggers",
             "triggerServerHint": "Local endpoints for Stream Deck and MIDI bridges",
             "crashReporting": "Send crash reports",
-            "crashReportingHint": "Anonymous diagnostics to help fix bugs"
+            "crashReportingHint": "Anonymous diagnostics to help fix bugs",
+            "autoReconnectHint": "Connect to the last creator when TikSee starts",
+            "hotkeysHint": "Work while another app is focused. Leave empty to disable.",
+            "hotkeyPause": "Pause replies",
+            "hotkeySkip": "Skip current reply",
+            "hotkeyEffects": "Effects off",
+            "hotkeyHighlight": "Highlight moment",
+            "hotkeyPlaceholder": "e.g. CommandOrControl+Shift+M",
+            "hotkeyInvalid": "Use modifiers plus one key, e.g. CommandOrControl+Shift+M",
+            "hotkeyDuplicate": "This shortcut is already used by another action"
         },
         "data": {
             "persist": "Keep history",
@@ -316,6 +337,90 @@
             "exportJson": "Export as JSON",
             "clearHistory": "Delete all history",
             "clearHistoryConfirm": "Delete every stored session, viewer and transcript? This cannot be undone."
+        },
+        "audio": {
+            "devices": "Audio devices",
+            "devicesHint": "Where the co-host speaks and which microphone it listens to",
+            "refresh": "Refresh",
+            "permission": "Allow microphone access once so device names can be shown.",
+            "denied": "Microphone access was refused. Allow it in Windows privacy settings, then try again.",
+            "allow": "Allow",
+            "output": "Voice output",
+            "input": "Microphone",
+            "inputHint": "Echo cancellation and noise suppression are always on.",
+            "systemDefault": "System default",
+            "missing": "Unavailable device (unplugged?)",
+            "unnamed": "Device {{n}}",
+            "voicemeeterHint": "Recommended: send the voice to a Voicemeeter strip such as “Voicemeeter Input (VB-Audio)” or “Voicemeeter AUX Input”, so you can mix it separately from your microphone.",
+            "voicemeeterFound": "Voicemeeter detected — pick its AUX input to mix the co-host on its own strip.",
+            "ducking": "Ducking",
+            "duckingHint": "Lower the co-host while you are talking",
+            "duckTo": "Volume while you talk",
+            "duckOff": "No ducking"
+        },
+        "codai": {
+            "title": "codai account",
+            "hint": "Speech, transcription and replies run on codai",
+            "key": {
+                "unknown": "Checking…",
+                "stored": "Key stored",
+                "missing": "No key",
+                "unavailable": "Unknown"
+            },
+            "keyHint": "Key: stored in Windows Credential Manager, never in settings or logs.",
+            "replaceKey": "Set or replace the API key",
+            "keyPlaceholder": "sk-…",
+            "keySaved": "codai key saved",
+            "endpoint": "Endpoint and models",
+            "baseUrl": "Base URL",
+            "baseUrlInvalid": "Must be an https:// URL",
+            "replyModel": "Reply model",
+            "sttModel": "Transcription model",
+            "ttsModel": "Speech model"
+        },
+        "effects": {
+            "title": "Smart-home effects",
+            "hint": "Lights react to gifts and chat through vmui",
+            "enabled": "Enable effects",
+            "vmuiUrl": "vmui address",
+            "vmuiUrlHint": "Use the LAN IP; the tailnet name is much slower.",
+            "testFlash": "Test flash",
+            "testScene": "Test scene",
+            "chat": "Chat commands",
+            "chatHint": "Viewers type !red, !party… within these limits",
+            "chatCommands": "Allow chat commands",
+            "perUserCooldown": "Per viewer cooldown",
+            "globalCooldown": "Global cooldown",
+            "allowedColors": "Colours viewers may flash",
+            "allowedScenes": "Scenes viewers may trigger",
+            "giftTiers": "Gift tiers",
+            "giftTiersHint": "The biggest tier a gift reaches plays its scene",
+            "addTier": "Add tier",
+            "removeTier": "Remove tier",
+            "noTiers": "No tiers — gifts trigger nothing.",
+            "minDiamonds": "From diamonds",
+            "scene": "Scene",
+            "duration": "Duration",
+            "colors": {
+                "red": "Red",
+                "green": "Green",
+                "blue": "Blue",
+                "cyan": "Cyan",
+                "purple": "Purple",
+                "pink": "Pink",
+                "gold": "Gold",
+                "orange": "Orange",
+                "white": "White"
+            },
+            "scenes": {
+                "party": "Party",
+                "calm": "Calm",
+                "red_alert": "Red alert",
+                "gift_gold": "Gold gift",
+                "rainbow": "Rainbow",
+                "blackout_flash": "Blackout flash",
+                "default": "Default"
+            }
         }
     },
     "people": {
@@ -392,5 +497,122 @@
         "maximise": "Maximise",
         "restore": "Restore",
         "close": "Close"
+    },
+    "overlay": {
+        "title": "Live chat",
+        "controls": "Controls",
+        "opacity": "Opacity",
+        "blur": "Blur"
+    },
+    "liveControl": {
+        "label": "Live Control",
+        "mute": "Mute assistant",
+        "muteHint": "Silence the co-host immediately; chat keeps flowing",
+        "pause": "Pause replies",
+        "pauseHint": "Stop drafting new replies; read-aloud continues",
+        "effects": "Effects off",
+        "effectsHint": "Block every smart-home effect, including gift tiers",
+        "shop": "Shop LIVE",
+        "shopHint": "TikTok Shop LIVE forbids AI voices: no synthetic speech at all while on",
+        "pets": "Hide pets",
+        "petsHint": "Hide the animated pets in the overlay",
+        "skip": "Skip",
+        "skipHint": "Stop what the co-host is saying now",
+        "highlight": "Highlight",
+        "highlightHint": "Mark this moment for the replay and analytics",
+        "shopActive": "Shop LIVE mode — AI voice is off",
+        "speaking": "Speaking: {{text}}"
+    },
+    "replies": {
+        "title": "Reply queue",
+        "mode": {
+            "approve": "Approve each",
+            "auto": "Automatic"
+        },
+        "keys": "Enter approve · Esc skip",
+        "empty": "Nothing to answer yet",
+        "emptyHint": "Questions, mentions and gifts that deserve a reply appear here.",
+        "disabledHint": "Turn on AI replies in Settings → AI co-host.",
+        "more_one": "{{count}} more waiting",
+        "more_other": "{{count}} more waiting",
+        "itemLabel": "{{name}}: {{message}}",
+        "score": "Score {{score}}",
+        "draft": "Reply draft",
+        "approve": "Approve",
+        "skip": "Skip",
+        "status": {
+            "pending": "Waiting",
+            "drafting": "Drafting",
+            "ready": "Ready",
+            "speaking": "Speaking",
+            "done": "Done",
+            "skipped": "Skipped",
+            "failed": "Failed"
+        },
+        "reasons": {
+            "gift": "Gift",
+            "follow": "Follow",
+            "question": "Question",
+            "mention": "Mention",
+            "first-time": "First time",
+            "first-today": "First today",
+            "moderator": "Moderator",
+            "subscriber": "Subscriber",
+            "follower": "Follower",
+            "manual": "Manual",
+            "idle": "Quiet chat"
+        }
+    },
+    "transcript": {
+        "title": "Your microphone",
+        "idle": "Listening — say something and it appears here",
+        "ptt": "Talk",
+        "mic": {
+            "off": "Microphone off",
+            "starting": "Starting microphone",
+            "connecting": "Connecting to transcription",
+            "live": "Transcribing",
+            "reconnecting": "Reconnecting transcription",
+            "error": "Microphone error"
+        }
+    },
+    "suggestions": {
+        "title": "Teleprompter",
+        "empty": "Coaching tips appear here while you are live.",
+        "kinds": {
+            "unanswered": "Unanswered",
+            "quiet": "Quiet",
+            "thanks": "Thanks",
+            "spike": "Spike",
+            "topic": "Topic",
+            "goal": "Goal"
+        }
+    },
+    "effectsLog": {
+        "title": "Effects",
+        "paused": "Paused",
+        "empty": "No effects fired yet.",
+        "failed": "Failed",
+        "limited": "Limited",
+        "kinds": {
+            "flash": "Flash",
+            "scene": "Scene"
+        }
+    },
+    "viewerCard": {
+        "label": "{{name}} is back",
+        "returning": "Returning viewer",
+        "visits_one": "{{count}} visit",
+        "visits_other": "{{count}} visits",
+        "diamonds_one": "{{formatted}} diamond",
+        "diamonds_other": "{{formatted}} diamonds",
+        "messages_one": "{{count}} message",
+        "messages_other": "{{count}} messages",
+        "greeting": "Say: “{{text}}”"
+    },
+    "alertsNotify": {
+        "gift": "Gift from {{name}}",
+        "follow": "{{name}} followed you",
+        "keyword": "Keyword from {{name}}"
     }
 }

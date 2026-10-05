@@ -1,14 +1,15 @@
 mod secrets;
 mod sidecar;
+mod tiktok;
 mod windows_ext;
 
 use std::sync::Mutex;
 
+use serde::Deserialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{
-    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
-};
+use tauri::webview::{PermissionKind, PermissionResponse};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use sidecar::{SidecarState, SidecarStatus};
 
@@ -21,6 +22,8 @@ use sidecar::{SidecarState, SidecarStatus};
 pub struct Behaviour {
     pub close_to_tray: bool,
     pub minimise_to_tray: bool,
+    /// Last hotkey map pushed by the renderer, as registered.
+    pub hotkeys: Hotkeys,
 }
 
 impl Default for Behaviour {
@@ -28,12 +31,44 @@ impl Default for Behaviour {
         Self {
             close_to_tray: true,
             minimise_to_tray: true,
+            hotkeys: Hotkeys::default(),
         }
     }
 }
 
 #[derive(Default)]
 pub struct BehaviourState(pub Mutex<Behaviour>);
+
+/// Global hotkeys, named exactly like `settings.behaviour` so the renderer
+/// can pass that object through unchanged (unknown keys are ignored).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Hotkeys {
+    pub hotkey_toggle_overlay: String,
+    pub hotkey_mute_voice: String,
+    pub hotkey_push_to_talk: String,
+    pub hotkey_pause_replies: String,
+    pub hotkey_skip_reply: String,
+    pub hotkey_effects_off: String,
+    pub hotkey_highlight: String,
+}
+
+impl Hotkeys {
+    /// Accelerator → action string emitted as the `hotkey` event payload.
+    /// Actions match the Live Control vocabulary in `@tiksee/core` live.ts;
+    /// toggles (mute) are resolved by the renderer, which owns the state.
+    fn bindings(&self) -> [(&str, &'static str); 7] {
+        [
+            (self.hotkey_toggle_overlay.as_str(), "toggleOverlay"),
+            (self.hotkey_mute_voice.as_str(), "muteAssistant"),
+            (self.hotkey_push_to_talk.as_str(), "pushToTalk"),
+            (self.hotkey_pause_replies.as_str(), "pauseReplies"),
+            (self.hotkey_skip_reply.as_str(), "skipCurrent"),
+            (self.hotkey_effects_off.as_str(), "effectsOff"),
+            (self.hotkey_highlight.as_str(), "highlight"),
+        ]
+    }
+}
 
 /// Where the renderer should connect. Emitted again on demand because the
 /// `sidecar://ready` event may fire before the webview finishes loading.
@@ -149,76 +184,77 @@ fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
 /// Re-register the global hotkeys.
 ///
 /// Accelerators are re-registered wholesale rather than diffed: the set is
-/// three entries, and unregister-all is the only way to drop a binding the
-/// user has cleared.
+/// small, and unregister-all is the only way to drop a binding the user has
+/// cleared. Pass `hotkeys` (the `settings.behaviour` object); the three flat
+/// arguments are the older call shape and fill in only when it is absent.
+///
+/// Each press emits the `hotkey` event with the action string. A malformed
+/// accelerator is logged and returned in the list; the rest still register.
 #[tauri::command]
 fn set_hotkeys(
     app: AppHandle,
-    toggle_overlay: String,
-    mute_voice: String,
-    push_to_talk: String,
-) -> Result<(), String> {
+    state: tauri::State<'_, BehaviourState>,
+    hotkeys: Option<Hotkeys>,
+    toggle_overlay: Option<String>,
+    mute_voice: Option<String>,
+    push_to_talk: Option<String>,
+) -> Result<Vec<String>, String> {
+    let hotkeys = hotkeys.unwrap_or_else(|| Hotkeys {
+        hotkey_toggle_overlay: toggle_overlay.unwrap_or_default(),
+        hotkey_mute_voice: mute_voice.unwrap_or_default(),
+        hotkey_push_to_talk: push_to_talk.unwrap_or_default(),
+        ..Hotkeys::default()
+    });
+    let failures = register_hotkeys(&app, &hotkeys);
+    state.0.lock().map_err(|e| e.to_string())?.hotkeys = hotkeys;
+    Ok(failures)
+}
+
+#[cfg(desktop)]
+fn register_hotkeys(app: &AppHandle, hotkeys: &Hotkeys) -> Vec<String> {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
     let shortcuts = app.global_shortcut();
     let _ = shortcuts.unregister_all();
 
-    // One malformed accelerator must not silently drop the other two, so
-    // failures are collected and reported together.
     let mut failures: Vec<String> = Vec::new();
-
-    for (accelerator, action) in [
-        (toggle_overlay, "overlay"),
-        (mute_voice, "mute"),
-        (push_to_talk, "ptt"),
-    ] {
-        if accelerator.trim().is_empty() {
+    for (accelerator, action) in hotkeys.bindings() {
+        let accelerator = accelerator.trim();
+        if accelerator.is_empty() {
             continue;
         }
-        let action = action.to_string();
         let handle = app.clone();
-        let result = shortcuts.on_shortcut(accelerator.as_str(), move |_app, _shortcut, event| {
+        let result = shortcuts.on_shortcut(accelerator, move |_app, _shortcut, event| {
             // Fire on press only; otherwise every hotkey triggers twice.
             if event.state() != tauri_plugin_global_shortcut::ShortcutState::Pressed {
                 return;
             }
-            let _ = handle.emit("hotkey", action.clone());
+            let _ = handle.emit("hotkey", action);
         });
         if let Err(error) = result {
+            log::warn!("[hotkeys] {action} = '{accelerator}' not registered: {error}");
             failures.push(format!("{accelerator}: {error}"));
         }
     }
-
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(failures.join("; "))
-    }
+    failures
 }
 
-/// Open the TikTok login page in a dedicated window.
-///
-/// Tauri's WebView2 keeps cookies in the app's data directory, so the session
-/// established here persists and is available to read afterwards.
-#[tauri::command]
-async fn open_tiktok_login(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("tiktok-login") {
-        window.show().map_err(|e| e.to_string())?;
-        window.set_focus().map_err(|e| e.to_string())?;
-        return Ok(());
+#[cfg(not(desktop))]
+fn register_hotkeys(_app: &AppHandle, _hotkeys: &Hotkeys) -> Vec<String> {
+    Vec::new()
+}
+
+/// Grant microphone and camera to TikSee's own windows so `getUserMedia`
+/// works without a WebView2 prompt; every other window (the TikTok login
+/// page) keeps the default behaviour.
+fn permission_for(label: &str, kind: PermissionKind) -> PermissionResponse {
+    let own_window = matches!(label, "main" | "overlay");
+    match kind {
+        PermissionKind::Microphone | PermissionKind::Camera if own_window => {
+            PermissionResponse::Allow
+        }
+        _ => PermissionResponse::Default,
     }
-
-    let url = "https://www.tiktok.com/login"
-        .parse()
-        .map_err(|_| "invalid login URL".to_string())?;
-
-    WebviewWindowBuilder::new(&app, "tiktok-login", WebviewUrl::External(url))
-        .title("Sign in to TikTok")
-        .inner_size(980.0, 760.0)
-        .center()
-        .build()
-        .map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -241,6 +277,7 @@ pub fn run() {
     {
         builder = builder
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+            .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 None,
@@ -250,6 +287,7 @@ pub fn run() {
     let app = builder
         .manage(SidecarState::default())
         .manage(BehaviourState::default())
+        .on_permission_request(|webview, kind| permission_for(webview.label(), kind))
         .invoke_handler(tauri::generate_handler![
             sidecar_status,
             restart_sidecar,
@@ -259,7 +297,9 @@ pub fn run() {
             set_behaviour,
             set_autostart,
             set_hotkeys,
-            open_tiktok_login,
+            tiktok::open_tiktok_login,
+            tiktok::tiktok_session,
+            tiktok::tiktok_session_clear,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
@@ -374,5 +414,47 @@ fn reveal_main(app: &AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hotkeys_accept_the_settings_behaviour_object() {
+        let hotkeys: Hotkeys = serde_json::from_str(
+            r#"{"closeToTray":true,"hotkeyMuteVoice":"Ctrl+M","hotkeyHighlight":"Ctrl+H"}"#,
+        )
+        .unwrap();
+        let bound: Vec<_> = hotkeys
+            .bindings()
+            .into_iter()
+            .filter(|(accelerator, _)| !accelerator.is_empty())
+            .collect();
+        assert_eq!(
+            bound,
+            vec![("Ctrl+M", "muteAssistant"), ("Ctrl+H", "highlight")]
+        );
+    }
+
+    #[test]
+    fn media_permissions_only_for_own_windows() {
+        assert!(matches!(
+            permission_for("main", PermissionKind::Microphone),
+            PermissionResponse::Allow
+        ));
+        assert!(matches!(
+            permission_for("overlay", PermissionKind::Camera),
+            PermissionResponse::Allow
+        ));
+        assert!(matches!(
+            permission_for("tiktok-login", PermissionKind::Microphone),
+            PermissionResponse::Default
+        ));
+        assert!(matches!(
+            permission_for("main", PermissionKind::Geolocation),
+            PermissionResponse::Default
+        ));
     }
 }

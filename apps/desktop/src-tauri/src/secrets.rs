@@ -5,6 +5,26 @@
 /// localStorage — on Windows they live in Credential Manager via DPAPI.
 const SERVICE: &str = "ro.codai.tiksee";
 
+/// Keyring users holding credentials only native code (and the sidecar, via
+/// env) may read. The renderer can set, delete and probe them, never read.
+pub const CODAI_KEY: &str = "codai-api-key";
+pub const VMUI_KEY: &str = "vmui-api-key";
+pub const TIKTOK_SESSION: &str = "tiktok-session";
+const RENDERER_DENY_READ: [&str; 3] = [CODAI_KEY, VMUI_KEY, TIKTOK_SESSION];
+
+/// Read a secret from Rust code. Never log the returned value.
+pub fn read(key: &str) -> Result<Option<String>, String> {
+    imp::get(key)
+}
+
+pub fn write(key: &str, value: &str) -> Result<(), String> {
+    imp::set(key, value)
+}
+
+pub fn remove(key: &str) -> Result<(), String> {
+    imp::delete(key)
+}
+
 #[cfg(windows)]
 mod imp {
     use super::SERVICE;
@@ -62,9 +82,13 @@ pub fn secret_set(key: String, value: String) -> Result<(), String> {
     imp::set(&key, &value)
 }
 
-/// Read a secret. Returns `null` when absent.
+/// Read a secret. Returns `null` when absent. Privileged credentials are
+/// refused: the renderer must never hold them.
 #[tauri::command]
 pub fn secret_get(key: String) -> Result<Option<String>, String> {
+    if RENDERER_DENY_READ.contains(&key.as_str()) {
+        return Err(format!("secret '{key}' is not readable from the UI"));
+    }
     imp::get(&key)
 }
 

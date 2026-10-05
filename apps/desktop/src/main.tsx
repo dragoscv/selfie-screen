@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { MotionConfig } from "motion/react";
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
 
 import { AppShell } from "./components/app-shell.js";
 import { ErrorBoundary } from "./components/error-boundary.js";
+import { useLiveStudio } from "./hooks/use-live-studio.js";
 import { useSettingsSync } from "./hooks/use-settings.js";
 import "./i18n/index.js";
 import { sidecarClient } from "./lib/sidecar-client.js";
@@ -14,10 +16,12 @@ import "./styles.css";
 
 function App() {
     useSettingsSync();
+    useLiveStudio();
 
     const handleMessage = useAppStore((s) => s.handleMessage);
     const setConnected = useAppStore((s) => s.setSidecarConnected);
     const setError = useAppStore((s) => s.setSidecarError);
+    const reducedMotion = useAppStore((s) => s.settings.appearance.reducedMotion);
 
     useEffect(() => {
         const offMessage = sidecarClient.onMessage(handleMessage);
@@ -58,7 +62,8 @@ function App() {
     }, [handleMessage, setConnected, setError]);
 
     return (
-        <>
+        // "user" follows the Windows animation setting; the in-app switch forces it off.
+        <MotionConfig reducedMotion={reducedMotion ? "always" : "user"}>
             <AppShell />
             <Toaster
                 position="bottom-right"
@@ -71,7 +76,7 @@ function App() {
                     },
                 }}
             />
-        </>
+        </MotionConfig>
     );
 }
 

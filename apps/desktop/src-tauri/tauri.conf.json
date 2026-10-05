@@ -6,7 +6,7 @@
     "build": {
         "beforeDevCommand": "pnpm dev",
         "devUrl": "http://127.0.0.1:5373",
-        "beforeBuildCommand": "pnpm build",
+        "beforeBuildCommand": "pnpm build && pnpm sidecar:exe",
         "frontendDist": "../dist"
     },
     "app": {
@@ -35,13 +35,15 @@
                 "style-src": "'self' 'unsafe-inline'",
                 "font-src": "'self' data:",
                 "img-src": "'self' data: blob: https:",
-                "connect-src": "'self' ws://127.0.0.1:* http://127.0.0.1:* wss://*.openai.azure.com https://*.openai.azure.com",
-                "media-src": "'self' blob: data:"
+                "connect-src": "'self' ws://127.0.0.1:* http://127.0.0.1:* https://ai.codai.ro wss://ai.codai.ro",
+                "media-src": "'self' blob: data: mediastream:",
+                "worker-src": "'self' blob:"
             }
         }
     },
     "bundle": {
         "active": true,
+        "createUpdaterArtifacts": true,
         "targets": [
             "nsis"
         ],
@@ -51,13 +53,27 @@
             "icons/128x128@2x.png",
             "icons/icon.ico"
         ],
-        "resources": [],
-        "externalBin": [],
+        "resources": {
+            "resources/sidecar/": "sidecar/"
+        },
+        "externalBin": [
+            "binaries/tiksee-sidecar"
+        ],
         "windows": {
             "nsis": {
                 "installMode": "perMachine"
             }
         }
     },
-    "plugins": {}
+    "plugins": {
+        "updater": {
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRCMEM2OTY4NEQ5QURFQTAKUldTZzNwcE5hR2tNUzBzUGNGcllwWlJ5QXZRQWVhNkNNUkdycEc3L2IxYVJTQXh3SXFzNFJha2YK",
+            "endpoints": [
+                "https://storage.googleapis.com/tiksee-releases/latest.json"
+            ],
+            "windows": {
+                "installMode": "passive"
+            }
+        }
+    }
 }

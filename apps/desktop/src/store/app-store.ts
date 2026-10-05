@@ -1,15 +1,21 @@
 import {
     defaultSettings,
     emptySessionStats,
+    liveControlStateSchema,
     parseSettings,
     type ChatEvent,
     type ConnectionStatus,
+    type EffectFired,
+    type LiveControlState,
     type PanelStatus,
     type ReplayInfo,
+    type ReplyItem,
     type SerialPortInfo,
     type ServerMessage,
     type SessionStats,
     type Settings,
+    type Suggestion,
+    type ViewerCard,
 } from "@tiksee/core";
 import { create } from "zustand";
 
@@ -22,6 +28,38 @@ export interface LogLine {
     level: "debug" | "info" | "warn" | "error";
     message: string;
     at: number;
+}
+
+export type MicState = "off" | "starting" | "connecting" | "live" | "reconnecting" | "error";
+
+export interface TranscriptLine {
+    itemId: string;
+    text: string;
+    at: number;
+}
+
+export interface TranscriptState {
+    mic: MicState;
+    /** Energy VAD: the streamer is talking right now. */
+    speaking: boolean;
+    /** Push-to-talk latch (only consulted when assistant.pushToTalk is on). */
+    pushToTalk: boolean;
+    partial: string;
+    finals: TranscriptLine[];
+    error: string | null;
+}
+
+/** What the co-host is saying right now. */
+export interface SpeakingState {
+    id: string;
+    text: string;
+    eventId?: string;
+}
+
+/** A returning-viewer card queued for display, with a unique key. */
+export interface QueuedViewerCard {
+    key: string;
+    card: ViewerCard;
 }
 
 interface AppState {
@@ -59,7 +97,15 @@ interface AppState {
 
     /* voice */
     speakingEventId: string | null;
-    speechQueued: number;
+    speaking: SpeakingState | null;
+
+    /* live studio */
+    liveControl: LiveControlState;
+    replyQueue: ReplyItem[];
+    suggestions: Suggestion[];
+    viewerCards: QueuedViewerCard[];
+    effects: EffectFired[];
+    transcript: TranscriptState;
 
     /* diagnostics */
     logs: LogLine[];
@@ -68,13 +114,33 @@ interface AppState {
     handleMessage: (message: ServerMessage) => void;
     setSidecarConnected: (connected: boolean) => void;
     setSidecarError: (error: string | null) => void;
+    setHasTikTokSession: (has: boolean) => void;
     updateSettings: (patch: (current: Settings) => Settings) => void;
     hydrateSettings: (raw: unknown) => void;
     clearEvents: (streamId: string) => void;
-    setSpeaking: (eventId: string | null, queued: number) => void;
+    setSpeaking: (speaking: SpeakingState | null) => void;
+    dismissSuggestion: (id: string) => void;
+    dismissViewerCard: (key: string) => void;
+    patchTranscript: (patch: Partial<Omit<TranscriptState, "finals">>) => void;
+    addTranscriptFinal: (line: TranscriptLine) => void;
 }
 
 const MAX_LOGS = 300;
+const MAX_SUGGESTIONS = 5;
+const MAX_EFFECTS = 10;
+const MAX_FINALS = 5;
+const MAX_CARDS = 6;
+
+const INITIAL_TRANSCRIPT: TranscriptState = {
+    mic: "off",
+    speaking: false,
+    pushToTalk: false,
+    partial: "",
+    finals: [],
+    error: null,
+};
+
+let cardSeq = 0;
 
 export const useAppStore = create<AppState>((set, get) => ({
     sidecarConnected: false,
@@ -104,7 +170,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     obsScene: "",
 
     speakingEventId: null,
-    speechQueued: 0,
+    speaking: null,
+
+    liveControl: liveControlStateSchema.parse({}),
+    replyQueue: [],
+    suggestions: [],
+    viewerCards: [],
+    effects: [],
+    transcript: INITIAL_TRANSCRIPT,
 
     logs: [],
 
@@ -185,7 +258,39 @@ export const useAppStore = create<AppState>((set, get) => ({
                 break;
 
             case "error":
-                set({ sidecarError: message.message });
+                // Non-fatal failures are toasts (see useSidecarErrorToasts);
+                // only a fatal one deserves the persistent banner.
+                if (message.fatal) set({ sidecarError: message.message });
+                break;
+
+            case "liveControl":
+                set({ liveControl: message.state });
+                break;
+
+            case "replyQueue":
+                set({ replyQueue: message.items });
+                break;
+
+            case "suggestion":
+                set((state) => ({
+                    suggestions: [
+                        message.suggestion,
+                        ...state.suggestions.filter((s) => s.id !== message.suggestion.id),
+                    ].slice(0, MAX_SUGGESTIONS),
+                }));
+                break;
+
+            case "viewerCard":
+                set((state) => ({
+                    viewerCards: [
+                        ...state.viewerCards.filter((c) => c.card.uniqueId !== message.card.uniqueId),
+                        { key: `${message.card.uniqueId}-${++cardSeq}`, card: message.card },
+                    ].slice(-MAX_CARDS),
+                }));
+                break;
+
+            case "effect":
+                set((state) => ({ effects: [message.effect, ...state.effects].slice(0, MAX_EFFECTS) }));
                 break;
 
             default:
@@ -195,6 +300,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     setSidecarConnected: (connected) => set({ sidecarConnected: connected }),
     setSidecarError: (error) => set({ sidecarError: error }),
+    setHasTikTokSession: (has) => set({ hasTikTokSession: has }),
 
     updateSettings: (patch) => {
         const next = patch(get().settings);
@@ -216,7 +322,26 @@ export const useAppStore = create<AppState>((set, get) => ({
             stats: { ...state.stats, [streamId]: emptySessionStats(streamId) },
         })),
 
-    setSpeaking: (eventId, queued) => set({ speakingEventId: eventId, speechQueued: queued }),
+    setSpeaking: (speaking) => set({ speaking, speakingEventId: speaking?.eventId ?? null }),
+
+    dismissSuggestion: (id) =>
+        set((state) => ({ suggestions: state.suggestions.filter((s) => s.id !== id) })),
+
+    dismissViewerCard: (key) =>
+        set((state) => ({ viewerCards: state.viewerCards.filter((c) => c.key !== key) })),
+
+    patchTranscript: (patch) => set((state) => ({ transcript: { ...state.transcript, ...patch } })),
+
+    addTranscriptFinal: (line) =>
+        set((state) => ({
+            transcript: {
+                ...state.transcript,
+                partial: "",
+                finals: [...state.transcript.finals.filter((f) => f.itemId !== line.itemId), line].slice(
+                    -MAX_FINALS,
+                ),
+            },
+        })),
 }));
 
 /* ------------------------------------------------------------------ *

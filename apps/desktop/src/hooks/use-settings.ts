@@ -120,22 +120,47 @@ export function useSettingsSync(): void {
         });
     }, [loaded, autostart]);
 
-    const { hotkeyToggleOverlay, hotkeyMuteVoice, hotkeyPushToTalk } = settings.behaviour;
+    const {
+        hotkeyToggleOverlay,
+        hotkeyMuteVoice,
+        hotkeyPushToTalk,
+        hotkeyPauseReplies,
+        hotkeySkipReply,
+        hotkeyEffectsOff,
+        hotkeyHighlight,
+    } = settings.behaviour;
     useEffect(() => {
         if (!loaded) return;
         // Debounced: the accelerators come from free-text inputs, and every
         // keystroke would otherwise re-register a partial combination.
         const id = window.setTimeout(() => {
+            // The shell maps each binding to a `hotkey` event whose payload
+            // is a CONTROL_ACTIONS name, `toggleOverlay` or `pushToTalk`.
             void invoke("set_hotkeys", {
-                toggleOverlay: hotkeyToggleOverlay,
-                muteVoice: hotkeyMuteVoice,
-                pushToTalk: hotkeyPushToTalk,
+                hotkeys: {
+                    hotkeyToggleOverlay,
+                    hotkeyMuteVoice,
+                    hotkeyPushToTalk,
+                    hotkeyPauseReplies,
+                    hotkeySkipReply,
+                    hotkeyEffectsOff,
+                    hotkeyHighlight,
+                },
             }).catch((error: unknown) => {
                 console.error("[settings] hotkeys failed", error);
             });
         }, 600);
         return () => window.clearTimeout(id);
-    }, [loaded, hotkeyToggleOverlay, hotkeyMuteVoice, hotkeyPushToTalk]);
+    }, [
+        loaded,
+        hotkeyToggleOverlay,
+        hotkeyMuteVoice,
+        hotkeyPushToTalk,
+        hotkeyPauseReplies,
+        hotkeySkipReply,
+        hotkeyEffectsOff,
+        hotkeyHighlight,
+    ]);
 }
 
 /**

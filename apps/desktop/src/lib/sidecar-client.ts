@@ -10,6 +10,8 @@ type StateListener = (connected: boolean) => void;
 const RECONNECT_MIN_MS = 400;
 const RECONNECT_MAX_MS = 8_000;
 const HEARTBEAT_MS = 15_000;
+/** A socket that leaves this many pings unanswered is treated as dead. */
+const MAX_MISSED_PONGS = 2;
 
 /**
  * Typed WebSocket client for the Node sidecar.
@@ -27,6 +29,7 @@ export class SidecarClient {
   #retry = RECONNECT_MIN_MS;
   #reconnectTimer: number | null = null;
   #heartbeat: number | null = null;
+  #missedPongs = 0;
   #closed = false;
 
   get connected(): boolean {
@@ -65,6 +68,7 @@ export class SidecarClient {
       // Silently ignoring unknown frames keeps an older UI usable against a
       // newer sidecar rather than throwing on every tick.
       if (!message) return;
+      if (message.type === "pong") this.#missedPongs = 0;
       for (const listener of this.#listeners) listener(message);
     };
 
@@ -89,11 +93,28 @@ export class SidecarClient {
 
   #startHeartbeat(): void {
     this.#stopHeartbeat();
+    this.#missedPongs = 0;
     // A dead sidecar with a half-open socket looks "connected" to the browser;
     // the ping/pong is what actually proves liveness.
     this.#heartbeat = window.setInterval(() => {
+      if (this.#missedPongs >= MAX_MISSED_PONGS) {
+        this.#forceReconnect();
+        return;
+      }
+      this.#missedPongs++;
       this.send({ type: "ping", at: Date.now() });
     }, HEARTBEAT_MS);
+  }
+
+  /**
+   * `close()` on a half-open socket can take minutes to fire `onclose`, so
+   * detach the handlers, report the drop ourselves and reconnect now.
+   */
+  #forceReconnect(): void {
+    this.#stopHeartbeat();
+    this.#teardownSocket();
+    this.#notifyState(false);
+    this.#scheduleReconnect();
   }
 
   #stopHeartbeat(): void {

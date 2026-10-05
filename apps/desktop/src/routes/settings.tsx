@@ -1,15 +1,17 @@
 import {
     ACCENT_PRESETS,
-    AUDIO_OUTPUTS,
     DENSITIES,
+    FLASH_COLORS,
     LOCALES,
     OVERLAY_LAYOUTS,
     SPEECH_ENGINES,
     SPEECH_LANGUAGES,
+    STREAM_SCENES,
     SURFACE_MODES,
     THEME_MODES,
     VOICES,
     type AccentPreset,
+    type Settings,
 } from "@tiksee/core";
 import {
     ACCENT_LABELS,
@@ -31,30 +33,42 @@ import {
     Copy,
     Eye,
     Gauge,
+    Headphones,
     KeyRound,
     Languages,
     Layers,
+    Lightbulb,
     Mic,
     MonitorSmartphone,
     Palette,
+    Play,
+    Plus,
     Shield,
     Sparkles,
+    Trash2,
     Video,
     Volume2,
+    Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { useSettingsUpdate } from "../hooks/use-settings.js";
+import { isVoicemeeter, listAudioDevices, requestDeviceAccess, type AudioDeviceList } from "../lib/audio/devices.js";
+import { acceleratorKey, isValidAccelerator } from "../lib/hotkeys.js";
 import { sidecarClient } from "../lib/sidecar-client.js";
 import { useAppStore } from "../store/app-store.js";
+import { ChipToggleGroup, NumberField, SelectField } from "./settings-fields.js";
 
 const SECTIONS = [
     { id: "appearance", icon: Palette },
     { id: "voice", icon: Volume2 },
+    { id: "audio", icon: Headphones },
     { id: "filters", icon: Mic },
     { id: "assistant", icon: Sparkles },
+    { id: "codai", icon: KeyRound },
+    { id: "effects", icon: Lightbulb },
     { id: "safety", icon: Shield },
     { id: "display", icon: Eye },
     { id: "overlay", icon: Layers },
@@ -102,8 +116,11 @@ export function SettingsRoute() {
                 <div className="measure-wide mx-auto flex flex-col gap-3 p-5">
                     {section === "appearance" && <AppearanceSection />}
                     {section === "voice" && <VoiceSection />}
+                    {section === "audio" && <AudioSection />}
                     {section === "filters" && <FiltersSection />}
                     {section === "assistant" && <AssistantSection />}
+                    {section === "codai" && <CodaiSection />}
+                    {section === "effects" && <EffectsSection />}
                     {section === "safety" && <SafetySection />}
                     {section === "display" && <DisplaySection />}
                     {section === "overlay" && <OverlaySection />}
@@ -270,26 +287,39 @@ function VoiceSection() {
     const { t } = useTranslation();
     const update = useSettingsUpdate();
     const voice = useAppStore((s) => s.settings.voice);
-    const connection = useAppStore((s) => s.settings.connection);
-    const [apiKey, setApiKey] = useState("");
-    const [keySaved, setKeySaved] = useState(false);
+    const shopMode = useAppStore((s) => s.liveControl.shopMode);
+    const [systemVoices, setSystemVoices] = useState<SpeechSynthesisVoice[]>([]);
 
     useEffect(() => {
-        void invoke<boolean>("secret_has", { key: "azure-api-key" })
-            .then(setKeySaved)
-            .catch(() => setKeySaved(false));
-    }, []);
+        const synth = window.speechSynthesis;
+        if (voice.engine !== "system" || !synth) return;
+        // Voices load asynchronously in Chromium; the first call is often empty.
+        const load = () => setSystemVoices(synth.getVoices());
+        load();
+        synth.addEventListener("voiceschanged", load);
+        return () => synth.removeEventListener("voiceschanged", load);
+    }, [voice.engine]);
 
-    const saveKey = (value: string) => {
-        setApiKey(value);
-        void invoke("secret_set", { key: "azure-api-key", value })
-            .then(() => setKeySaved(value !== ""))
-            .catch(() => toast.error(t("common.error")));
-    };
+    const test = () => sidecarClient.send({ type: "speak", text: t("settings.voice.testPhrase") });
 
     return (
         <>
-            <Card title={t("settings.sections.voice")} subtitle={t("settings.voice.enabledHint")} icon={<Volume2 />}>
+            <Card
+                title={t("settings.sections.voice")}
+                subtitle={t("settings.voice.enabledHint")}
+                icon={<Volume2 />}
+                actions={
+                    <Button
+                        size="sm"
+                        variant="soft"
+                        icon={<Play />}
+                        onClick={test}
+                        disabled={!voice.enabled || voice.engine === "off"}
+                    >
+                        {t("settings.voice.test")}
+                    </Button>
+                }
+            >
                 <SwitchRow
                     label={t("settings.voice.enabled")}
                     checked={voice.enabled}
@@ -303,18 +333,35 @@ function VoiceSection() {
                         onSelect={(engine) => update("voice", { engine })}
                         display={(engine) => t(`settings.voice.engines.${engine}`)}
                     />
+                    <p className="text-[0.6875rem] text-fg-muted">{t("settings.voice.engineHint")}</p>
+                    {shopMode && (
+                        <p className="rounded-[--radius-chip] bg-warning/12 px-3 py-2 text-xs text-warning" role="note">
+                            {t("settings.voice.shopModeNote")}
+                        </p>
+                    )}
                 </Reveal>
             </Card>
 
             <Reveal show={voice.enabled && voice.engine !== "off"}>
                 <Card title={t("settings.voice.voice")} icon={<Mic />} tint="var(--kind-gift)">
-                    {voice.engine === "azure" && (
+                    {voice.engine === "codai" && (
                         <ChipSelector
                             options={VOICES}
                             value={voice.voice}
                             onSelect={(v) => update("voice", { voice: v })}
-                            display={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+                            display={(v) => t(`settings.voice.voices.${v}`)}
                             tint="var(--kind-gift)"
+                        />
+                    )}
+                    {voice.engine === "system" && (
+                        <SelectField
+                            label={t("settings.voice.systemVoice")}
+                            value={voice.systemVoiceUri}
+                            onChange={(systemVoiceUri) => update("voice", { systemVoiceUri })}
+                            options={[
+                                { value: "", label: t("settings.voice.systemVoiceAuto") },
+                                ...systemVoices.map((v) => ({ value: v.voiceURI, label: `${v.name} (${v.lang})` })),
+                            ]}
                         />
                     )}
                     <SliderRow
@@ -327,22 +374,24 @@ function VoiceSection() {
                         onCommit={(speed) => update("voice", { speed })}
                         tint="var(--kind-gift)"
                     />
-                    <SliderRow
-                        label={t("settings.voice.pitch")}
-                        value={voice.pitch}
-                        min={0.6}
-                        max={1.4}
-                        step={0.05}
-                        format={(v) =>
-                            v < 0.95
-                                ? t("settings.voice.pitchLower")
-                                : v > 1.05
-                                    ? t("settings.voice.pitchHigher")
-                                    : t("settings.voice.pitchNatural")
-                        }
-                        onCommit={(pitch) => update("voice", { pitch })}
-                        tint="var(--kind-gift)"
-                    />
+                    {voice.engine === "system" && (
+                        <SliderRow
+                            label={t("settings.voice.pitch")}
+                            value={voice.pitch}
+                            min={0.6}
+                            max={1.4}
+                            step={0.05}
+                            format={(v) =>
+                                v < 0.95
+                                    ? t("settings.voice.pitchLower")
+                                    : v > 1.05
+                                        ? t("settings.voice.pitchHigher")
+                                        : t("settings.voice.pitchNatural")
+                            }
+                            onCommit={(pitch) => update("voice", { pitch })}
+                            tint="var(--kind-gift)"
+                        />
+                    )}
                     <SliderRow
                         label={t("settings.voice.volume")}
                         value={voice.volume}
@@ -361,51 +410,109 @@ function VoiceSection() {
                         display={(l) => (l === "auto" ? t("settings.voice.languageAuto") : l.toUpperCase())}
                         tint="var(--kind-gift)"
                     />
-                    <ChipSelector
-                        label={t("settings.voice.audioOutput")}
-                        options={AUDIO_OUTPUTS}
-                        value={voice.audioOutput}
-                        onSelect={(audioOutput) => update("voice", { audioOutput })}
-                        display={(o) => t(`settings.voice.outputs.${o}`)}
-                        tint="var(--kind-gift)"
-                    />
                 </Card>
             </Reveal>
+        </>
+    );
+}
 
-            <Reveal show={voice.enabled && voice.engine === "azure"}>
-                <Card
-                    title={t("settings.voice.credentials")}
-                    subtitle={t("settings.voice.credentialsHint")}
-                    icon={<KeyRound />}
-                    tint="var(--danger)"
-                    actions={keySaved ? <StatusPill tone="success">{t("common.on")}</StatusPill> : undefined}
-                >
-                    <TextInput
-                        label={t("settings.voice.endpoint")}
-                        value={connection.azureEndpoint}
-                        onChange={(azureEndpoint) => update("connection", { azureEndpoint })}
-                        placeholder="yourresource.openai.azure.com"
-                    />
-                    <TextInput
-                        label={t("settings.voice.apiKey")}
-                        value={apiKey}
-                        onChange={saveKey}
-                        secret
-                        placeholder={keySaved ? "••••••••••••" : "paste your Azure key"}
-                        hint={keySaved && apiKey === "" ? t("settings.voice.apiKeySet") : undefined}
-                    />
-                    <TextInput
-                        label={t("settings.voice.ttsDeployment")}
-                        value={connection.ttsDeployment}
-                        onChange={(ttsDeployment) => update("connection", { ttsDeployment })}
-                    />
-                    <TextInput
-                        label={t("settings.voice.aiDeployment")}
-                        value={connection.aiDeployment}
-                        onChange={(aiDeployment) => update("connection", { aiDeployment })}
-                    />
-                </Card>
-            </Reveal>
+/* ------------------------------------------------------------------ */
+
+function AudioSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const audio = useAppStore((s) => s.settings.audio);
+    const [devices, setDevices] = useState<AudioDeviceList | null>(null);
+    const [denied, setDenied] = useState(false);
+
+    const refresh = useCallback(() => {
+        void listAudioDevices()
+            .then(setDevices)
+            .catch(() => setDevices({ inputs: [], outputs: [], labelled: false }));
+    }, []);
+
+    useEffect(() => {
+        refresh();
+        const media = navigator.mediaDevices;
+        media.addEventListener("devicechange", refresh);
+        return () => media.removeEventListener("devicechange", refresh);
+    }, [refresh]);
+
+    const grant = () => {
+        void requestDeviceAccess()
+            .then(() => {
+                setDenied(false);
+                refresh();
+            })
+            .catch(() => setDenied(true));
+    };
+
+    const label = (deviceLabel: string, index: number) => deviceLabel || t("settings.audio.unnamed", { n: index + 1 });
+    const outputs = devices?.outputs ?? [];
+    const inputs = devices?.inputs ?? [];
+    const hasVoicemeeter = outputs.some((d) => isVoicemeeter(d.label));
+    const outputMissing = audio.outputDeviceId !== "" && devices !== null && !outputs.some((d) => d.deviceId === audio.outputDeviceId);
+    const inputMissing = audio.inputDeviceId !== "" && devices !== null && !inputs.some((d) => d.deviceId === audio.inputDeviceId);
+
+    return (
+        <>
+            <Card
+                title={t("settings.audio.devices")}
+                subtitle={t("settings.audio.devicesHint")}
+                icon={<Headphones />}
+                tint="var(--kind-share)"
+                actions={
+                    <Button size="sm" variant="ghost" onClick={refresh}>
+                        {t("settings.audio.refresh")}
+                    </Button>
+                }
+            >
+                {devices !== null && !devices.labelled && (
+                    <div className="flex items-center gap-3 rounded-[--radius-chip] bg-panel-alt px-3 py-2.5">
+                        <p className="min-w-0 flex-1 text-xs text-fg-muted">
+                            {denied ? t("settings.audio.denied") : t("settings.audio.permission")}
+                        </p>
+                        <Button size="sm" variant="soft" onClick={grant}>
+                            {t("settings.audio.allow")}
+                        </Button>
+                    </div>
+                )}
+                <SelectField
+                    label={t("settings.audio.output")}
+                    value={audio.outputDeviceId}
+                    onChange={(outputDeviceId) => update("audio", { outputDeviceId })}
+                    options={[
+                        { value: "", label: t("settings.audio.systemDefault") },
+                        ...(outputMissing ? [{ value: audio.outputDeviceId, label: t("settings.audio.missing") }] : []),
+                        ...outputs.map((d, i) => ({ value: d.deviceId, label: label(d.label, i) })),
+                    ]}
+                    hint={hasVoicemeeter ? t("settings.audio.voicemeeterFound") : t("settings.audio.voicemeeterHint")}
+                />
+                <SelectField
+                    label={t("settings.audio.input")}
+                    value={audio.inputDeviceId}
+                    onChange={(inputDeviceId) => update("audio", { inputDeviceId })}
+                    options={[
+                        { value: "", label: t("settings.audio.systemDefault") },
+                        ...(inputMissing ? [{ value: audio.inputDeviceId, label: t("settings.audio.missing") }] : []),
+                        ...inputs.map((d, i) => ({ value: d.deviceId, label: label(d.label, i) })),
+                    ]}
+                    hint={t("settings.audio.inputHint")}
+                />
+            </Card>
+
+            <Card title={t("settings.audio.ducking")} subtitle={t("settings.audio.duckingHint")} icon={<Volume2 />} tint="var(--kind-share)">
+                <SliderRow
+                    label={t("settings.audio.duckTo")}
+                    value={audio.duckTo}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    format={(v) => (v >= 0.99 ? t("settings.audio.duckOff") : `${Math.round(v * 100)}%`)}
+                    onCommit={(duckTo) => update("audio", { duckTo })}
+                    tint="var(--kind-share)"
+                />
+            </Card>
         </>
     );
 }
@@ -502,6 +609,43 @@ function AssistantSection() {
                     onChange={(aiReplies) => update("assistant", { aiReplies })}
                     tint="var(--kind-join)"
                 />
+                <Reveal show={a.aiReplies}>
+                    <ChipSelector
+                        label={t("settings.assistant.replyMode")}
+                        options={["approve", "auto"] as const}
+                        value={a.replyMode}
+                        onSelect={(replyMode) => update("assistant", { replyMode })}
+                        display={(m) => t(`replies.mode.${m}`)}
+                        tint="var(--kind-join)"
+                    />
+                    <SliderRow
+                        label={t("settings.assistant.repliesPerMinute")}
+                        value={a.repliesPerMinute}
+                        min={1}
+                        max={20}
+                        step={1}
+                        format={(v) => t("settings.assistant.perMinute", { count: Math.round(v) })}
+                        onCommit={(v) => update("assistant", { repliesPerMinute: Math.round(v) })}
+                        tint="var(--kind-join)"
+                    />
+                    <SliderRow
+                        label={t("settings.assistant.quietAfter")}
+                        value={a.quietAfterStreamerMs / 1000}
+                        min={0}
+                        max={10}
+                        step={0.5}
+                        format={(v) => t("settings.assistant.secondsDecimal", { value: v.toFixed(1) })}
+                        onCommit={(v) => update("assistant", { quietAfterStreamerMs: Math.round(v * 1000) })}
+                        tint="var(--kind-join)"
+                    />
+                    <SwitchRow
+                        label={t("settings.assistant.useSystemOne")}
+                        description={t("settings.assistant.useSystemOneHint")}
+                        checked={a.useSystemOne}
+                        onChange={(useSystemOne) => update("assistant", { useSystemOne })}
+                        tint="var(--kind-join)"
+                    />
+                </Reveal>
                 <SwitchRow
                     label={t("settings.assistant.initiates")}
                     description={t("settings.assistant.initiatesHint")}
@@ -521,12 +665,23 @@ function AssistantSection() {
                         tint="var(--kind-join)"
                     />
                 </Reveal>
+            </Card>
+
+            <Card title={t("settings.assistant.listening")} subtitle={t("settings.assistant.listeningHint")} icon={<Mic />} tint="var(--kind-chat)">
+                <SwitchRow
+                    label={t("settings.assistant.transcribe")}
+                    description={t("settings.assistant.transcribeHint")}
+                    checked={a.transcribe}
+                    onChange={(transcribe) => update("assistant", { transcribe })}
+                    tint="var(--kind-chat)"
+                />
                 <SwitchRow
                     label={t("settings.assistant.pushToTalk")}
                     description={t("settings.assistant.pushToTalkHint")}
                     checked={a.pushToTalk}
                     onChange={(pushToTalk) => update("assistant", { pushToTalk })}
-                    tint="var(--kind-join)"
+                    tint="var(--kind-chat)"
+                    disabled={!a.transcribe}
                 />
             </Card>
 
@@ -535,13 +690,13 @@ function AssistantSection() {
                     label={t("settings.assistant.name")}
                     value={a.personaName}
                     onChange={(personaName) => update("assistant", { personaName })}
-                    placeholder="Aria"
+                    placeholder={t("settings.assistant.namePlaceholder")}
                 />
                 <TextInput
                     label={t("settings.assistant.personality")}
                     value={a.personality}
                     onChange={(personality) => update("assistant", { personality })}
-                    placeholder="friendly, witty, concise"
+                    placeholder={t("settings.assistant.personalityPlaceholder")}
                 />
                 <TextInput
                     label={t("settings.assistant.aboutMe")}
@@ -551,6 +706,248 @@ function AssistantSection() {
                     hint={t("settings.assistant.aboutMeHint")}
                 />
             </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+const CODAI_KEY = "codai-api-key";
+type KeyStatus = "unknown" | "stored" | "missing" | "unavailable";
+
+function CodaiSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const codai = useAppStore((s) => s.settings.codai);
+    const [status, setStatus] = useState<KeyStatus>("unknown");
+    const [draft, setDraft] = useState("");
+
+    const probe = useCallback(() => {
+        void invoke<boolean>("secret_has", { key: CODAI_KEY })
+            .then((has) => setStatus(has ? "stored" : "missing"))
+            .catch(() => setStatus("unavailable"));
+    }, []);
+
+    useEffect(probe, [probe]);
+
+    const save = () => {
+        const value = draft.trim();
+        if (value === "") return;
+        void invoke("secret_set", { key: CODAI_KEY, value })
+            .then(() => {
+                setDraft("");
+                probe();
+                toast.success(t("settings.codai.keySaved"));
+            })
+            .catch(() => toast.error(t("common.error")));
+    };
+
+    const tone = status === "stored" ? "success" : status === "missing" ? "warning" : "neutral";
+
+    return (
+        <>
+            <Card
+                title={t("settings.codai.title")}
+                subtitle={t("settings.codai.hint")}
+                icon={<KeyRound />}
+                tint="var(--kind-join)"
+                actions={<StatusPill tone={tone}>{t(`settings.codai.key.${status}`)}</StatusPill>}
+            >
+                <p className="text-xs text-fg-muted">{t("settings.codai.keyHint")}</p>
+                <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                        <TextInput
+                            label={t("settings.codai.replaceKey")}
+                            value={draft}
+                            onChange={setDraft}
+                            secret
+                            placeholder={t("settings.codai.keyPlaceholder")}
+                        />
+                    </div>
+                    <Button size="md" variant="soft" onClick={save} disabled={draft.trim() === ""}>
+                        {t("common.save")}
+                    </Button>
+                </div>
+            </Card>
+
+            <Card title={t("settings.codai.endpoint")} icon={<Cable />}>
+                <TextInput
+                    label={t("settings.codai.baseUrl")}
+                    value={codai.baseUrl}
+                    onChange={(baseUrl) => update("codai", { baseUrl })}
+                    placeholder="https://ai.codai.ro"
+                    invalid={!/^https:\/\/\S+$/.test(codai.baseUrl)}
+                    hint={!/^https:\/\/\S+$/.test(codai.baseUrl) ? t("settings.codai.baseUrlInvalid") : undefined}
+                />
+                <TextInput label={t("settings.codai.replyModel")} value={codai.replyModel} onChange={(replyModel) => update("codai", { replyModel })} />
+                <TextInput label={t("settings.codai.sttModel")} value={codai.sttModel} onChange={(sttModel) => update("codai", { sttModel })} />
+                <TextInput label={t("settings.codai.ttsModel")} value={codai.ttsModel} onChange={(ttsModel) => update("codai", { ttsModel })} />
+            </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+const COLOR_SWATCH: Record<(typeof FLASH_COLORS)[number], string> = {
+    red: "#ef4444",
+    green: "#22c55e",
+    blue: "#3b82f6",
+    cyan: "#06b6d4",
+    purple: "#a855f7",
+    pink: "#ec4899",
+    gold: "#eab308",
+    orange: "#f97316",
+    white: "#ffffff",
+};
+
+type GiftTier = Settings["effects"]["giftTiers"][number];
+
+function EffectsSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const e = useAppStore((s) => s.settings.effects);
+    const sceneLabel = (scene: string) => t(`settings.effects.scenes.${scene}`);
+
+    const setTier = (index: number, patch: Partial<GiftTier>) =>
+        update("effects", { giftTiers: e.giftTiers.map((tier, i) => (i === index ? { ...tier, ...patch } : tier)) });
+    const addTier = () => {
+        const top = e.giftTiers.reduce((max, tier) => Math.max(max, tier.minDiamonds), 0);
+        update("effects", { giftTiers: [...e.giftTiers, { minDiamonds: top + 100, scene: "party", durationSec: 15 }] });
+    };
+    const removeTier = (index: number) => update("effects", { giftTiers: e.giftTiers.filter((_, i) => i !== index) });
+
+    return (
+        <>
+            <Card title={t("settings.effects.title")} subtitle={t("settings.effects.hint")} icon={<Lightbulb />} tint="var(--kind-gift)">
+                <SwitchRow
+                    label={t("settings.effects.enabled")}
+                    checked={e.enabled}
+                    onChange={(enabled) => update("effects", { enabled })}
+                    tint="var(--kind-gift)"
+                />
+                <Reveal show={e.enabled}>
+                    <TextInput
+                        label={t("settings.effects.vmuiUrl")}
+                        value={e.vmuiUrl}
+                        onChange={(vmuiUrl) => update("effects", { vmuiUrl })}
+                        placeholder="http://192.168.100.232:3737"
+                        hint={t("settings.effects.vmuiUrlHint")}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="soft" icon={<Zap />} onClick={() => sidecarClient.send({ type: "effectTest", kind: "flash", value: "cyan" })}>
+                            {t("settings.effects.testFlash")}
+                        </Button>
+                        <Button size="sm" variant="soft" icon={<Play />} onClick={() => sidecarClient.send({ type: "effectTest", kind: "scene", value: "party" })}>
+                            {t("settings.effects.testScene")}
+                        </Button>
+                    </div>
+                </Reveal>
+            </Card>
+
+            <Reveal show={e.enabled}>
+                <Card title={t("settings.effects.chat")} subtitle={t("settings.effects.chatHint")} icon={<Zap />} tint="var(--kind-chat)">
+                    <SwitchRow
+                        label={t("settings.effects.chatCommands")}
+                        checked={e.chatCommands}
+                        onChange={(chatCommands) => update("effects", { chatCommands })}
+                        tint="var(--kind-chat)"
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                        <NumberField
+                            label={t("settings.effects.perUserCooldown")}
+                            value={e.perUserCooldownSec}
+                            min={5}
+                            max={3600}
+                            suffix="s"
+                            onCommit={(perUserCooldownSec) => update("effects", { perUserCooldownSec })}
+                        />
+                        <NumberField
+                            label={t("settings.effects.globalCooldown")}
+                            value={e.globalCooldownSec}
+                            min={1}
+                            max={600}
+                            suffix="s"
+                            onCommit={(globalCooldownSec) => update("effects", { globalCooldownSec })}
+                        />
+                    </div>
+                    <ChipToggleGroup
+                        label={t("settings.effects.allowedColors")}
+                        options={FLASH_COLORS}
+                        selected={e.allowedColors}
+                        onChange={(allowedColors) => update("effects", { allowedColors })}
+                        display={(c) => t(`settings.effects.colors.${c}`)}
+                        swatch={(c) => COLOR_SWATCH[c]}
+                    />
+                    <ChipToggleGroup
+                        label={t("settings.effects.allowedScenes")}
+                        options={STREAM_SCENES}
+                        selected={e.allowedChatScenes}
+                        onChange={(allowedChatScenes) => update("effects", { allowedChatScenes })}
+                        display={sceneLabel}
+                    />
+                </Card>
+
+                <Card
+                    title={t("settings.effects.giftTiers")}
+                    subtitle={t("settings.effects.giftTiersHint")}
+                    icon={<Sparkles />}
+                    tint="var(--kind-gift)"
+                    actions={
+                        <Button size="sm" variant="soft" icon={<Plus />} onClick={addTier}>
+                            {t("settings.effects.addTier")}
+                        </Button>
+                    }
+                >
+                    {e.giftTiers.length === 0 ? (
+                        <p className="text-xs text-fg-subtle">{t("settings.effects.noTiers")}</p>
+                    ) : (
+                        <ul className="flex flex-col gap-2">
+                            {e.giftTiers.map((tier, index) => (
+                                <li
+                                    // Tiers have no id; position is the identity while editing.
+                                    key={index}
+                                    className="grid grid-cols-[1fr_1.4fr_1fr_auto] items-end gap-2 rounded-[--radius-chip] bg-panel-alt/60 p-2"
+                                >
+                                    <NumberField
+                                        label={t("settings.effects.minDiamonds")}
+                                        value={tier.minDiamonds}
+                                        min={1}
+                                        max={1_000_000}
+                                        onCommit={(minDiamonds) => setTier(index, { minDiamonds })}
+                                    />
+                                    <SelectField
+                                        label={t("settings.effects.scene")}
+                                        value={tier.scene}
+                                        onChange={(scene) => {
+                                            const picked = STREAM_SCENES.find((s) => s === scene);
+                                            if (picked) setTier(index, { scene: picked });
+                                        }}
+                                        options={STREAM_SCENES.map((s) => ({ value: s, label: sceneLabel(s) }))}
+                                    />
+                                    <NumberField
+                                        label={t("settings.effects.duration")}
+                                        value={tier.durationSec}
+                                        min={1}
+                                        max={600}
+                                        suffix="s"
+                                        onCommit={(durationSec) => setTier(index, { durationSec })}
+                                    />
+                                    <Button
+                                        size="icon-sm"
+                                        variant="ghost"
+                                        aria-label={t("settings.effects.removeTier")}
+                                        title={t("settings.effects.removeTier")}
+                                        onClick={() => removeTier(index)}
+                                    >
+                                        <Trash2 />
+                                    </Button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </Card>
+            </Reveal>
         </>
     );
 }
@@ -737,6 +1134,8 @@ function ObsSection() {
     const update = useSettingsUpdate();
     const obs = useAppStore((s) => s.settings.obs);
     const port = useAppStore((s) => s.overlayPort);
+    const obsConnected = useAppStore((s) => s.obsConnected);
+    const obsError = useAppStore((s) => s.obsError);
     const url = port > 0 ? `http://127.0.0.1:${port}/overlay` : "";
 
     return (
@@ -811,7 +1210,16 @@ function ObsSection() {
                 </Reveal>
             </Card>
 
-            <Card title={t("settings.obs.control")} subtitle={t("settings.obs.controlHint")} icon={<Video />}>
+            <Card
+                title={t("settings.obs.control")}
+                subtitle={t("settings.obs.controlHint")}
+                icon={<Video />}
+                actions={
+                    <StatusPill tone={obsConnected ? "success" : obsError ? "danger" : "neutral"} pulse={obsConnected}>
+                        {obsConnected ? t("settings.obs.connected") : t("settings.obs.disconnected")}
+                    </StatusPill>
+                }
+            >
                 <SwitchRow
                     label={t("settings.obs.control")}
                     checked={obs.controlEnabled}
@@ -824,13 +1232,22 @@ function ObsSection() {
                         onChange={(controlUrl) => update("obs", { controlUrl })}
                         placeholder="ws://127.0.0.1:4455"
                     />
-                    <Button
-                        size="sm"
-                        variant="soft"
-                        onClick={() => sidecarClient.send({ type: "obsConnect", url: obs.controlUrl })}
-                    >
-                        {t("settings.obs.connect")}
-                    </Button>
+                    {obsError !== null && !obsConnected && <p className="text-xs text-danger">{obsError}</p>}
+                    <div className="flex gap-2">
+                        {obsConnected ? (
+                            <Button size="sm" variant="danger" onClick={() => sidecarClient.send({ type: "obsDisconnect" })}>
+                                {t("settings.obs.disconnect")}
+                            </Button>
+                        ) : (
+                            <Button
+                                size="sm"
+                                variant="soft"
+                                onClick={() => sidecarClient.send({ type: "obsConnect", url: obs.controlUrl })}
+                            >
+                                {t("settings.obs.connect")}
+                            </Button>
+                        )}
+                    </div>
                 </Reveal>
             </Card>
         </>
@@ -998,21 +1415,64 @@ function BehaviourSection() {
     const { t } = useTranslation();
     const update = useSettingsUpdate();
     const b = useAppStore((s) => s.settings.behaviour);
+    const hotkeys = [
+        ["hotkeyToggleOverlay", "hotkeyOverlay"],
+        ["hotkeyMuteVoice", "hotkeyMute"],
+        ["hotkeyPushToTalk", "hotkeyTalk"],
+        ["hotkeyPauseReplies", "hotkeyPause"],
+        ["hotkeySkipReply", "hotkeySkip"],
+        ["hotkeyEffectsOff", "hotkeyEffects"],
+        ["hotkeyHighlight", "hotkeyHighlight"],
+    ] as const;
+    const counts = new Map<string, number>();
+    for (const [field] of hotkeys) {
+        const key = acceleratorKey(b[field]);
+        if (key !== "") counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
 
     return (
         <>
             <Card title={t("settings.sections.behaviour")} icon={<Gauge />}>
                 <SwitchRow label={t("settings.behaviour.autostart")} checked={b.autostart} onChange={(autostart) => update("behaviour", { autostart })} />
-                <SwitchRow label={t("settings.behaviour.startMinimised")} checked={b.startMinimised} onChange={(startMinimised) => update("behaviour", { startMinimised })} />
                 <SwitchRow label={t("settings.behaviour.minimiseToTray")} checked={b.minimiseToTray} onChange={(minimiseToTray) => update("behaviour", { minimiseToTray })} />
                 <SwitchRow label={t("settings.behaviour.closeToTray")} checked={b.closeToTray} onChange={(closeToTray) => update("behaviour", { closeToTray })} />
-                <SwitchRow label={t("settings.behaviour.autoReconnect")} checked={b.autoReconnect} onChange={(autoReconnect) => update("behaviour", { autoReconnect })} />
+                <SwitchRow
+                    label={t("settings.behaviour.autoReconnect")}
+                    description={t("settings.behaviour.autoReconnectHint")}
+                    checked={b.autoReconnect}
+                    onChange={(autoReconnect) => update("behaviour", { autoReconnect })}
+                />
+                <SwitchRow
+                    label={t("connection.waitUntilLive")}
+                    description={t("connection.waitUntilLiveHint")}
+                    checked={b.waitUntilLive}
+                    onChange={(waitUntilLive) => update("behaviour", { waitUntilLive })}
+                />
             </Card>
 
-            <Card title={t("settings.behaviour.hotkeys")} icon={<KeyRound />} tint="var(--kind-join)">
-                <TextInput label={t("settings.behaviour.hotkeyOverlay")} value={b.hotkeyToggleOverlay} onChange={(v) => update("behaviour", { hotkeyToggleOverlay: v })} />
-                <TextInput label={t("settings.behaviour.hotkeyMute")} value={b.hotkeyMuteVoice} onChange={(v) => update("behaviour", { hotkeyMuteVoice: v })} />
-                <TextInput label={t("settings.behaviour.hotkeyTalk")} value={b.hotkeyPushToTalk} onChange={(v) => update("behaviour", { hotkeyPushToTalk: v })} />
+            <Card title={t("settings.behaviour.hotkeys")} subtitle={t("settings.behaviour.hotkeysHint")} icon={<KeyRound />} tint="var(--kind-join)">
+                {hotkeys.map(([field, labelKey]) => {
+                    const value = b[field];
+                    const valid = isValidAccelerator(value);
+                    const duplicate = (counts.get(acceleratorKey(value)) ?? 0) > 1;
+                    return (
+                        <TextInput
+                            key={field}
+                            label={t(`settings.behaviour.${labelKey}`)}
+                            value={value}
+                            onChange={(v) => update("behaviour", { [field]: v })}
+                            placeholder={t("settings.behaviour.hotkeyPlaceholder")}
+                            invalid={!valid || duplicate}
+                            hint={
+                                !valid
+                                    ? t("settings.behaviour.hotkeyInvalid")
+                                    : duplicate
+                                        ? t("settings.behaviour.hotkeyDuplicate")
+                                        : undefined
+                            }
+                        />
+                    );
+                })}
                 <SwitchRow
                     label={t("settings.behaviour.triggerServer")}
                     description={t("settings.behaviour.triggerServerHint")}

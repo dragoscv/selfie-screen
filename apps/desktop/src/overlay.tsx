@@ -5,6 +5,7 @@ import { applyAppearance, cn } from "@tiksee/ui";
 import { GripHorizontal, Settings2, X } from "lucide-react";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { useTranslation } from "react-i18next";
 
 import { ChatFeed } from "./components/chat-feed.js";
 import { ErrorBoundary } from "./components/error-boundary.js";
@@ -22,6 +23,7 @@ import "./styles.css";
  * lightweight enough to sit over a game or OBS without costing frames.
  */
 function Overlay() {
+    const { t } = useTranslation();
     const events = useAppStore(selectEvents(MAIN_STREAM));
     const status = useAppStore(selectStatus(MAIN_STREAM));
     const settings = useAppStore((s) => s.settings);
@@ -69,7 +71,13 @@ function Overlay() {
         setLocale(settings.appearance.locale);
     }, [settings.appearance]);
 
-    const { opacity, blur, compact } = settings.overlay;
+    const { opacity, blur, compact, alwaysOnTop } = settings.overlay;
+
+    useEffect(() => {
+        void getCurrentWindow()
+            .setAlwaysOnTop(alwaysOnTop)
+            .catch(() => undefined);
+    }, [alwaysOnTop]);
 
     return (
         <div
@@ -96,15 +104,16 @@ function Overlay() {
                     aria-hidden
                 />
                 <span className="text-[0.625rem] font-bold uppercase tracking-wider text-fg">
-                    Live chat
+                    {t("overlay.title")}
                 </span>
                 <div className="no-drag ml-auto flex items-center gap-0.5">
                     <button
                         type="button"
                         onClick={() => setShowControls((value) => !value)}
-                        aria-label="Controls"
+                        aria-label={t("overlay.controls")}
+                        aria-expanded={showControls}
                         className={cn(
-                            "grid size-6 place-items-center rounded-full outline-none transition-colors",
+                            "grid size-6 place-items-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                             showControls ? "text-accent" : "text-fg-subtle hover:text-fg",
                         )}
                     >
@@ -113,8 +122,8 @@ function Overlay() {
                     <button
                         type="button"
                         onClick={() => void getCurrentWindow().hide()}
-                        aria-label="Close"
-                        className="grid size-6 place-items-center rounded-full text-fg-subtle outline-none transition-colors hover:text-danger"
+                        aria-label={t("common.close")}
+                        className="grid size-6 place-items-center rounded-full text-fg-subtle outline-none transition-colors hover:text-danger focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         <X className="size-3.5" />
                     </button>
@@ -128,6 +137,7 @@ function Overlay() {
                     events={events}
                     state={status.state}
                     compact={compact}
+                    surface="overlay"
                     className="min-h-0 flex-1"
                 />
             </ErrorBoundary>
@@ -136,6 +146,7 @@ function Overlay() {
 }
 
 function OverlayControls() {
+    const { t } = useTranslation();
     const settings = useAppStore((s) => s.settings);
     const updateSettings = useAppStore((s) => s.updateSettings);
 
@@ -148,13 +159,13 @@ function OverlayControls() {
     return (
         <div className="shrink-0 space-y-1.5 border-b border-fg/10 bg-black/20 px-3 py-2">
             <MiniSlider
-                label="Opacity"
+                label={t("overlay.opacity")}
                 value={settings.overlay.opacity}
                 min={0.15}
                 onChange={(value) => patch("opacity", value)}
             />
             <MiniSlider
-                label="Blur"
+                label={t("overlay.blur")}
                 value={settings.overlay.blur}
                 min={0}
                 tint="var(--kind-join)"

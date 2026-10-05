@@ -35,6 +35,7 @@
         "process:allow-exit",
         "log:default",
         "global-shortcut:default",
-        "autostart:default"
+        "autostart:default",
+        "updater:default"
     ]
 }

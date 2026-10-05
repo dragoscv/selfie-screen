@@ -9,6 +9,7 @@ import { MAIN_STREAM, selectStatus, useAppStore } from "../store/app-store.js";
 import { CommandPalette } from "./command-palette.js";
 import { ConnectionBar } from "./connection-bar.js";
 import { ErrorBoundary } from "./error-boundary.js";
+import { LiveControlBar } from "./live/live-control-bar.js";
 import { Titlebar } from "./titlebar.js";
 
 const LiveRoute = lazy(() =>
@@ -80,6 +81,8 @@ export function AppShell() {
                     <ConnectionBar status={status} />
                 </div>
             </Titlebar>
+
+            <LiveControlBar />
 
             {!sidecarConnected && <SidecarBanner />}
             {sidecarConnected && sidecarError !== null && <ErrorBanner message={sidecarError} />}

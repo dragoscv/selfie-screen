@@ -15,6 +15,8 @@ export interface ChatFeedProps {
     kindFilter?: ReadonlySet<ChatKind>;
     onSelectUser?: (uniqueId: string) => void;
     compact?: boolean;
+    /** Which collapse settings apply: the main feed's or the overlay's. */
+    surface?: "feed" | "overlay";
     className?: string;
 }
 
@@ -36,6 +38,7 @@ export function ChatFeed({
     kindFilter,
     onSelectUser,
     compact = false,
+    surface = "feed",
     className,
 }: ChatFeedProps) {
     const { t, i18n } = useTranslation();
@@ -47,9 +50,10 @@ export function ChatFeed({
 
     // ---- aggregate, then filter ---------------------------------------
     const { rows, joinTicker, likeTicker } = useMemo(() => {
+        const overlay = surface === "overlay";
         const result = aggregate(events, {
-            collapseJoins: display.collapseJoinsFeed,
-            collapseLikes: display.collapseLikesFeed,
+            collapseJoins: overlay ? display.collapseJoinsOverlay : display.collapseJoinsFeed,
+            collapseLikes: overlay ? display.collapseLikesOverlay : display.collapseLikesFeed,
             mergeSameUser: display.mergeSameUser,
         });
 
@@ -65,7 +69,7 @@ export function ChatFeed({
         });
 
         return { rows: filtered, joinTicker: result.joinTicker, likeTicker: result.likeTicker };
-    }, [events, display, search, kindFilter]);
+    }, [events, display, search, kindFilter, surface]);
 
     const virtualizer = useVirtualizer({
         count: rows.length,

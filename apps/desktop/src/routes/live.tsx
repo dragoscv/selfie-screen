@@ -1,7 +1,7 @@
 import type { ChatKind } from "@tiksee/core";
 import { CHAT_KINDS, diamondsToUsd, formatDuration } from "@tiksee/core";
 import { Button, Card, InlineStat, Stat, cn } from "@tiksee/ui";
-import { Group, Panel, Separator } from "react-resizable-panels";
+import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panels";
 import {
     Coins,
     Eye,
@@ -20,6 +20,11 @@ import { useTranslation } from "react-i18next";
 
 import { ChatFeed } from "../components/chat-feed.js";
 import { ErrorBoundary } from "../components/error-boundary.js";
+import { EffectsLog } from "../components/live/effects-log.js";
+import { ReplyQueue } from "../components/live/reply-queue.js";
+import { Suggestions } from "../components/live/suggestions.js";
+import { TranscriptStrip } from "../components/live/transcript-strip.js";
+import { ViewerCards } from "../components/live/viewer-cards.js";
 import { MAIN_STREAM, selectEvents, selectStats, selectStatus, useAppStore } from "../store/app-store.js";
 
 const KIND_ICON: Record<ChatKind, typeof MessageSquare> = {
@@ -31,6 +36,13 @@ const KIND_ICON: Record<ChatKind, typeof MessageSquare> = {
     share: Share2,
 };
 
+const SEPARATOR_CLASS = cn(
+    "group relative w-1.5 shrink-0 cursor-col-resize outline-none",
+    "before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2",
+    "before:bg-border before:transition-colors",
+    "hover:before:bg-accent focus-visible:before:bg-accent",
+);
+
 export function LiveRoute() {
     const { t, i18n } = useTranslation();
     const events = useAppStore(selectEvents(MAIN_STREAM));
@@ -39,6 +51,9 @@ export function LiveRoute() {
     const clearEvents = useAppStore((s) => s.clearEvents);
     const trackEarnings = useAppStore((s) => s.settings.data.trackEarnings);
     const diamondRate = useAppStore((s) => s.settings.data.diamondRateUsd);
+    // Survives restarts: the panel split is a per-machine preference, so
+    // localStorage (not the synced settings file) is the right home for it.
+    const layout = useDefaultLayout({ id: "tiksee-live-v2", panelIds: ["feed", "replies", "side"] });
 
     const [search, setSearch] = useState("");
     const [kinds, setKinds] = useState<ReadonlySet<ChatKind>>(new Set());
@@ -71,8 +86,15 @@ export function LiveRoute() {
     };
 
     return (
-        <Group orientation="horizontal" className="flex h-full">
-            <Panel defaultSize="62%" minSize="28%" className="flex min-h-0 flex-col">
+        <div className="relative flex h-full flex-col">
+        <TranscriptStrip />
+        <Group
+            orientation="horizontal"
+            className="flex min-h-0 flex-1"
+            defaultLayout={layout.defaultLayout}
+            onLayoutChanged={layout.onLayoutChanged}
+        >
+            <Panel id="feed" defaultSize="42%" minSize="24%" className="flex min-h-0 flex-col">
                 <div className="flex shrink-0 items-center gap-2 px-4 pb-2 pt-3">
                     <h1 className="text-sm font-semibold text-fg">{t("feed.title")}</h1>
 
@@ -153,16 +175,17 @@ export function LiveRoute() {
                 </ErrorBoundary>
             </Panel>
 
-            <Separator
-                className={cn(
-                    "group relative w-1.5 shrink-0 cursor-col-resize outline-none",
-                    "before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2",
-                    "before:bg-border before:transition-colors",
-                    "hover:before:bg-accent focus-visible:before:bg-accent",
-                )}
-            />
+            <Separator className={SEPARATOR_CLASS} />
 
-            <Panel defaultSize="38%" minSize="22%" className="min-h-0">
+            <Panel id="replies" defaultSize="32%" minSize="20%" className="flex min-h-0 flex-col">
+                <ErrorBoundary area="reply queue">
+                    <ReplyQueue />
+                </ErrorBoundary>
+            </Panel>
+
+            <Separator className={SEPARATOR_CLASS} />
+
+            <Panel id="side" defaultSize="26%" minSize="18%" className="min-h-0">
                 <div className="@container h-full overflow-y-auto px-4 py-3">
                     <div className="flex flex-col gap-3">
                         <Card title={t("analytics.title")} icon={<Eye />} flush>
@@ -245,9 +268,18 @@ export function LiveRoute() {
                                 />
                             </div>
                         )}
+
+                        <ErrorBoundary area="suggestions">
+                            <Suggestions />
+                        </ErrorBoundary>
+                        <ErrorBoundary area="effects">
+                            <EffectsLog />
+                        </ErrorBoundary>
                     </div>
                 </div>
             </Panel>
         </Group>
+        <ViewerCards />
+        </div>
     );
 }

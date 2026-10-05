@@ -37,7 +37,9 @@
         "errorPrefix": "Conectarea a eșuat",
         "sidecarDown": "Serviciul de fundal nu rulează",
         "sidecarDownHint": "Chatul, panoul și sursa OBS sunt indisponibile până repornește.",
-        "restartService": "Repornește serviciul"
+        "restartService": "Repornește serviciul",
+        "signOutTikTok": "Deconectează-te de la TikTok",
+        "signedOut": "Te-ai deconectat de la TikTok"
     },
     "feed": {
         "title": "Chat live",
@@ -96,7 +98,10 @@
             "panel": "Ecran LCD",
             "alerts": "Alerte",
             "behaviour": "Comportament",
-            "data": "Date"
+            "data": "Date",
+            "audio": "Dispozitive audio",
+            "codai": "codai",
+            "effects": "Efecte"
         },
         "appearance": {
             "theme": "Temă",
@@ -139,11 +144,11 @@
             "enabledHint": "Comutator principal pentru tot fluxul vocal",
             "engine": "Motor",
             "engines": {
-                "azure": "Azure realtime",
                 "system": "Voce Windows",
-                "off": "Oprit"
+                "off": "Oprit",
+                "codai": "Voce codai"
             },
-            "engineHint": "Azure sună mult mai bine; vocea Windows nu are nevoie de cheie",
+            "engineHint": "codai sună natural și mișcă buzele animalelor; vocea Windows merge și offline",
             "voice": "Voce",
             "systemVoice": "Voce Windows",
             "speed": "Viteză",
@@ -154,21 +159,14 @@
             "volume": "Volum",
             "language": "Limbă",
             "languageAuto": "Detectare automată",
-            "audioOutput": "Ieșire audio",
-            "outputs": {
-                "auto": "Automat",
-                "speaker": "Difuzor",
-                "headset": "Căști"
-            },
-            "credentials": "Credențiale Azure",
-            "credentialsHint": "Salvate în Windows Credential Manager, niciodată pe disc",
-            "endpoint": "Endpoint",
-            "apiKey": "Cheie API",
-            "apiKeySet": "O cheie este salvată. Scrie pentru a o înlocui.",
-            "ttsDeployment": "Deployment pentru voce",
-            "aiDeployment": "Deployment pentru asistent",
             "test": "Testează vocea",
-            "testPhrase": "Vocea funcționează. Chatul va fi citit exact așa."
+            "testPhrase": "Vocea funcționează. Chatul va fi citit exact așa.",
+            "voices": {
+                "alina": "Alina",
+                "emil": "Emil"
+            },
+            "systemVoiceAuto": "Română, dacă există",
+            "shopModeNote": "Modul Shop LIVE este activ: nu se spune nimic până îl oprești."
         },
         "filters": {
             "title": "Ce se citește cu voce tare",
@@ -201,7 +199,22 @@
             "name": "Numele asistentului",
             "personality": "Personalitate",
             "aboutMe": "Despre tine",
-            "aboutMeHint": "Contextul folosit de co-gazdă când vorbește despre stream-ul tău"
+            "aboutMeHint": "Contextul folosit de co-gazdă când vorbește despre stream-ul tău",
+            "replyMode": "Mod de răspuns",
+            "repliesPerMinute": "Ritm de răspuns",
+            "perMinute_one": "{{count}} / min",
+            "perMinute_few": "{{count}} / min",
+            "perMinute_other": "{{count}} / min",
+            "quietAfter": "Tace după ce vorbești",
+            "secondsDecimal": "{{value}} s",
+            "useSystemOne": "Triere inteligentă",
+            "useSystemOneHint": "Folosește System One ca să recunoască întrebările, intenția și starea înainte de răspuns",
+            "listening": "Ascultare",
+            "listeningHint": "Co-gazda te înțelege și nu vorbește peste tine",
+            "transcribe": "Transcrie microfonul meu",
+            "transcribeHint": "Vocea ta e trimisă la codai doar cât vorbești; nu se înregistrează nimic",
+            "namePlaceholder": "Codai",
+            "personalityPlaceholder": "prietenos, glumeț, concis"
         },
         "safety": {
             "moderation": "Filtru de moderare",
@@ -262,7 +275,8 @@
             "controlUrl": "URL obs-websocket",
             "connect": "Conectează",
             "connected": "Conectat la OBS",
-            "disconnected": "Neconectat"
+            "disconnected": "Neconectat",
+            "disconnect": "Deconectează"
         },
         "panel": {
             "enabled": "Ecran LCD pe USB",
@@ -290,18 +304,26 @@
         },
         "behaviour": {
             "autostart": "Pornește odată cu Windows",
-            "startMinimised": "Pornește minimizat",
             "minimiseToTray": "Minimizează în bara de sistem",
             "closeToTray": "Închide în bara de sistem",
             "autoReconnect": "Reconectează la pornire",
             "hotkeys": "Scurtături globale",
             "hotkeyOverlay": "Comută overlay-ul",
-            "hotkeyMute": "Oprește vocea",
+            "hotkeyMute": "Oprește asistentul",
             "hotkeyTalk": "Apasă pentru a vorbi",
             "triggerServer": "Declanșatoare HTTP",
             "triggerServerHint": "Endpoint-uri locale pentru Stream Deck și punți MIDI",
             "crashReporting": "Trimite rapoarte de eroare",
-            "crashReportingHint": "Diagnostice anonime care ajută la remedierea problemelor"
+            "crashReportingHint": "Diagnostice anonime care ajută la remedierea problemelor",
+            "autoReconnectHint": "Se conectează la ultimul creator când pornește TikSee",
+            "hotkeysHint": "Funcționează și când altă aplicație e activă. Lasă gol pentru a dezactiva.",
+            "hotkeyPause": "Pauză răspunsuri",
+            "hotkeySkip": "Sari peste răspunsul curent",
+            "hotkeyEffects": "Fără efecte",
+            "hotkeyHighlight": "Marchează momentul",
+            "hotkeyPlaceholder": "ex. CommandOrControl+Shift+M",
+            "hotkeyInvalid": "Folosește modificatori plus o tastă, ex. CommandOrControl+Shift+M",
+            "hotkeyDuplicate": "Scurtătura este deja folosită de altă acțiune"
         },
         "data": {
             "persist": "Păstrează istoricul",
@@ -316,6 +338,90 @@
             "exportJson": "Exportă ca JSON",
             "clearHistory": "Șterge tot istoricul",
             "clearHistoryConfirm": "Ștergi toate sesiunile, spectatorii și transcrierile salvate? Acțiunea nu poate fi anulată."
+        },
+        "audio": {
+            "devices": "Dispozitive audio",
+            "devicesHint": "Unde vorbește co-gazda și ce microfon ascultă",
+            "refresh": "Reîmprospătează",
+            "permission": "Permite o dată accesul la microfon ca să apară numele dispozitivelor.",
+            "denied": "Accesul la microfon a fost refuzat. Permite-l din setările de confidențialitate Windows și încearcă din nou.",
+            "allow": "Permite",
+            "output": "Ieșirea vocii",
+            "input": "Microfon",
+            "inputHint": "Anularea ecoului și reducerea zgomotului sunt mereu active.",
+            "systemDefault": "Implicit sistem",
+            "missing": "Dispozitiv indisponibil (deconectat?)",
+            "unnamed": "Dispozitivul {{n}}",
+            "voicemeeterHint": "Recomandat: trimite vocea pe o bandă Voicemeeter, de exemplu „Voicemeeter Input (VB-Audio)” sau „Voicemeeter AUX Input”, ca s-o mixezi separat de microfon.",
+            "voicemeeterFound": "Voicemeeter detectat — alege intrarea AUX ca să ai co-gazda pe o bandă separată.",
+            "ducking": "Atenuare",
+            "duckingHint": "Co-gazda vorbește mai încet cât timp vorbești tu",
+            "duckTo": "Volum cât vorbești",
+            "duckOff": "Fără atenuare"
+        },
+        "codai": {
+            "title": "Cont codai",
+            "hint": "Vocea, transcrierea și răspunsurile rulează pe codai",
+            "key": {
+                "unknown": "Se verifică…",
+                "stored": "Cheie salvată",
+                "missing": "Fără cheie",
+                "unavailable": "Necunoscut"
+            },
+            "keyHint": "Cheia: salvată în Windows Credential Manager, niciodată în setări sau jurnale.",
+            "replaceKey": "Setează sau înlocuiește cheia API",
+            "keyPlaceholder": "sk-…",
+            "keySaved": "Cheia codai a fost salvată",
+            "endpoint": "Endpoint și modele",
+            "baseUrl": "URL de bază",
+            "baseUrlInvalid": "Trebuie să fie un URL https://",
+            "replyModel": "Model pentru răspunsuri",
+            "sttModel": "Model de transcriere",
+            "ttsModel": "Model de voce"
+        },
+        "effects": {
+            "title": "Efecte de lumini",
+            "hint": "Luminile reacționează la cadouri și chat prin vmui",
+            "enabled": "Activează efectele",
+            "vmuiUrl": "Adresa vmui",
+            "vmuiUrlHint": "Folosește IP-ul din rețeaua locală; numele din tailnet este mult mai lent.",
+            "testFlash": "Testează flash",
+            "testScene": "Testează scena",
+            "chat": "Comenzi din chat",
+            "chatHint": "Spectatorii scriu !red, !party… în aceste limite",
+            "chatCommands": "Permite comenzi din chat",
+            "perUserCooldown": "Pauză per spectator",
+            "globalCooldown": "Pauză globală",
+            "allowedColors": "Culori permise spectatorilor",
+            "allowedScenes": "Scene permise spectatorilor",
+            "giftTiers": "Praguri de cadouri",
+            "giftTiersHint": "Cel mai mare prag atins de un cadou își rulează scena",
+            "addTier": "Adaugă prag",
+            "removeTier": "Șterge pragul",
+            "noTiers": "Niciun prag — cadourile nu declanșează nimic.",
+            "minDiamonds": "De la diamante",
+            "scene": "Scenă",
+            "duration": "Durată",
+            "colors": {
+                "red": "Roșu",
+                "green": "Verde",
+                "blue": "Albastru",
+                "cyan": "Turcoaz",
+                "purple": "Mov",
+                "pink": "Roz",
+                "gold": "Auriu",
+                "orange": "Portocaliu",
+                "white": "Alb"
+            },
+            "scenes": {
+                "party": "Petrecere",
+                "calm": "Calm",
+                "red_alert": "Alertă roșie",
+                "gift_gold": "Cadou auriu",
+                "rainbow": "Curcubeu",
+                "blackout_flash": "Flash pe întuneric",
+                "default": "Implicit"
+            }
         }
     },
     "people": {
@@ -397,5 +503,126 @@
         "maximise": "Maximizează",
         "restore": "Restaurează",
         "close": "Închide"
+    },
+    "overlay": {
+        "title": "Chat live",
+        "controls": "Comenzi",
+        "opacity": "Opacitate",
+        "blur": "Blur"
+    },
+    "liveControl": {
+        "label": "Control live",
+        "mute": "Oprește asistentul",
+        "muteHint": "Co-gazda tace imediat; chatul continuă",
+        "pause": "Pauză răspunsuri",
+        "pauseHint": "Nu mai pregătește răspunsuri noi; citirea continuă",
+        "effects": "Fără efecte",
+        "effectsHint": "Blochează toate efectele de lumini, inclusiv pragurile de cadouri",
+        "shop": "Shop LIVE",
+        "shopHint": "TikTok Shop LIVE interzice vocile AI: nicio voce sintetică cât timp e activ",
+        "pets": "Ascunde animalele",
+        "petsHint": "Ascunde animalele animate din overlay",
+        "skip": "Sari",
+        "skipHint": "Oprește ce spune co-gazda acum",
+        "highlight": "Marchează",
+        "highlightHint": "Marchează momentul pentru reluare și statistici",
+        "shopActive": "Mod Shop LIVE — vocea AI este oprită",
+        "speaking": "Vorbește: {{text}}"
+    },
+    "replies": {
+        "title": "Coada de răspunsuri",
+        "mode": {
+            "approve": "Aprobare manuală",
+            "auto": "Automat"
+        },
+        "keys": "Enter aprobă · Esc sari",
+        "empty": "Nimic de răspuns încă",
+        "emptyHint": "Aici apar întrebările, mențiunile și cadourile care merită un răspuns.",
+        "disabledHint": "Pornește răspunsurile AI din Setări → Co-gazdă AI.",
+        "more_one": "Încă {{count}} așteaptă",
+        "more_few": "Încă {{count}} așteaptă",
+        "more_other": "Încă {{count}} de așteaptă",
+        "itemLabel": "{{name}}: {{message}}",
+        "score": "Scor {{score}}",
+        "draft": "Ciornă de răspuns",
+        "approve": "Aprobă",
+        "skip": "Sari",
+        "status": {
+            "pending": "În așteptare",
+            "drafting": "Se scrie",
+            "ready": "Gata",
+            "speaking": "Vorbește",
+            "done": "Gata spus",
+            "skipped": "Sărit",
+            "failed": "Eșuat"
+        },
+        "reasons": {
+            "gift": "Cadou",
+            "follow": "Urmărire",
+            "question": "Întrebare",
+            "mention": "Mențiune",
+            "first-time": "Prima dată",
+            "first-today": "Prima azi",
+            "moderator": "Moderator",
+            "subscriber": "Abonat",
+            "follower": "Urmăritor",
+            "manual": "Manual",
+            "idle": "Chat liniștit"
+        }
+    },
+    "transcript": {
+        "title": "Microfonul tău",
+        "idle": "Ascult — spune ceva și apare aici",
+        "ptt": "Vorbește",
+        "mic": {
+            "off": "Microfon oprit",
+            "starting": "Pornește microfonul",
+            "connecting": "Se conectează transcrierea",
+            "live": "Se transcrie",
+            "reconnecting": "Se reconectează transcrierea",
+            "error": "Eroare de microfon"
+        }
+    },
+    "suggestions": {
+        "title": "Teleprompter",
+        "empty": "Sfaturile apar aici cât timp ești live.",
+        "kinds": {
+            "unanswered": "Fără răspuns",
+            "quiet": "Liniște",
+            "thanks": "Mulțumiri",
+            "spike": "Vârf",
+            "topic": "Subiect",
+            "goal": "Obiectiv"
+        }
+    },
+    "effectsLog": {
+        "title": "Efecte",
+        "paused": "Pe pauză",
+        "empty": "Niciun efect declanșat încă.",
+        "failed": "Eșuat",
+        "limited": "Limitat",
+        "kinds": {
+            "flash": "Flash",
+            "scene": "Scenă"
+        }
+    },
+    "viewerCard": {
+        "label": "{{name}} a revenit",
+        "returning": "Spectator care revine",
+        "visits_one": "{{count}} vizită",
+        "visits_few": "{{count}} vizite",
+        "visits_other": "{{count}} de vizite",
+        "diamonds_one": "{{formatted}} diamant",
+        "diamonds_few": "{{formatted}} diamante",
+        "diamonds_other": "{{formatted}} de diamante",
+        "messages_one": "{{count}} mesaj",
+        "messages_few": "{{count}} mesaje",
+        "messages_other": "{{count}} de mesaje",
+        "greeting": "Spune: „{{text}}”"
+    },
+    "alertsNotify": {
+        "gift": "Cadou de la {{name}}",
+        "follow": "{{name}} te urmărește",
+        "keyword": "Cuvânt cheie de la {{name}}"
     }
 }

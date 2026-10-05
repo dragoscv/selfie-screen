@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ConnectionStatus } from "@tiksee/core";
 import { Button, StatusPill, cn } from "@tiksee/ui";
-import { LogIn, Play, Square, UserCheck } from "lucide-react";
+import { LogIn, LogOut, Play, Square, UserCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -16,9 +16,11 @@ export function ConnectionBar({ status }: { status: ConnectionStatus }) {
     const { t } = useTranslation();
     const update = useSettingsUpdate();
     const connection = useAppStore((s) => s.settings.connection);
+    const waitUntilLive = useAppStore((s) => s.settings.behaviour.waitUntilLive);
     const hasSession = useAppStore((s) => s.hasTikTokSession);
     const sidecarConnected = useAppStore((s) => s.sidecarConnected);
     const clearEvents = useAppStore((s) => s.clearEvents);
+    const setHasSession = useAppStore((s) => s.setHasTikTokSession);
 
     const [handle, setHandle] = useState(connection.username);
     const busy = BUSY_STATES.has(status.state);
@@ -42,7 +44,7 @@ export function ConnectionBar({ status }: { status: ConnectionStatus }) {
             streamId: MAIN_STREAM,
             username,
             driver: connection.driver,
-            waitUntilLive: false,
+            waitUntilLive,
         });
     };
 
@@ -117,6 +119,25 @@ export function ConnectionBar({ status }: { status: ConnectionStatus }) {
             >
                 {hasSession ? <UserCheck className="text-success" /> : <LogIn />}
             </Button>
+
+            {hasSession && (
+                <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    title={t("connection.signOutTikTok")}
+                    aria-label={t("connection.signOutTikTok")}
+                    onClick={() => {
+                        sidecarClient.send({ type: "clearSession" });
+                        // Older shells have no clear command; the sidecar copy is gone either way.
+                        void invoke("tiktok_session_clear").catch(() => undefined);
+                        setHasSession(false);
+                        toast.success(t("connection.signedOut"));
+                    }}
+                >
+                    <LogOut />
+                </Button>
+            )}
         </form>
     );
 }
