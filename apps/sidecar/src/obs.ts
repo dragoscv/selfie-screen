@@ -20,11 +20,18 @@ export class ObsController {
     #connected = false;
     #settings: Settings | null = null;
     #lastTrigger = 0;
+    #onStatus: ((connected: boolean, error?: string) => void) | undefined;
+
+    constructor(onStatus?: (connected: boolean, error?: string) => void) {
+        this.#onStatus = onStatus;
+    }
 
     /** Stable reference so the listener can be removed before re-adding. */
     #onClosed = (): void => {
         this.#connected = false;
         log.info("OBS connection closed");
+        // Tell the UI so the OBS card can flip and offer a reconnect (WS15-10).
+        this.#onStatus?.(false, "OBS connection closed");
     };
 
     get connected(): boolean {

@@ -57,31 +57,19 @@ export type ReadFilters = z.infer<typeof readFiltersSchema>;
  * Voice — full parity with the Android `VoiceConfig` voice block.
  * ------------------------------------------------------------------ */
 
-/** gpt-realtime voices. */
-export const VOICES = [
-    "marin",
-    "cedar",
-    "alloy",
-    "ash",
-    "ballad",
-    "coral",
-    "echo",
-    "sage",
-    "shimmer",
-    "verse",
-] as const;
+/** codai-tts-ro voices (Azure Speech ro-RO neural, with visemes). */
+export const VOICES = ["alina", "emil"] as const;
 export type Voice = (typeof VOICES)[number];
 
 export const SPEECH_LANGUAGES = ["auto", "ro", "en"] as const;
-export const AUDIO_OUTPUTS = ["auto", "speaker", "headset"] as const;
-/** `azure` uses the realtime API; `system` falls back to the OS voice. */
-export const SPEECH_ENGINES = ["azure", "system", "off"] as const;
+/** `codai` streams codai-tts-ro; `system` falls back to the OS voice. */
+export const SPEECH_ENGINES = ["codai", "system", "off"] as const;
 export type SpeechEngine = (typeof SPEECH_ENGINES)[number];
 
 export const voiceSchema = z.object({
     enabled: z.boolean().default(true),
-    engine: z.enum(SPEECH_ENGINES).default("azure"),
-    voice: z.enum(VOICES).default("marin"),
+    engine: z.enum(SPEECH_ENGINES).catch("codai").default("codai"),
+    voice: z.enum(VOICES).catch("alina").default("alina"),
     /** System-voice URI, used when `engine === "system"`. */
     systemVoiceUri: z.string().default(""),
     speed: z.number().min(0.5).max(1.5).default(1),
@@ -91,7 +79,6 @@ export const voiceSchema = z.object({
     minGiftValueToRead: z.number().int().min(0).default(0),
     readUsernames: z.boolean().default(true),
     language: z.enum(SPEECH_LANGUAGES).default("auto"),
-    audioOutput: z.enum(AUDIO_OUTPUTS).default("auto"),
 });
 export type VoiceSettings = z.infer<typeof voiceSchema>;
 
@@ -112,9 +99,19 @@ export const assistantSchema = z.object({
     aiInitiates: z.boolean().default(false),
     idleChatterSeconds: z.number().int().min(30).max(600).default(120),
     pushToTalk: z.boolean().default(false),
-    personaName: z.string().default("Aria"),
+    personaName: z.string().default("Codai"),
     aboutMe: z.string().default(""),
-    personality: z.string().default("friendly, witty, concise"),
+    personality: z.string().default("prietenos, glumeț, concis"),
+    /** Replies per minute the token bucket refills; burst = 2. */
+    repliesPerMinute: z.number().int().min(1).max(20).default(4),
+    /** `auto` speaks drafts at once; `approve` waits for the streamer. */
+    replyMode: z.enum(["auto", "approve"]).default("approve"),
+    /** Never start speaking within this many ms of the streamer's last word. */
+    quietAfterStreamerMs: z.number().int().min(0).max(10_000).default(1500),
+    /** Transcribe the streamer's microphone continuously. */
+    transcribe: z.boolean().default(false),
+    /** Use System One to enrich triage (question, intent, emotion). */
+    useSystemOne: z.boolean().default(true),
 });
 export type AssistantSettings = z.infer<typeof assistantSchema>;
 
@@ -242,6 +239,10 @@ export const behaviourSchema = z.object({
     hotkeyToggleOverlay: z.string().default("CommandOrControl+Shift+O"),
     hotkeyMuteVoice: z.string().default("CommandOrControl+Shift+M"),
     hotkeyPushToTalk: z.string().default("CommandOrControl+Shift+T"),
+    hotkeyPauseReplies: z.string().default("CommandOrControl+Shift+P"),
+    hotkeySkipReply: z.string().default("CommandOrControl+Shift+S"),
+    hotkeyEffectsOff: z.string().default("CommandOrControl+Shift+E"),
+    hotkeyHighlight: z.string().default("CommandOrControl+Shift+H"),
     /** Local HTTP trigger endpoints for Stream Deck / MIDI bridges. */
     triggerServerEnabled: z.boolean().default(false),
 });
@@ -258,6 +259,64 @@ export const dataSchema = z.object({
 });
 export type DataSettings = z.infer<typeof dataSchema>;
 
+/* ------------------------------------------------------------------ *
+ * codai (AI gateway) — key lives in the OS credential store.
+ * ------------------------------------------------------------------ */
+
+export const codaiSchema = z.object({
+    baseUrl: z.string().default("https://ai.codai.ro"),
+    /** Model for reply drafting; hidden fast alias of the `codai` router. */
+    replyModel: z.string().default("codai-fast"),
+    sttModel: z.string().default("codai-transcribe-live"),
+    ttsModel: z.string().default("codai-tts-ro"),
+});
+export type CodaiSettings = z.infer<typeof codaiSchema>;
+
+/* ------------------------------------------------------------------ *
+ * Audio devices (WebAudio sink / mic ids; "" = system default).
+ * ------------------------------------------------------------------ */
+
+export const audioSchema = z.object({
+    outputDeviceId: z.string().default(""),
+    inputDeviceId: z.string().default(""),
+    /** Lower TTS volume to this fraction while the streamer is talking. */
+    duckTo: z.number().min(0).max(1).default(0.35),
+});
+export type AudioSettings = z.infer<typeof audioSchema>;
+
+/* ------------------------------------------------------------------ *
+ * Smart-home effects through vmui MCP.
+ * ------------------------------------------------------------------ */
+
+export const STREAM_SCENES = ["party", "calm", "red_alert", "gift_gold", "rainbow", "blackout_flash", "default"] as const;
+export const FLASH_COLORS = ["red", "green", "blue", "cyan", "purple", "pink", "gold", "orange", "white"] as const;
+
+export const giftEffectTierSchema = z.object({
+    minDiamonds: z.number().int().min(1),
+    scene: z.enum(STREAM_SCENES),
+    durationSec: z.number().int().min(1).max(600).default(15),
+});
+
+export const effectsSchema = z.object({
+    enabled: z.boolean().default(false),
+    /** vmui base URL; LAN IP is ~20x faster than the tailnet name. */
+    vmuiUrl: z.string().default("http://192.168.100.232:3737"),
+    /** Viewers may type `!red`, `!party`… for small effects. */
+    chatCommands: z.boolean().default(true),
+    perUserCooldownSec: z.number().int().min(5).max(3600).default(60),
+    globalCooldownSec: z.number().int().min(1).max(600).default(3),
+    /** Colours a free chat command may flash. */
+    allowedColors: z.array(z.enum(FLASH_COLORS)).default([...FLASH_COLORS]),
+    /** Scenes a free chat command may trigger (gifts can trigger any tier scene). */
+    allowedChatScenes: z.array(z.enum(STREAM_SCENES)).default([]),
+    giftTiers: z.array(giftEffectTierSchema).default([
+        { minDiamonds: 1, scene: "gift_gold", durationSec: 8 },
+        { minDiamonds: 99, scene: "party", durationSec: 20 },
+        { minDiamonds: 499, scene: "rainbow", durationSec: 45 },
+    ]),
+});
+export type EffectsSettings = z.infer<typeof effectsSchema>;
+
 export const connectionSchema = z.object({
     /** Default creator handle, without `@`. */
     username: z.string().default(""),
@@ -267,10 +326,6 @@ export const connectionSchema = z.object({
     driver: z.enum(["connector", "sniffer"]).default("connector"),
     /** Send the stored TikTok session cookie with TikTok's own HTTP routes. */
     useSession: z.boolean().default(true),
-    /** Azure AI Foundry host, no scheme. The key lives in the OS credential store. */
-    azureEndpoint: z.string().default("codai-foundry2.openai.azure.com"),
-    ttsDeployment: z.string().default("selfie-tts"),
-    aiDeployment: z.string().default("selfie-ai"),
 });
 export type ConnectionSettings = z.infer<typeof connectionSchema>;
 
@@ -292,6 +347,9 @@ export const settingsSchema = z.object({
     alerts: alertsSchema.prefault({}),
     behaviour: behaviourSchema.prefault({}),
     data: dataSchema.prefault({}),
+    codai: codaiSchema.prefault({}),
+    audio: audioSchema.prefault({}),
+    effects: effectsSchema.prefault({}),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 

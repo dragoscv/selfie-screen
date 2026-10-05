@@ -9,8 +9,12 @@ describe("settings", () => {
         expect(s.appearance.mode).toBe("dark");
         expect(s.appearance.accent).toBe("cyan");
         expect(s.appearance.surface).toBe("mica");
-        expect(s.voice.voice).toBe("marin");
-        expect(s.assistant.personaName).toBe("Aria");
+        expect(s.voice.voice).toBe("alina");
+        expect(s.voice.engine).toBe("codai");
+        expect(s.assistant.personaName).toBe("Codai");
+        expect(s.codai.baseUrl).toBe("https://ai.codai.ro");
+        expect(s.effects.enabled).toBe(false);
+        expect(s.effects.giftTiers.length).toBe(3);
     });
 
     it("keeps parity with the Android defaults", () => {
@@ -22,7 +26,6 @@ describe("settings", () => {
         expect(s.voice.volume).toBe(1);
         expect(s.voice.readUsernames).toBe(true);
         expect(s.voice.language).toBe("auto");
-        expect(s.voice.audioOutput).toBe("auto");
         // Read filters: joins and likes off, the rest on
         expect(s.voice.filters).toEqual({
             chat: true,
@@ -36,7 +39,8 @@ describe("settings", () => {
         expect(s.assistant.aiReplies).toBe(false);
         expect(s.assistant.aiInitiates).toBe(false);
         expect(s.assistant.idleChatterSeconds).toBe(120);
-        expect(s.assistant.personality).toBe("friendly, witty, concise");
+        expect(s.assistant.repliesPerMinute).toBe(4);
+        expect(s.assistant.replyMode).toBe("approve");
         // Safety
         expect(s.safety.moderation).toBe(true);
         expect(s.safety.maxQueue).toBe(8);
@@ -49,10 +53,13 @@ describe("settings", () => {
         expect(s.overlay.opacity).toBeCloseTo(0.82);
         expect(s.overlay.blur).toBeCloseTo(0.35);
         expect(s.overlay.clickThrough).toBe(false);
-        // Connection defaults inherited from the Android encrypted store
-        expect(s.connection.azureEndpoint).toBe("codai-foundry2.openai.azure.com");
-        expect(s.connection.ttsDeployment).toBe("selfie-tts");
-        expect(s.connection.aiDeployment).toBe("selfie-ai");
+    });
+
+    it("migrates legacy Azure voice values instead of dropping the voice section", () => {
+        const parsed = parseSettings({ voice: { engine: "azure", voice: "marin", speed: 1.2 } });
+        expect(parsed.voice.engine).toBe("codai");
+        expect(parsed.voice.voice).toBe("alina");
+        expect(parsed.voice.speed).toBe(1.2);
     });
 
     it("round-trips a full settings object", () => {

@@ -31,9 +31,11 @@ const MAX_TRACKED_VIEWERS = 100_000;
 
 export interface StreamSinks {
     onEvents: (events: ChatEvent[]) => void;
-    onStatus: (status: ConnectionStatus) => void;
+    /** `stats` is the final tally, passed when a stream goes offline. */
+    onStatus: (status: ConnectionStatus, stats?: SessionStats) => void;
     onStats: (stats: SessionStats) => void;
     onAlert: (event: ChatEvent) => void;
+    onError?: (message: string) => void;
 }
 
 interface StreamEntry {
@@ -92,6 +94,10 @@ export class StreamManager {
         return [...this.#streams.values()].map((s) => s.status);
     }
 
+    stats(streamId: string): SessionStats | undefined {
+        return this.#streams.get(streamId)?.stats;
+    }
+
     async connect(streamId: string, username: string, waitUntilLive: boolean): Promise<void> {
         const handle = username.trim().replace(/^@/, "");
         if (handle === "") throw new Error("A TikTok username is required");
@@ -112,6 +118,7 @@ export class StreamManager {
             { streamId, username: handle, session: this.#session, waitUntilLive },
             {
                 onEvent: (event) => this.ingest(event),
+                onError: (message) => this.#sinks.onError?.(message),
                 onStatus: (patch) => {
                     const current = this.#streams.get(streamId);
                     if (!current) return;
@@ -135,7 +142,7 @@ export class StreamManager {
         if (!entry) return;
         this.#streams.delete(streamId);
         await entry.source.stop();
-        this.#sinks.onStatus({ ...entry.status, state: "offline" });
+        this.#sinks.onStatus({ ...entry.status, state: "offline" }, entry.stats);
         log.info(`disconnected ${streamId}`);
     }
 

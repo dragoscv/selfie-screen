@@ -1,4 +1,5 @@
-import { mkdir } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { createServer, type Server as HttpServer } from "node:http";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -7,18 +8,28 @@ import {
     defaultSettings,
     parseClientMessage,
     type ChatEvent,
+    type ClientMessage,
+    type ControlAction,
     type ServerMessage,
     type Settings,
 } from "@tiksee/core";
 import { WebSocketServer, type WebSocket } from "ws";
 
+import { CodaiClient } from "./codai/client.js";
+import { CoHost } from "./cohost/engine.js";
+import { EffectsController } from "./effects/controller.js";
+import { VmuiClient } from "./effects/vmui.js";
 import { describeError } from "./ingest/connector.js";
 import { ReplayStore } from "./ingest/replay.js";
 import type { TikTokSession } from "./ingest/types.js";
+import { LiveControl } from "./live-control.js";
 import { logger } from "./logger.js";
+import { ViewerMemory } from "./memory/db.js";
 import { ObsController } from "./obs.js";
 import { OverlayServer } from "./overlay/server.js";
 import { PanelService } from "./panel/service.js";
+import { appDataDir } from "./paths.js";
+import { SecretStore } from "./secrets.js";
 import { StreamManager } from "./streams.js";
 
 const VERSION = "0.1.0";
@@ -26,6 +37,24 @@ const log = logger.scoped("[sidecar]");
 
 const dataDir = join(homedir(), ".tiksee");
 const replayDir = join(dataDir, "replays");
+/** Shared with the Tauri shell: `%APPDATA%\ro.codai.tiksee`. */
+const appDir = appDataDir();
+
+type LiveClientMessage = Extract<
+    ClientMessage,
+    {
+        type:
+            | "control"
+            | "replyApprove"
+            | "replySkip"
+            | "speak"
+            | "transcript"
+            | "sayState"
+            | "speechTimeline"
+            | "codaiToken"
+            | "effectTest";
+    }
+>;
 
 /**
  * The sidecar process.
@@ -46,11 +75,63 @@ class Sidecar {
     #streams: StreamManager;
     #panel: PanelService;
     #overlay: OverlayServer;
-    #obs = new ObsController();
+    #obs: ObsController;
     #replays = new ReplayStore(replayDir);
+
+    #secrets = new SecretStore();
+    #codai: CodaiClient;
+    #control: LiveControl;
+    #memory: ViewerMemory | null = null;
+    #cohost: CoHost;
+    #effects: EffectsController;
+    /** Per-launch Stream Deck token; written to `trigger-token.txt`. */
+    #triggerToken = randomBytes(24).toString("base64url");
 
     constructor() {
         this.#overlay = new OverlayServer(this.#settings);
+        this.#obs = new ObsController((connected, error) => {
+            this.#broadcast({ type: "obsStatus", connected, ...(error ? { error } : {}) });
+            if (error) this.#broadcast({ type: "error", message: error, fatal: false });
+        });
+
+        this.#codai = new CodaiClient({
+            baseUrl: () => this.#settings.codai.baseUrl,
+            apiKey: () => this.#secrets.get("codai-api-key"),
+            onUnauthorized: () => this.#secrets.invalidate("codai-api-key"),
+        });
+        const vmui = new VmuiClient({
+            baseUrl: () => this.#settings.effects.vmuiUrl,
+            apiKey: () => this.#secrets.get("vmui-api-key"),
+        });
+
+        this.#control = new LiveControl((state) => {
+            this.#broadcast({ type: "liveControl", state });
+            this.#overlay.pushPets(state.petsHidden);
+        });
+
+        try {
+            this.#memory = ViewerMemory.open(appDir);
+        } catch (error) {
+            // Memory is an enhancement: the live feed must work without it.
+            log.warn(`viewer memory unavailable: ${describeError(error)}`);
+        }
+
+        this.#cohost = new CoHost({
+            settings: () => this.#settings,
+            send: (message) => this.#broadcast(message),
+            control: this.#control,
+            codai: this.#codai,
+            memory: this.#memory,
+            log: logger.scoped("[cohost]"),
+        });
+
+        this.#effects = new EffectsController({
+            settings: () => this.#settings,
+            effectsOff: () => this.#control.state.effectsOff,
+            backend: vmui,
+            emit: (effect) => this.#broadcast({ type: "effect", effect }),
+            log: logger.scoped("[effects]"),
+        });
 
         this.#panel = new PanelService(this.#settings, {
             onStatus: (status) => this.#broadcast({ type: "panelStatus", status }),
@@ -59,12 +140,18 @@ class Sidecar {
 
         this.#streams = new StreamManager(this.#settings, {
             onEvents: (events) => this.#broadcast({ type: "events", events }),
-            onStatus: (status) => {
+            onStatus: (status, stats) => {
                 this.#panel.setState(status.state);
                 this.#broadcast({ type: "status", status });
+                this.#cohost.onStatus(status.streamId, status.username, status.state, stats ?? this.#streams.stats(status.streamId));
+                this.#autoRecord(status.username, status.state);
+                if (status.state === "error" && status.error) {
+                    this.#broadcast({ type: "error", message: status.error, fatal: false });
+                }
             },
             onStats: (stats) => this.#broadcast({ type: "stats", stats }),
             onAlert: (event) => this.#obs.handleAlert(event),
+            onError: (message) => this.#broadcast({ type: "error", message, fatal: false }),
         });
 
         // Fan every moderated event out to the surfaces that consume it.
@@ -73,6 +160,8 @@ class Sidecar {
             this.#overlay.push(event);
             this.#replays.capture(event);
             this.#obs.handleEvent(event);
+            this.#effects.onEvent(event);
+            this.#cohost.onEvent(event);
         });
 
         logger.addSink((level, message, at) => this.#broadcast({ type: "log", level, message, at }));
@@ -80,8 +169,11 @@ class Sidecar {
 
     async start(port: number): Promise<number> {
         await mkdir(replayDir, { recursive: true });
+        this.#applyRetention();
+        this.#cohost.start();
+        await this.#configureTrigger();
 
-        if (this.#settings.obs.browserSourceEnabled) {
+        if (OverlayServer.wanted(this.#settings)) {
             await this.#overlay.start().catch((e) => log.warn("overlay start failed", e));
         }
 
@@ -126,12 +218,21 @@ class Sidecar {
             hasSession: this.#session !== null,
         });
         for (const status of this.#streams.statuses()) this.#send(socket, { type: "status", status });
+        this.#send(socket, { type: "liveControl", state: this.#control.state });
+        this.#send(socket, { type: "replyQueue", items: this.#cohost.snapshot() });
+        this.#send(socket, { type: "obsStatus", connected: this.#obs.connected });
 
         socket.on("message", (raw) => {
             void this.#handle(socket, String(raw));
         });
-        socket.on("close", () => this.#clients.delete(socket));
-        socket.on("error", () => this.#clients.delete(socket));
+        const detach = (): void => {
+            this.#clients.delete(socket);
+            // The renderer owns the speaker; with none attached nobody will
+            // ever answer `sayState`, so release the speaking slot.
+            if (this.#clients.size === 0) this.#cohost.rendererDetached();
+        };
+        socket.on("close", detach);
+        socket.on("error", detach);
     }
 
     async #handle(socket: WebSocket, raw: string): Promise<void> {
@@ -148,6 +249,7 @@ class Sidecar {
                     break;
 
                 case "connect":
+                    if (message.driver === "sniffer") log.warn("the sniffer driver is not available yet; using tiktok-live-connector");
                     await this.#streams.connect(message.streamId, message.username, message.waitUntilLive);
                     break;
 
@@ -239,6 +341,10 @@ class Sidecar {
                 case "simulate":
                     this.#streams.ingest(message.event);
                     break;
+
+                default:
+                    await this.#handleLive(socket, message);
+                    break;
             }
         } catch (error) {
             const description = describeError(error);
@@ -247,13 +353,121 @@ class Sidecar {
         }
     }
 
+    async #handleLive(socket: WebSocket, message: LiveClientMessage): Promise<void> {
+        switch (message.type) {
+            case "control":
+                this.#applyControl(message.action);
+                break;
+            case "replyApprove":
+                if (!this.#cohost.approve(message.id, message.text)) {
+                    this.#send(socket, { type: "error", message: "Răspunsul nu mai este în coadă", fatal: false });
+                }
+                break;
+            case "replySkip":
+                this.#cohost.skip(message.id);
+                break;
+            case "speak":
+                this.#cohost.speak(message.text);
+                break;
+            case "transcript":
+                this.#cohost.onTranscript(message.itemId, message.text, message.final, message.at);
+                break;
+            case "sayState":
+                this.#cohost.onSayState(message.id, message.state, message.error);
+                break;
+            case "speechTimeline":
+                this.#overlay.pushSpeech({ id: message.id, visemes: message.visemes, words: message.words });
+                break;
+            case "codaiToken": {
+                const baseUrl = this.#codai.baseUrl;
+                const minted = await this.#codai.mintLiveToken();
+                // The token is a credential: it goes to the requesting socket only, never to logs.
+                if (minted.ok) {
+                    this.#send(socket, { type: "codaiToken", token: minted.value.token, baseUrl, expiresAt: minted.value.expiresAt });
+                } else {
+                    log.warn(`codai token mint failed (${minted.error.kind})`);
+                    this.#send(socket, { type: "codaiToken", baseUrl, error: minted.error.message });
+                }
+                break;
+            }
+            case "effectTest":
+                await this.#effects.test(message.kind, message.value);
+                break;
+        }
+    }
+
+    #applyControl(action: ControlAction): void {
+        for (const effect of this.#control.apply(action)) {
+            if (effect === "skipCurrent") this.#cohost.skipCurrent();
+            else if (effect === "silence") this.#cohost.silence();
+            else if (effect === "highlight") {
+                const note = this.#cohost.highlight();
+                log.info(`highlight marked (${note.length} chars)`);
+            }
+        }
+        this.#cohost.controlChanged();
+    }
+
     #applySettings(settings: Settings): void {
+        const previous = this.#settings;
         this.#settings = settings;
         logger.setLevel(settings.behaviour.crashReporting ? "debug" : "info");
+        if (settings.connection.driver === "sniffer" && previous.connection.driver !== "sniffer") {
+            log.warn("the sniffer driver is not available yet; using tiktok-live-connector");
+        }
         this.#streams.setSettings(settings);
         this.#panel.setSettings(settings);
         this.#overlay.setSettings(settings);
         this.#obs.setSettings(settings);
+        this.#effects.setSettings(settings);
+        this.#cohost.setSettings(settings);
+        if (settings.data.retentionDays !== previous.data.retentionDays) this.#applyRetention();
+        if (settings.behaviour.triggerServerEnabled !== previous.behaviour.triggerServerEnabled) {
+            void this.#configureTrigger();
+        }
+    }
+
+    /** `data.recordSessions`: record every live session as a replay file. */
+    #autoRecord(username: string, state: string): void {
+        if (!this.#settings.data.recordSessions) return;
+        if (state === "live" && !this.#replays.isRecording) {
+            const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+            this.#replays.startRecording(`${username}-${stamp}`);
+            this.#emitReplayStatus();
+        } else if ((state === "offline" || state === "ended") && this.#replays.isRecording && this.#streams.statuses().every((s) => s.state !== "live")) {
+            void this.#replays.stopRecording().then(() => this.#emitReplayStatus());
+        }
+    }
+
+    #applyRetention(): void {
+        if (!this.#memory) return;
+        try {
+            const pruned = this.#memory.prune(this.#settings.data.retentionDays);
+            if (pruned > 0) log.info(`retention pruned ${pruned} events`);
+        } catch (error) {
+            log.warn(`retention prune failed: ${describeError(error)}`);
+        }
+    }
+
+    /**
+     * Stream Deck trigger server (WS22-03). Routes live on the overlay HTTP
+     * server (127.0.0.1 only): `POST /control/<action>` with header
+     * `x-tiksee-token: <contents of %APPDATA%\ro.codai.tiksee\trigger-token.txt>`
+     * → 204. The token is regenerated on every launch.
+     */
+    async #configureTrigger(): Promise<void> {
+        if (!this.#settings.behaviour.triggerServerEnabled) {
+            this.#overlay.setTrigger(null);
+            return;
+        }
+        try {
+            await mkdir(appDir, { recursive: true });
+            await writeFile(join(appDir, "trigger-token.txt"), this.#triggerToken, { encoding: "utf8", mode: 0o600 });
+        } catch (error) {
+            log.warn(`cannot write trigger token: ${describeError(error)}`);
+        }
+        this.#overlay.setTrigger({ token: this.#triggerToken, handler: (action) => this.#applyControl(action) });
+        log.info("trigger server enabled on the overlay port (POST /control/<action>)");
     }
 
     #emitReplayStatus(): void {
@@ -310,6 +524,9 @@ class Sidecar {
             this.#overlay.stop(),
             this.#obs.disconnect(),
         ]);
+        // After streams: their final "offline" statuses close memory sessions.
+        await this.#cohost.dispose().catch(() => undefined);
+        this.#memory?.close();
     }
 }
 

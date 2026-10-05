@@ -271,7 +271,9 @@ export class ConnectorSource implements ChatSource {
         });
 
         conn.on(ControlEvent.ERROR, (error) => {
-            log.warn("control error", describeError(error));
+            const message = describeError(error);
+            log.warn("control error", message);
+            handlers.onError?.(`TikTok: ${message}`);
         });
 
         conn.on(ControlEvent.DISCONNECTED, () => {

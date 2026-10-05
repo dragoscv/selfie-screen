@@ -1,6 +1,8 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingHttpHeaders, type Server, type ServerResponse } from "node:http";
 
-import type { ChatEvent, Settings } from "@tiksee/core";
+import { timingSafeEqual } from "node:crypto";
+
+import { CONTROL_ACTIONS, type ChatEvent, type ControlAction, type Settings } from "@tiksee/core";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { logger } from "../logger.js";
@@ -23,6 +25,7 @@ export class OverlayServer {
     /** Replayed to a newly attached source so OBS is never blank on scene load. */
     #recent: ChatEvent[] = [];
     #port = 0;
+    #trigger: { token: string; handler: (action: ControlAction) => void } | null = null;
 
     constructor(settings: Settings) {
         this.#settings = settings;
@@ -32,13 +35,19 @@ export class OverlayServer {
         return this.#port;
     }
 
+    /** The HTTP server also hosts the Stream Deck trigger routes. */
+    static wanted(settings: Settings): boolean {
+        return settings.obs.browserSourceEnabled || settings.behaviour.triggerServerEnabled;
+    }
+
     setSettings(settings: Settings): void {
-        const wasEnabled = this.#settings.obs.browserSourceEnabled;
+        const wasEnabled = OverlayServer.wanted(this.#settings);
         const oldPort = this.#settings.obs.port;
         this.#settings = settings;
+        const enabled = OverlayServer.wanted(settings);
 
-        if (settings.obs.browserSourceEnabled && !wasEnabled) void this.start();
-        else if (!settings.obs.browserSourceEnabled && wasEnabled) void this.stop();
+        if (enabled && !wasEnabled) void this.start().catch((e: unknown) => log.warn("overlay start failed", e));
+        else if (!enabled && wasEnabled) void this.stop();
         else if (settings.obs.port !== oldPort && this.#http) {
             void this.stop().then(() => this.start());
         } else {
@@ -52,7 +61,11 @@ export class OverlayServer {
 
         const http = createServer((req, res) => {
             const url = new URL(req.url ?? "/", "http://127.0.0.1");
-            if (url.pathname === "/overlay" || url.pathname === "/") {
+            if (url.pathname.startsWith("/control/")) {
+                this.#handleTrigger(req.method ?? "GET", url.pathname.slice("/control/".length), req.headers, res);
+                return;
+            }
+            if ((url.pathname === "/overlay" || url.pathname === "/") && this.#settings.obs.browserSourceEnabled) {
                 res.writeHead(200, {
                     "content-type": "text/html; charset=utf-8",
                     "cache-control": "no-store",
@@ -117,6 +130,54 @@ export class OverlayServer {
     clear(): void {
         this.#recent = [];
         this.#broadcast({ type: "clear" });
+    }
+
+    /** Viseme/word timeline of the utterance now playing, for pet lip-sync. */
+    pushSpeech(speech: { id: string; visemes: unknown[]; words: unknown[] }): void {
+        this.#broadcast({ type: "speech", ...speech });
+    }
+
+    /** Live Control "hide pets" for overlay surfaces. */
+    pushPets(hidden: boolean): void {
+        this.#broadcast({ type: "pets", hidden });
+    }
+
+    /**
+     * Stream Deck / MIDI triggers (WS22-03). When enabled, the overlay server
+     * answers `POST /control/<action>` (any CONTROL_ACTIONS value) with 204,
+     * provided header `x-tiksee-token` matches the per-launch token. 127.0.0.1
+     * only; 401 on a bad token, 404 when disabled or unknown action, 405 for
+     * non-POST.
+     */
+    setTrigger(trigger: { token: string; handler: (action: ControlAction) => void } | null): void {
+        this.#trigger = trigger;
+    }
+
+    #handleTrigger(
+        method: string,
+        action: string,
+        headers: IncomingHttpHeaders,
+        res: ServerResponse,
+    ): void {
+        const trigger = this.#trigger;
+        const known = (CONTROL_ACTIONS as readonly string[]).includes(action);
+        if (!trigger || !known) {
+            res.writeHead(404, { "content-type": "text/plain" }).end("Not found");
+            return;
+        }
+        if (method !== "POST") {
+            res.writeHead(405, { allow: "POST" }).end();
+            return;
+        }
+        const header = headers["x-tiksee-token"];
+        const given = Buffer.from(typeof header === "string" ? header : "");
+        const expected = Buffer.from(trigger.token);
+        if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+            res.writeHead(401).end();
+            return;
+        }
+        trigger.handler(action as ControlAction);
+        res.writeHead(204).end();
     }
 
     #config() {

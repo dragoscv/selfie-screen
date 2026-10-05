@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { chatEventSchema, connectionStatusSchema, sessionStatsSchema } from "./events.js";
+import { liveClientMessages, liveServerMessages } from "./live.js";
 import { settingsSchema } from "./settings.js";
 
 /**
@@ -66,6 +67,8 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
 
     /** Inject a synthetic event, used by tests and the giveaway demo mode. */
     z.object({ type: z.literal("simulate"), event: chatEventSchema }),
+
+    ...liveClientMessages,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -137,6 +140,8 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
         at: z.number().int(),
     }),
     z.object({ type: z.literal("error"), message: z.string(), fatal: z.boolean().default(false) }),
+
+    ...liveServerMessages,
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 

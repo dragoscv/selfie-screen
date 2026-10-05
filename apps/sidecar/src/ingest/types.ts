@@ -10,6 +10,8 @@ export interface TikTokSession {
 export interface ChatSourceHandlers {
     onEvent: (event: ChatEvent) => void;
     onStatus: (status: Partial<ConnectionStatus> & { state: ConnectionStatus["state"] }) => void;
+    /** Non-fatal driver error worth showing to the user (WS15-10). */
+    onError?: (message: string) => void;
 }
 
 export interface ChatSourceStartOptions {
