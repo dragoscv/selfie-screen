@@ -1,8 +1,9 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { eventDiamonds, type ChatEvent, type ViewerCard } from "@tiksee/core";
+import { eventDiamonds, type ChatEvent, type SessionInfo, type ViewerCard } from "@tiksee/core";
 
+import type { StoredEvent } from "../summary/summary.js";
 import { loadSqlite, type Db } from "./sqlite.js";
 
 /**
@@ -86,6 +87,12 @@ export interface Observation {
 export interface HighlightRow {
     at: number;
     note: string;
+}
+
+export interface SessionRecord {
+    info: SessionInfo;
+    /** Final stats JSON written by `endSession`, parsed; null while running. */
+    stats: unknown;
 }
 
 type Row = Record<string, unknown>;
@@ -258,6 +265,52 @@ export class ViewerMemory {
         return rows.map((row) => ({ at: num(row.at), note: str(row.note) }));
     }
 
+    highlightsBetween(from: number, to: number): HighlightRow[] {
+        const rows = this.#db.prepare("SELECT at, note FROM highlights WHERE at >= ? AND at <= ? ORDER BY at").all(from, to) as Row[];
+        return rows.map((row) => ({ at: num(row.at), note: str(row.note) }));
+    }
+
+    /** Most recent sessions first (post-live summary picker). */
+    sessions(limit = 30): SessionInfo[] {
+        const rows = this.#db
+            .prepare("SELECT id, username, started_at, ended_at FROM sessions ORDER BY started_at DESC, id DESC LIMIT ?")
+            .all(limit) as Row[];
+        return rows.map(toSessionInfo);
+    }
+
+    session(id: number): SessionRecord | null {
+        const row = this.#db.prepare("SELECT id, username, started_at, ended_at, stats_json FROM sessions WHERE id = ?").get(id) as Row | undefined;
+        if (!row) return null;
+        let stats: unknown = null;
+        if (typeof row.stats_json === "string") {
+            try {
+                stats = JSON.parse(row.stats_json);
+            } catch {
+                stats = null;
+            }
+        }
+        return { info: toSessionInfo(row), stats };
+    }
+
+    /** Every stored event of a session, oldest first, with the viewer's current nickname. */
+    sessionEvents(id: number): StoredEvent[] {
+        const rows = this.#db
+            .prepare(
+                `SELECT e.kind, e.unique_id, COALESCE(p.nickname, e.unique_id) AS nickname, e.text, e.at, e.diamonds
+                 FROM events e LEFT JOIN people p ON p.unique_id = e.unique_id
+                 WHERE e.session_id = ? ORDER BY e.at, e.id`,
+            )
+            .all(id) as Row[];
+        return rows.map((row) => ({
+            kind: str(row.kind),
+            uniqueId: str(row.unique_id),
+            nickname: str(row.nickname),
+            text: str(row.text),
+            at: num(row.at),
+            diamonds: num(row.diamonds),
+        }));
+    }
+
     /** Delete sessions, events and highlights older than `days` (0 keeps forever). */
     prune(days: number, now = Date.now()): number {
         if (days <= 0) return 0;
@@ -275,4 +328,14 @@ export class ViewerMemory {
     close(): void {
         if (this.#db.isOpen) this.#db.close();
     }
+}
+
+function toSessionInfo(row: Row): SessionInfo {
+    const ended = row.ended_at;
+    return {
+        id: num(row.id),
+        username: str(row.username),
+        startedAt: num(row.started_at),
+        ...(ended !== null && ended !== undefined ? { endedAt: num(ended) } : {}),
+    };
 }

@@ -330,6 +330,54 @@ export const connectionSchema = z.object({
 export type ConnectionSettings = z.infer<typeof connectionSchema>;
 
 /* ------------------------------------------------------------------ *
+ * Stream goals (WS20-08).
+ * ------------------------------------------------------------------ */
+
+export const goalSchema = z.object({
+    enabled: z.boolean().default(true),
+    /** Empty uses the default caption. */
+    label: z.string().max(60).default(""),
+    target: z.number().int().min(1).max(100_000_000),
+});
+export type GoalSettings = z.infer<typeof goalSchema>;
+
+export const goalsSchema = z.object({
+    enabled: z.boolean().default(false),
+    /** Show the bars in the OBS browser source. */
+    showInOverlay: z.boolean().default(true),
+    gifts: goalSchema.prefault({ target: 1000 }),
+    likes: goalSchema.prefault({ target: 10_000 }),
+});
+export type GoalsSettings = z.infer<typeof goalsSchema>;
+
+/* ------------------------------------------------------------------ *
+ * Chat games (WS20-13).
+ * ------------------------------------------------------------------ */
+
+export const gamesSchema = z.object({
+    /** Show the running game in the OBS browser source. */
+    showInOverlay: z.boolean().default(true),
+    /** One vote per viewer; a later vote replaces the earlier one. */
+    allowVoteChange: z.boolean().default(false),
+    /** Wheel entrants must also be followers. */
+    wheelFollowersOnly: z.boolean().default(false),
+    /** Announce winners through the co-host voice. */
+    announceWinners: z.boolean().default(true),
+});
+export type GamesSettings = z.infer<typeof gamesSchema>;
+
+/* ------------------------------------------------------------------ *
+ * Live translation (WS20-14).
+ * ------------------------------------------------------------------ */
+
+export const translationSchema = z.object({
+    enabled: z.boolean().default(false),
+    /** Messages shorter than this (in letters) are never translated. */
+    minLetters: z.number().int().min(2).max(40).default(6),
+});
+export type TranslationSettings = z.infer<typeof translationSchema>;
+
+/* ------------------------------------------------------------------ *
  * Root.
  * ------------------------------------------------------------------ */
 
@@ -350,6 +398,9 @@ export const settingsSchema = z.object({
     codai: codaiSchema.prefault({}),
     audio: audioSchema.prefault({}),
     effects: effectsSchema.prefault({}),
+    goals: goalsSchema.prefault({}),
+    games: gamesSchema.prefault({}),
+    translation: translationSchema.prefault({}),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 

@@ -6,7 +6,7 @@ import { ArrowDown, MessageSquare, WifiOff } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useAppStore } from "../store/app-store.js";
+import { useAppStore, type Translation } from "../store/app-store.js";
 
 export interface ChatFeedProps {
     events: ChatEvent[];
@@ -44,6 +44,7 @@ export function ChatFeed({
     const { t, i18n } = useTranslation();
     const display = useAppStore((s) => s.settings.display);
     const speakingId = useAppStore((s) => s.speakingEventId);
+    const translations = useAppStore((s) => s.translations);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const [stuck, setStuck] = useState(true);
@@ -180,6 +181,7 @@ export function ChatFeed({
                                     highlight={search}
                                     onSelectUser={onSelectUser}
                                 />
+                                {translations[event.id] && <TranslationLine translation={translations[event.id]} />}
                             </div>
                         );
                     })}
@@ -230,5 +232,20 @@ export function ChatFeed({
                 )}
             </AnimatePresence>
         </div>
+    );
+}
+
+/** Inline Romanian translation of a foreign chat line (WS20-14). */
+function TranslationLine({ translation }: { translation: Translation | undefined }) {
+    const { t } = useTranslation();
+    if (!translation) return null;
+    return (
+        <p className="ml-11 mt-0.5 flex items-baseline gap-1.5 text-xs italic leading-snug text-fg-muted" lang="ro">
+            <span className="shrink-0 rounded bg-panel-alt px-1 py-px text-[0.5625rem] font-bold uppercase not-italic tracking-wide text-fg-subtle">
+                <span className="sr-only">{t("translation.label", { lang: translation.lang })}</span>
+                <span aria-hidden>{translation.lang}→ro</span>
+            </span>
+            <span className="min-w-0">{translation.text}</span>
+        </p>
     );
 }

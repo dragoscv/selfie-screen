@@ -2,7 +2,7 @@ import { createServer, type IncomingHttpHeaders, type Server, type ServerRespons
 
 import { timingSafeEqual } from "node:crypto";
 
-import { CONTROL_ACTIONS, type ChatEvent, type ControlAction, type Settings } from "@tiksee/core";
+import { CONTROL_ACTIONS, type ChatEvent, type ControlAction, type GameState, type GoalsState, type Settings } from "@tiksee/core";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { logger } from "../logger.js";
@@ -26,6 +26,9 @@ export class OverlayServer {
     #recent: ChatEvent[] = [];
     #port = 0;
     #trigger: { token: string; handler: (action: ControlAction) => void } | null = null;
+    /** Last widget states, replayed on attach so a scene switch never blanks them. */
+    #goals: GoalsState | null = null;
+    #game: GameState | null = null;
 
     constructor(settings: Settings) {
         this.#settings = settings;
@@ -88,6 +91,8 @@ export class OverlayServer {
             log.info(`browser source attached (${this.#clients.size} total)`);
             send(socket, { type: "config", config: this.#config() });
             if (this.#recent.length > 0) send(socket, { type: "events", events: this.#recent });
+            if (this.#goals) send(socket, { type: "goals", state: this.#goals });
+            if (this.#game) send(socket, { type: "game", state: this.#game });
             socket.on("close", () => this.#clients.delete(socket));
             socket.on("error", () => this.#clients.delete(socket));
         });
@@ -140,6 +145,19 @@ export class OverlayServer {
     /** Live Control "hide pets" for overlay surfaces. */
     pushPets(hidden: boolean): void {
         this.#broadcast({ type: "pets", hidden });
+    }
+
+    /** Goal bars (WS20-08); `state.overlay` false hides them. */
+    pushGoals(state: GoalsState): void {
+        this.#goals = state;
+        this.#broadcast({ type: "goals", state });
+    }
+
+    /** Chat game widget (WS20-13); hidden when games are not shown in the overlay. */
+    pushGame(state: GameState): void {
+        const visible: GameState = this.#settings.games.showInOverlay ? state : { kind: "none" };
+        this.#game = visible;
+        this.#broadcast({ type: "game", state: visible });
     }
 
     /**

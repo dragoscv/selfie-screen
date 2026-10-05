@@ -5,6 +5,7 @@ import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panel
 import {
     Coins,
     Eye,
+    FileText,
     Gift,
     Heart,
     MessageSquare,
@@ -21,6 +22,8 @@ import { useTranslation } from "react-i18next";
 import { ChatFeed } from "../components/chat-feed.js";
 import { ErrorBoundary } from "../components/error-boundary.js";
 import { EffectsLog } from "../components/live/effects-log.js";
+import { GamesCard } from "../components/live/games-card.js";
+import { GoalsCard } from "../components/live/goals-card.js";
 import { ReplyQueue } from "../components/live/reply-queue.js";
 import { Suggestions } from "../components/live/suggestions.js";
 import { TranscriptStrip } from "../components/live/transcript-strip.js";
@@ -51,6 +54,7 @@ export function LiveRoute() {
     const clearEvents = useAppStore((s) => s.clearEvents);
     const trackEarnings = useAppStore((s) => s.settings.data.trackEarnings);
     const diamondRate = useAppStore((s) => s.settings.data.diamondRateUsd);
+    const openSummary = useAppStore((s) => s.openSummary);
     // Survives restarts: the panel split is a per-machine preference, so
     // localStorage (not the synced settings file) is the right home for it.
     const layout = useDefaultLayout({ id: "tiksee-live-v2", panelIds: ["feed", "replies", "side"] });
@@ -129,6 +133,15 @@ export function LiveRoute() {
                     <Button
                         size="icon-sm"
                         variant="ghost"
+                        title={t("summary.open")}
+                        aria-label={t("summary.open")}
+                        onClick={() => openSummary()}
+                    >
+                        <FileText />
+                    </Button>
+                    <Button
+                        size="icon-sm"
+                        variant="ghost"
                         title={t("feed.clear")}
                         aria-label={t("feed.clear")}
                         onClick={() => clearEvents(MAIN_STREAM)}
@@ -188,6 +201,10 @@ export function LiveRoute() {
             <Panel id="side" defaultSize="26%" minSize="18%" className="min-h-0">
                 <div className="@container h-full overflow-y-auto px-4 py-3">
                     <div className="flex flex-col gap-3">
+                        <ErrorBoundary area="goals">
+                            <GoalsCard />
+                        </ErrorBoundary>
+
                         <Card title={t("analytics.title")} icon={<Eye />} flush>
                             <div className="grid grid-cols-2 gap-2 @sm:grid-cols-3">
                                 <InlineStat
@@ -271,6 +288,9 @@ export function LiveRoute() {
 
                         <ErrorBoundary area="suggestions">
                             <Suggestions />
+                        </ErrorBoundary>
+                        <ErrorBoundary area="games">
+                            <GamesCard />
                         </ErrorBoundary>
                         <ErrorBoundary area="effects">
                             <EffectsLog />

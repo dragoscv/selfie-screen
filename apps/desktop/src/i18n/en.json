@@ -101,7 +101,8 @@
             "data": "Data",
             "audio": "Audio devices",
             "codai": "codai",
-            "effects": "Effects"
+            "effects": "Effects",
+            "interactive": "Goals & games"
         },
         "appearance": {
             "theme": "Theme",
@@ -421,6 +422,35 @@
                 "blackout_flash": "Blackout flash",
                 "default": "Default"
             }
+        },
+        "goals": {
+            "title": "Stream goals",
+            "hint": "Gift and like targets with animated bars in the app and the OBS source",
+            "enabled": "Show goals",
+            "showInOverlay": "Show in OBS browser source",
+            "showInOverlayHint": "Bars appear at the top of the overlay",
+            "gifts": "Gift goal (diamonds)",
+            "likes": "Like goal",
+            "label": "Caption",
+            "giftsTarget": "Target diamonds",
+            "likesTarget": "Target likes"
+        },
+        "games": {
+            "title": "Chat games",
+            "hint": "Polls, quizzes and the giveaway wheel, played in chat",
+            "showInOverlay": "Show games in OBS browser source",
+            "allowVoteChange": "Let viewers change their vote",
+            "allowVoteChangeHint": "Otherwise the first vote counts",
+            "wheelFollowersOnly": "Giveaway wheel: followers only",
+            "announceWinners": "Announce winners aloud",
+            "announceWinnersHint": "The co-host voice reads results and winners"
+        },
+        "translation": {
+            "title": "Live translation",
+            "hint": "Foreign chat messages get an inline Romanian translation",
+            "enabled": "Translate foreign messages",
+            "enabledHint": "Detected locally; only non-Romanian lines are sent to codai",
+            "minLetters": "Minimum letters to translate"
         }
     },
     "people": {
@@ -614,5 +644,82 @@
         "gift": "Gift from {{name}}",
         "follow": "{{name}} followed you",
         "keyword": "Keyword from {{name}}"
+    },
+    "goals": {
+        "title": "Goals",
+        "gifts": "Gift goal",
+        "likes": "Like goal",
+        "reached": "Reached",
+        "progress": "{{current}} / {{target}}",
+        "reset": "Reset goals",
+        "off": "Turn on goals in Settings → Goals & games."
+    },
+    "games": {
+        "title": "Chat games",
+        "kind": "Game",
+        "kinds": {
+            "poll": "Poll",
+            "quiz": "Quiz",
+            "wheel": "Giveaway wheel"
+        },
+        "keyword": "Entry keyword",
+        "keywordPlaceholder": "giveaway",
+        "keywordHint": "Viewers who type this word join the wheel",
+        "question": "Question",
+        "pollPlaceholder": "Which game next?",
+        "quizPlaceholder": "What is the capital of France?",
+        "options": "Options",
+        "optionsHint": "2 to 6, one per line. Viewers vote by typing the number.",
+        "answers": "Accepted answers",
+        "answersHint": "One per line. Case and diacritics are ignored.",
+        "start": "Start",
+        "votes_one": "{{formatted}} vote",
+        "votes_other": "{{formatted}} votes",
+        "voters_one": "{{formatted}} voter",
+        "voters_other": "{{formatted}} voters",
+        "pollHowTo": "Viewers type the option number",
+        "closed": "Closed",
+        "quizWinner": "{{name}} won with “{{answer}}”",
+        "quizHowTo": "First correct answer wins",
+        "quizNobody": "Nobody got it. Answer: {{answer}}",
+        "attempts_one": "{{formatted}} attempt",
+        "attempts_other": "{{formatted}} attempts",
+        "wheelLabel_one": "Giveaway wheel with {{count}} entrant",
+        "wheelLabel_other": "Giveaway wheel with {{count}} entrants",
+        "wheelWinner": "Winner: {{name}}",
+        "spinning": "Spinning…",
+        "wheelHowTo_one": "Type “{{keyword}}” to enter · {{formatted}} entrant",
+        "wheelHowTo_other": "Type “{{keyword}}” to enter · {{formatted}} entrants",
+        "spin": "Spin",
+        "close": "Close voting",
+        "newGame": "New game"
+    },
+    "summary": {
+        "open": "Session summary",
+        "title": "Live summary",
+        "session": "Session",
+        "moments": "Top moments",
+        "noMoments": "No gifts, highlights or spikes in this session.",
+        "kinds": {
+            "gift": "Gift",
+            "highlight": "Highlight",
+            "spike": "Chat spike"
+        },
+        "spike_one": "Chat spike: {{count}} message in a minute",
+        "spike_other": "Chat spike: {{count}} messages in a minute",
+        "gift": "{{name}} — {{diamonds}} 💎 ({{detail}})",
+        "topViewers": "Top viewers",
+        "noViewers": "Nobody chatted or sent gifts.",
+        "viewer": "Viewer",
+        "export": "Export summary",
+        "exportCsv": "Export CSV",
+        "exportJson": "Export JSON",
+        "exported": "Summary exported",
+        "exportFailed": "Export failed: {{error}}",
+        "empty": "No summary yet",
+        "emptyHint": "Go live once with history turned on; the summary appears when the stream ends."
+    },
+    "translation": {
+        "label": "Translated from {{lang}}"
     }
 }

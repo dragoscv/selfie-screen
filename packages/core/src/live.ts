@@ -99,6 +99,158 @@ export type EffectFired = z.infer<typeof effectFiredSchema>;
 export const visemeSchema = z.object({ id: z.number().int(), offsetMs: z.number() });
 export const wordMarkSchema = z.object({ text: z.string(), offsetMs: z.number(), durationMs: z.number() });
 
+/* ------------------------------ goals (WS20-08) ------------------------------ */
+
+export const GOAL_KINDS = ["gifts", "likes"] as const;
+export type GoalKind = (typeof GOAL_KINDS)[number];
+
+export const goalProgressSchema = z.object({
+    kind: z.enum(GOAL_KINDS),
+    /** Streamer-chosen label; empty means "use the default caption". */
+    label: z.string(),
+    current: z.number().int().min(0),
+    target: z.number().int().min(1),
+    /** 0..1, clamped. */
+    ratio: z.number().min(0).max(1),
+    reached: z.boolean(),
+});
+export type GoalProgress = z.infer<typeof goalProgressSchema>;
+
+export const goalsStateSchema = z.object({
+    enabled: z.boolean(),
+    /** Show the bars in the OBS browser source. */
+    overlay: z.boolean(),
+    goals: z.array(goalProgressSchema),
+});
+export type GoalsState = z.infer<typeof goalsStateSchema>;
+
+/* ---------------------------- chat games (WS20-13) ---------------------------- */
+
+export const GAME_KINDS = ["poll", "quiz", "wheel"] as const;
+export type GameKind = (typeof GAME_KINDS)[number];
+
+export const gamePlayerSchema = z.object({ uniqueId: z.string(), nickname: z.string() });
+export type GamePlayer = z.infer<typeof gamePlayerSchema>;
+
+export const gameSpecSchema = z.discriminatedUnion("kind", [
+    z.object({
+        kind: z.literal("poll"),
+        question: z.string().trim().min(1).max(200),
+        options: z.array(z.string().trim().min(1).max(80)).min(2).max(6),
+    }),
+    z.object({
+        kind: z.literal("quiz"),
+        question: z.string().trim().min(1).max(200),
+        /** Accepted answers; matching ignores case, diacritics and punctuation. */
+        answers: z.array(z.string().trim().min(1).max(80)).min(1).max(10),
+    }),
+    z.object({
+        kind: z.literal("wheel"),
+        /** Viewers enter by typing this word in chat. */
+        keyword: z.string().trim().min(1).max(40),
+    }),
+]);
+export type GameSpec = z.infer<typeof gameSpecSchema>;
+
+export const GAME_ACTIONS = ["close", "spin", "clear"] as const;
+export type GameAction = (typeof GAME_ACTIONS)[number];
+
+export const gameStateSchema = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("none") }),
+    z.object({
+        kind: z.literal("poll"),
+        id: z.string(),
+        question: z.string(),
+        options: z.array(z.object({ label: z.string(), votes: z.number().int().min(0) })),
+        totalVotes: z.number().int().min(0),
+        open: z.boolean(),
+        startedAt: z.number().int(),
+    }),
+    z.object({
+        kind: z.literal("quiz"),
+        id: z.string(),
+        question: z.string(),
+        open: z.boolean(),
+        attempts: z.number().int().min(0),
+        winner: gamePlayerSchema.extend({ answer: z.string(), at: z.number().int() }).optional(),
+        /** Shown once the quiz is closed. */
+        answer: z.string().optional(),
+        startedAt: z.number().int(),
+    }),
+    z.object({
+        kind: z.literal("wheel"),
+        id: z.string(),
+        keyword: z.string(),
+        open: z.boolean(),
+        entrantCount: z.number().int().min(0),
+        /** Up to 24 names drawn on the wheel; always contains the winner once spun. */
+        segments: z.array(z.string()),
+        spinning: z.boolean(),
+        winnerIndex: z.number().int().min(0).optional(),
+        winner: gamePlayerSchema.optional(),
+        spinAt: z.number().int().optional(),
+        startedAt: z.number().int(),
+    }),
+]);
+export type GameState = z.infer<typeof gameStateSchema>;
+
+/* ------------------------- post-live summary (WS20-10) ------------------------- */
+
+export const sessionInfoSchema = z.object({
+    id: z.number().int(),
+    username: z.string(),
+    startedAt: z.number().int(),
+    endedAt: z.number().int().optional(),
+});
+export type SessionInfo = z.infer<typeof sessionInfoSchema>;
+
+export const MOMENT_KINDS = ["gift", "highlight", "spike"] as const;
+export type MomentKind = (typeof MOMENT_KINDS)[number];
+
+export const summaryMomentSchema = z.object({
+    at: z.number().int(),
+    kind: z.enum(MOMENT_KINDS),
+    /** Viewer nickname, highlight note or "N msgs/min". */
+    title: z.string(),
+    detail: z.string(),
+    /** Diamonds for gifts, messages per minute for spikes, 0 for highlights. */
+    value: z.number(),
+});
+export type SummaryMoment = z.infer<typeof summaryMomentSchema>;
+
+export const summaryViewerSchema = z.object({
+    uniqueId: z.string(),
+    nickname: z.string(),
+    messages: z.number().int(),
+    gifts: z.number().int(),
+    diamonds: z.number().int(),
+});
+export type SummaryViewer = z.infer<typeof summaryViewerSchema>;
+
+export const sessionSummarySchema = z.object({
+    session: sessionInfoSchema,
+    durationMs: z.number().int().min(0),
+    stats: z.object({
+        messages: z.number().int(),
+        gifts: z.number().int(),
+        diamonds: z.number().int(),
+        follows: z.number().int(),
+        shares: z.number().int(),
+        joins: z.number().int(),
+        likes: z.number().int(),
+        uniqueViewers: z.number().int(),
+        peakViewers: z.number().int(),
+    }),
+    moments: z.array(summaryMomentSchema),
+    topViewers: z.array(summaryViewerSchema),
+    /** Messages and diamonds per minute since the start. */
+    timeline: z.array(z.object({ minute: z.number().int(), messages: z.number().int(), diamonds: z.number().int() })),
+});
+export type SessionSummary = z.infer<typeof sessionSummarySchema>;
+
+export const EXPORT_FORMATS = ["csv", "json"] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
 /* ----------------------------- UI → sidecar ----------------------------- */
 
 export const liveClientMessages = [
@@ -131,6 +283,20 @@ export const liveClientMessages = [
     /** Ask for a short-lived codai token (scope `live`) for STT/TTS. */
     z.object({ type: z.literal("codaiToken") }),
     z.object({ type: z.literal("effectTest"), kind: z.enum(["flash", "scene"]), value: z.string() }),
+    /** Reset the goal counters to zero (new goal round). */
+    z.object({ type: z.literal("goalsReset") }),
+    z.object({ type: z.literal("gameStart"), game: gameSpecSchema }),
+    z.object({ type: z.literal("gameAction"), action: z.enum(GAME_ACTIONS) }),
+    z.object({ type: z.literal("summaryList") }),
+    /** Omit `sessionId` for the most recent session. */
+    z.object({ type: z.literal("summaryRequest"), sessionId: z.number().int().optional() }),
+    /** The sidecar writes the file; `path` comes from the native save dialog. */
+    z.object({
+        type: z.literal("summaryExport"),
+        sessionId: z.number().int(),
+        format: z.enum(EXPORT_FORMATS),
+        path: z.string().min(1).max(1024),
+    }),
 ] as const;
 
 /* ----------------------------- sidecar → UI ----------------------------- */
@@ -155,6 +321,24 @@ export const liveServerMessages = [
         token: z.string().optional(),
         baseUrl: z.string(),
         expiresAt: z.number().int().optional(),
+        error: z.string().optional(),
+    }),
+    z.object({ type: z.literal("goals"), state: goalsStateSchema }),
+    z.object({ type: z.literal("game"), state: gameStateSchema }),
+    /** Inline Romanian translation of a foreign chat message (WS20-14). */
+    z.object({ type: z.literal("translation"), eventId: z.string(), lang: z.string(), text: z.string() }),
+    z.object({ type: z.literal("summaries"), sessions: z.array(sessionInfoSchema) }),
+    z.object({
+        type: z.literal("summary"),
+        summary: sessionSummarySchema.optional(),
+        /** True when pushed because a live session just ended. */
+        auto: z.boolean().default(false),
+        error: z.string().optional(),
+    }),
+    z.object({
+        type: z.literal("summaryExported"),
+        path: z.string(),
+        ok: z.boolean(),
         error: z.string().optional(),
     }),
 ] as const;

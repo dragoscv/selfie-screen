@@ -101,7 +101,8 @@
             "data": "Date",
             "audio": "Dispozitive audio",
             "codai": "codai",
-            "effects": "Efecte"
+            "effects": "Efecte",
+            "interactive": "Obiective și jocuri"
         },
         "appearance": {
             "theme": "Temă",
@@ -422,6 +423,35 @@
                 "blackout_flash": "Flash pe întuneric",
                 "default": "Implicit"
             }
+        },
+        "goals": {
+            "title": "Obiective live",
+            "hint": "Ținte de cadouri și like-uri, cu bare animate în aplicație și în sursa OBS",
+            "enabled": "Afișează obiectivele",
+            "showInOverlay": "Afișează în sursa OBS",
+            "showInOverlayHint": "Barele apar în partea de sus a overlay-ului",
+            "gifts": "Obiectiv cadouri (diamante)",
+            "likes": "Obiectiv like-uri",
+            "label": "Titlu",
+            "giftsTarget": "Diamante țintă",
+            "likesTarget": "Like-uri țintă"
+        },
+        "games": {
+            "title": "Jocuri în chat",
+            "hint": "Sondaje, quiz-uri și roata tombolei, jucate în chat",
+            "showInOverlay": "Afișează jocurile în sursa OBS",
+            "allowVoteChange": "Spectatorii își pot schimba votul",
+            "allowVoteChangeHint": "Altfel contează primul vot",
+            "wheelFollowersOnly": "Roata tombolei: doar urmăritori",
+            "announceWinners": "Anunță câștigătorii cu voce",
+            "announceWinnersHint": "Co-gazda citește rezultatele și câștigătorii"
+        },
+        "translation": {
+            "title": "Traducere live",
+            "hint": "Mesajele în alte limbi primesc o traducere în română sub ele",
+            "enabled": "Tradu mesajele străine",
+            "enabledHint": "Detectare locală; doar mesajele care nu sunt în română ajung la codai",
+            "minLetters": "Minimum de litere pentru traducere"
         }
     },
     "people": {
@@ -624,5 +654,88 @@
         "gift": "Cadou de la {{name}}",
         "follow": "{{name}} te urmărește",
         "keyword": "Cuvânt cheie de la {{name}}"
+    },
+    "goals": {
+        "title": "Obiective",
+        "gifts": "Obiectiv cadouri",
+        "likes": "Obiectiv like-uri",
+        "reached": "Atins",
+        "progress": "{{current}} / {{target}}",
+        "reset": "Resetează obiectivele",
+        "off": "Pornește obiectivele din Setări → Obiective și jocuri."
+    },
+    "games": {
+        "title": "Jocuri în chat",
+        "kind": "Joc",
+        "kinds": {
+            "poll": "Sondaj",
+            "quiz": "Quiz",
+            "wheel": "Roata tombolei"
+        },
+        "keyword": "Cuvânt de înscriere",
+        "keywordPlaceholder": "tombola",
+        "keywordHint": "Spectatorii care scriu acest cuvânt intră în roată",
+        "question": "Întrebare",
+        "pollPlaceholder": "Ce joc urmează?",
+        "quizPlaceholder": "Care este capitala Franței?",
+        "options": "Variante",
+        "optionsHint": "Între 2 și 6, câte una pe rând. Spectatorii votează scriind numărul.",
+        "answers": "Răspunsuri acceptate",
+        "answersHint": "Câte unul pe rând. Majusculele și diacriticele nu contează.",
+        "start": "Pornește",
+        "votes_one": "{{formatted}} vot",
+        "votes_few": "{{formatted}} voturi",
+        "votes_other": "{{formatted}} de voturi",
+        "voters_one": "{{formatted}} votant",
+        "voters_few": "{{formatted}} votanți",
+        "voters_other": "{{formatted}} de votanți",
+        "pollHowTo": "Spectatorii scriu numărul variantei",
+        "closed": "Închis",
+        "quizWinner": "{{name}} a câștigat cu „{{answer}}”",
+        "quizHowTo": "Primul răspuns corect câștigă",
+        "quizNobody": "Nimeni n-a ghicit. Răspuns: {{answer}}",
+        "attempts_one": "{{formatted}} încercare",
+        "attempts_few": "{{formatted}} încercări",
+        "attempts_other": "{{formatted}} de încercări",
+        "wheelLabel_one": "Roata tombolei cu {{count}} participant",
+        "wheelLabel_few": "Roata tombolei cu {{count}} participanți",
+        "wheelLabel_other": "Roata tombolei cu {{count}} de participanți",
+        "wheelWinner": "Câștigător: {{name}}",
+        "spinning": "Se învârte…",
+        "wheelHowTo_one": "Scrie „{{keyword}}” ca să intri · {{formatted}} participant",
+        "wheelHowTo_few": "Scrie „{{keyword}}” ca să intri · {{formatted}} participanți",
+        "wheelHowTo_other": "Scrie „{{keyword}}” ca să intri · {{formatted}} de participanți",
+        "spin": "Învârte",
+        "close": "Închide votul",
+        "newGame": "Joc nou"
+    },
+    "summary": {
+        "open": "Rezumatul sesiunii",
+        "title": "Rezumat live",
+        "session": "Sesiune",
+        "moments": "Momente importante",
+        "noMoments": "Niciun cadou, moment marcat sau vârf în această sesiune.",
+        "kinds": {
+            "gift": "Cadou",
+            "highlight": "Moment marcat",
+            "spike": "Vârf de chat"
+        },
+        "spike_one": "Vârf de chat: {{count}} mesaj într-un minut",
+        "spike_few": "Vârf de chat: {{count}} mesaje într-un minut",
+        "spike_other": "Vârf de chat: {{count}} de mesaje într-un minut",
+        "gift": "{{name}} — {{diamonds}} 💎 ({{detail}})",
+        "topViewers": "Cei mai activi spectatori",
+        "noViewers": "Nimeni n-a scris și n-a trimis cadouri.",
+        "viewer": "Spectator",
+        "export": "Exportă rezumatul",
+        "exportCsv": "Exportă CSV",
+        "exportJson": "Exportă JSON",
+        "exported": "Rezumat exportat",
+        "exportFailed": "Exportul a eșuat: {{error}}",
+        "empty": "Încă nu există rezumat",
+        "emptyHint": "Intră live o dată cu istoricul pornit; rezumatul apare când se termină transmisiunea."
+    },
+    "translation": {
+        "label": "Tradus din {{lang}}"
     }
 }

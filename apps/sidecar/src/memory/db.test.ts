@@ -105,4 +105,23 @@ describe("ViewerMemory", () => {
         expect(memory.count("events")).toBe(1);
         expect(memory.prune(0, now)).toBe(0);
     });
+
+    it("lists sessions newest first and returns their events and stats for summaries", () => {
+        const s1 = memory.startSession("creator", 1_000);
+        memory.observe(ev("chat", "ana", { at: 1_100 }), s1);
+        memory.observe(ev("gift", "ion", { at: 1_200, giftDiamonds: 10, giftCount: 2 }), s1);
+        memory.addHighlight("moment", 1_300);
+        memory.endSession(s1, { likes: 42 }, 2_000);
+        const s2 = memory.startSession("creator", 5_000);
+
+        expect(memory.sessions().map((s) => s.id)).toEqual([s2, s1]);
+        expect(memory.sessions()[0]?.endedAt).toBeUndefined();
+        expect(memory.session(s1)).toEqual({ info: { id: s1, username: "creator", startedAt: 1_000, endedAt: 2_000 }, stats: { likes: 42 } });
+        expect(memory.session(999)).toBeNull();
+        expect(memory.sessionEvents(s1)).toEqual([
+            { kind: "chat", uniqueId: "ana", nickname: "ANA", text: "salut", at: 1_100, diamonds: 0 },
+            { kind: "gift", uniqueId: "ion", nickname: "ION", text: "gift", at: 1_200, diamonds: 20 },
+        ]);
+        expect(memory.highlightsBetween(1_000, 2_000)).toEqual([{ at: 1_300, note: "moment" }]);
+    });
 });

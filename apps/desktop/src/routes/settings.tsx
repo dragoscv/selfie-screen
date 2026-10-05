@@ -31,6 +31,7 @@ import {
     Bell,
     Cable,
     Copy,
+    Dices,
     Eye,
     Gauge,
     Headphones,
@@ -45,6 +46,7 @@ import {
     Plus,
     Shield,
     Sparkles,
+    Target,
     Trash2,
     Video,
     Volume2,
@@ -69,6 +71,7 @@ const SECTIONS = [
     { id: "assistant", icon: Sparkles },
     { id: "codai", icon: KeyRound },
     { id: "effects", icon: Lightbulb },
+    { id: "interactive", icon: Target },
     { id: "safety", icon: Shield },
     { id: "display", icon: Eye },
     { id: "overlay", icon: Layers },
@@ -121,6 +124,7 @@ export function SettingsRoute() {
                     {section === "assistant" && <AssistantSection />}
                     {section === "codai" && <CodaiSection />}
                     {section === "effects" && <EffectsSection />}
+                    {section === "interactive" && <InteractiveSection />}
                     {section === "safety" && <SafetySection />}
                     {section === "display" && <DisplaySection />}
                     {section === "overlay" && <OverlaySection />}
@@ -948,6 +952,114 @@ function EffectsSection() {
                     )}
                 </Card>
             </Reveal>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function InteractiveSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const goals = useAppStore((s) => s.settings.goals);
+    const games = useAppStore((s) => s.settings.games);
+    const translation = useAppStore((s) => s.settings.translation);
+    const setGoal = (kind: "gifts" | "likes", patch: Partial<Settings["goals"]["gifts"]>) =>
+        update("goals", kind === "gifts" ? { gifts: { ...goals.gifts, ...patch } } : { likes: { ...goals.likes, ...patch } });
+
+    return (
+        <>
+            <Card title={t("settings.goals.title")} subtitle={t("settings.goals.hint")} icon={<Target />} tint="var(--kind-gift)">
+                <SwitchRow label={t("settings.goals.enabled")} checked={goals.enabled} onChange={(enabled) => update("goals", { enabled })} tint="var(--kind-gift)" />
+                <Reveal show={goals.enabled}>
+                    <SwitchRow
+                        label={t("settings.goals.showInOverlay")}
+                        description={t("settings.goals.showInOverlayHint")}
+                        checked={goals.showInOverlay}
+                        onChange={(showInOverlay) => update("goals", { showInOverlay })}
+                        tint="var(--kind-gift)"
+                    />
+                    {(["gifts", "likes"] as const).map((kind) => {
+                        const goal = goals[kind];
+                        return (
+                            <div key={kind} className="flex flex-col gap-2 rounded-[--radius-chip] bg-panel-alt/60 p-3">
+                                <SwitchRow
+                                    label={t(`settings.goals.${kind}`)}
+                                    checked={goal.enabled}
+                                    onChange={(enabled) => setGoal(kind, { enabled })}
+                                    tint={kind === "gifts" ? "var(--kind-gift)" : "var(--kind-like)"}
+                                />
+                                <div className="grid grid-cols-[2fr_1fr] gap-2">
+                                    <TextInput
+                                        label={t("settings.goals.label")}
+                                        value={goal.label}
+                                        onChange={(label) => setGoal(kind, { label: label.slice(0, 60) })}
+                                        placeholder={t(`goals.${kind}`)}
+                                    />
+                                    <NumberField
+                                        label={t(`settings.goals.${kind}Target`)}
+                                        value={goal.target}
+                                        min={1}
+                                        max={100_000_000}
+                                        onCommit={(target) => setGoal(kind, { target })}
+                                    />
+                                </div>
+                            </div>
+                        );
+                    })}
+                </Reveal>
+            </Card>
+
+            <Card title={t("settings.games.title")} subtitle={t("settings.games.hint")} icon={<Dices />} tint="var(--kind-join)">
+                <SwitchRow
+                    label={t("settings.games.showInOverlay")}
+                    checked={games.showInOverlay}
+                    onChange={(showInOverlay) => update("games", { showInOverlay })}
+                    tint="var(--kind-join)"
+                />
+                <SwitchRow
+                    label={t("settings.games.allowVoteChange")}
+                    description={t("settings.games.allowVoteChangeHint")}
+                    checked={games.allowVoteChange}
+                    onChange={(allowVoteChange) => update("games", { allowVoteChange })}
+                    tint="var(--kind-join)"
+                />
+                <SwitchRow
+                    label={t("settings.games.wheelFollowersOnly")}
+                    checked={games.wheelFollowersOnly}
+                    onChange={(wheelFollowersOnly) => update("games", { wheelFollowersOnly })}
+                    tint="var(--kind-join)"
+                />
+                <SwitchRow
+                    label={t("settings.games.announceWinners")}
+                    description={t("settings.games.announceWinnersHint")}
+                    checked={games.announceWinners}
+                    onChange={(announceWinners) => update("games", { announceWinners })}
+                    tint="var(--kind-join)"
+                />
+            </Card>
+
+            <Card title={t("settings.translation.title")} subtitle={t("settings.translation.hint")} icon={<Languages />} tint="var(--kind-chat)">
+                <SwitchRow
+                    label={t("settings.translation.enabled")}
+                    description={t("settings.translation.enabledHint")}
+                    checked={translation.enabled}
+                    onChange={(enabled) => update("translation", { enabled })}
+                    tint="var(--kind-chat)"
+                />
+                <Reveal show={translation.enabled}>
+                    <SliderRow
+                        label={t("settings.translation.minLetters")}
+                        value={translation.minLetters}
+                        min={2}
+                        max={40}
+                        step={1}
+                        format={(v) => String(Math.round(v))}
+                        onCommit={(v) => update("translation", { minLetters: Math.round(v) })}
+                        tint="var(--kind-chat)"
+                    />
+                </Reveal>
+            </Card>
         </>
     );
 }

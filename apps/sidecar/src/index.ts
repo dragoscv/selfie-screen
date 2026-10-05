@@ -19,6 +19,8 @@ import { CodaiClient } from "./codai/client.js";
 import { CoHost } from "./cohost/engine.js";
 import { EffectsController } from "./effects/controller.js";
 import { VmuiClient } from "./effects/vmui.js";
+import { GameManager } from "./games/manager.js";
+import { GoalTracker } from "./goals/goals.js";
 import { describeError } from "./ingest/connector.js";
 import { ReplayStore } from "./ingest/replay.js";
 import type { TikTokSession } from "./ingest/types.js";
@@ -31,6 +33,8 @@ import { PanelService } from "./panel/service.js";
 import { appDataDir } from "./paths.js";
 import { SecretStore } from "./secrets.js";
 import { StreamManager } from "./streams.js";
+import { SummaryService } from "./summary/service.js";
+import { Translator } from "./translate/translator.js";
 
 declare const __TIKSEE_VERSION__: string | undefined;
 /** Injected by tsdown from package.json; `dev` (tsx) has no define. */
@@ -54,7 +58,13 @@ type LiveClientMessage = Extract<
             | "sayState"
             | "speechTimeline"
             | "codaiToken"
-            | "effectTest";
+            | "effectTest"
+            | "goalsReset"
+            | "gameStart"
+            | "gameAction"
+            | "summaryList"
+            | "summaryRequest"
+            | "summaryExport";
     }
 >;
 
@@ -86,6 +96,10 @@ class Sidecar {
     #memory: ViewerMemory | null = null;
     #cohost: CoHost;
     #effects: EffectsController;
+    #goals: GoalTracker;
+    #games: GameManager;
+    #translator: Translator;
+    #summaries: SummaryService;
     /** Per-launch Stream Deck token; written to `trigger-token.txt`. */
     #triggerToken = randomBytes(24).toString("base64url");
 
@@ -125,7 +139,36 @@ class Sidecar {
             codai: this.#codai,
             memory: this.#memory,
             log: logger.scoped("[cohost]"),
+            onSessionEnded: (sessionId) => this.#pushSummary(sessionId, true),
         });
+
+        this.#summaries = new SummaryService(this.#memory);
+
+        this.#goals = new GoalTracker({
+            settings: () => this.#settings,
+            emit: (state) => {
+                this.#broadcast({ type: "goals", state });
+                this.#overlay.pushGoals(state);
+            },
+            onReached: (kind) => log.info(`goal reached: ${kind}`),
+        });
+
+        this.#games = new GameManager({
+            settings: () => this.#settings,
+            emit: (state) => {
+                this.#broadcast({ type: "game", state });
+                this.#overlay.pushGame(state);
+            },
+            announce: (text) => this.#cohost.speak(text),
+        });
+
+        this.#translator = new Translator({
+            client: this.#codai,
+            model: () => this.#settings.codai.replyModel,
+            emit: (eventId, lang, text) => this.#broadcast({ type: "translation", eventId, lang, text }),
+            onError: (message) => log.debug(`translation skipped (${message})`),
+        });
+        this.#applyTranslationSettings();
 
         this.#effects = new EffectsController({
             settings: () => this.#settings,
@@ -164,6 +207,9 @@ class Sidecar {
             this.#obs.handleEvent(event);
             this.#effects.onEvent(event);
             this.#cohost.onEvent(event);
+            this.#goals.onEvent(event);
+            this.#games.onEvent(event);
+            if (event.kind === "chat") this.#translator.offer({ eventId: event.id, text: event.text });
         });
 
         logger.addSink((level, message, at) => this.#broadcast({ type: "log", level, message, at }));
@@ -223,6 +269,8 @@ class Sidecar {
         this.#send(socket, { type: "liveControl", state: this.#control.state });
         this.#send(socket, { type: "replyQueue", items: this.#cohost.snapshot() });
         this.#send(socket, { type: "obsStatus", connected: this.#obs.connected });
+        this.#send(socket, { type: "goals", state: this.#goals.state });
+        this.#send(socket, { type: "game", state: this.#games.state });
 
         socket.on("message", (raw) => {
             void this.#handle(socket, String(raw));
@@ -395,7 +443,45 @@ class Sidecar {
             case "effectTest":
                 await this.#effects.test(message.kind, message.value);
                 break;
+            case "goalsReset":
+                this.#goals.reset();
+                break;
+            case "gameStart":
+                this.#games.start(message.game);
+                break;
+            case "gameAction":
+                this.#games.action(message.action);
+                break;
+            case "summaryList":
+                this.#send(socket, { type: "summaries", sessions: this.#summaries.sessions() });
+                break;
+            case "summaryRequest": {
+                const result = this.#summaries.summary(message.sessionId);
+                this.#send(socket, result.ok ? { type: "summary", summary: result.value, auto: false } : { type: "summary", auto: false, error: result.error });
+                break;
+            }
+            case "summaryExport": {
+                const result = await this.#summaries.export(message.sessionId, message.format, message.path);
+                // Never log the path: it can contain the Windows user name.
+                this.#send(socket, result.ok ? { type: "summaryExported", path: result.value, ok: true } : { type: "summaryExported", path: message.path, ok: false, error: result.error });
+                break;
+            }
         }
+    }
+
+    #pushSummary(sessionId: number, auto: boolean): void {
+        try {
+            const result = this.#summaries.summary(sessionId);
+            if (result.ok) this.#broadcast({ type: "summary", summary: result.value, auto });
+            this.#broadcast({ type: "summaries", sessions: this.#summaries.sessions() });
+        } catch (error) {
+            log.warn(`summary failed: ${describeError(error)}`);
+        }
+    }
+
+    #applyTranslationSettings(): void {
+        this.#translator.enabled = this.#settings.translation.enabled;
+        this.#translator.minLetters = this.#settings.translation.minLetters;
     }
 
     #applyControl(action: ControlAction): void {
@@ -423,6 +509,9 @@ class Sidecar {
         this.#obs.setSettings(settings);
         this.#effects.setSettings(settings);
         this.#cohost.setSettings(settings);
+        this.#goals.settingsChanged();
+        this.#overlay.pushGame(this.#games.state);
+        this.#applyTranslationSettings();
         if (settings.data.retentionDays !== previous.data.retentionDays) this.#applyRetention();
         if (settings.behaviour.triggerServerEnabled !== previous.behaviour.triggerServerEnabled) {
             void this.#configureTrigger();
@@ -528,6 +617,9 @@ class Sidecar {
         ]);
         // After streams: their final "offline" statuses close memory sessions.
         await this.#cohost.dispose().catch(() => undefined);
+        this.#goals.dispose();
+        this.#games.dispose();
+        this.#translator.dispose();
         this.#memory?.close();
     }
 }

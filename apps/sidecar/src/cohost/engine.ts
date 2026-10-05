@@ -45,6 +45,8 @@ export interface CoHostDeps {
     memory: ViewerMemory | null;
     log: ScopedLogger;
     now?: () => number;
+    /** A live session was closed in viewer memory (post-live summary trigger). */
+    onSessionEnded?: (sessionId: number) => void;
 }
 
 interface CurrentSay {
@@ -131,7 +133,10 @@ export class CoHost {
         } else if ((state === "offline" || state === "ended") && this.#sessions.has(streamId)) {
             const id = this.#sessions.get(streamId);
             this.#sessions.delete(streamId);
-            if (memory && id !== undefined) memory.endSession(id, stats ?? null, this.#now());
+            if (memory && id !== undefined) {
+                memory.endSession(id, stats ?? null, this.#now());
+                this.#deps.onSessionEnded?.(id);
+            }
             if (this.#sessions.size === 0) this.#coach.stop();
         }
     }

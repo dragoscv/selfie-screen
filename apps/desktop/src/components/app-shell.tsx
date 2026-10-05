@@ -10,6 +10,7 @@ import { CommandPalette } from "./command-palette.js";
 import { ConnectionBar } from "./connection-bar.js";
 import { ErrorBoundary } from "./error-boundary.js";
 import { LiveControlBar } from "./live/live-control-bar.js";
+import { SummaryDialog } from "./live/summary-dialog.js";
 import { Titlebar } from "./titlebar.js";
 
 const LiveRoute = lazy(() =>
@@ -110,6 +111,9 @@ export function AppShell() {
             </main>
 
             <CommandPalette onNavigate={setRoute} />
+            <ErrorBoundary area="summary">
+                <SummaryDialog />
+            </ErrorBoundary>
         </div>
     );
 }

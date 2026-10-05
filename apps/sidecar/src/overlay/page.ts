@@ -115,6 +115,41 @@ export const OVERLAY_HTML = String.raw`<!doctype html>
     html[data-layout="minimal"] .time { display: none; }
     html[data-layout="minimal"] .name { display: inline; margin-right: 6px; }
     html[data-layout="minimal"] .text { display: inline; }
+
+    /* --- widgets: goals + chat games, pinned to the top --- */
+    #widgets {
+      position: absolute; inset: 14px 14px auto 14px; z-index: 2;
+      display: flex; flex-direction: column; gap: var(--gap);
+      pointer-events: none;
+    }
+    #widgets:empty { display: none; }
+    .card {
+      padding: 10px 12px; border-radius: var(--radius);
+      background: var(--row-bg); color: var(--row-fg);
+      backdrop-filter: blur(14px) saturate(1.25);
+      box-shadow: 0 6px 22px rgb(0 0 0 / 0.28);
+    }
+    .goal-head, .opt-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; font-weight: 700; }
+    .goal-head .num, .opt-head .num { font-variant-numeric: tabular-nums; color: var(--row-dim); font-weight: 600; }
+    .bar { height: 10px; margin-top: 6px; border-radius: 999px; overflow: hidden; background: color-mix(in oklab, var(--row-fg) 12%, transparent); }
+    .fill {
+      height: 100%; width: 0; border-radius: inherit;
+      background: linear-gradient(90deg, var(--fill), color-mix(in oklab, var(--fill) 60%, white));
+      transition: width 600ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .goal.done .fill { box-shadow: 0 0 14px var(--fill); }
+    .goal + .goal { margin-top: 10px; }
+    .q { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+    .opt + .opt { margin-top: 8px; }
+    .hint { font-size: 11.5px; color: var(--row-dim); margin-top: 6px; }
+    .win { font-size: 15px; font-weight: 800; color: var(--kind-gift); }
+    .wheel-wrap { position: relative; width: 220px; height: 220px; margin: 4px auto 0; }
+    .wheel-wrap canvas { width: 100%; height: 100%; border-radius: 50%; }
+    .pointer {
+      position: absolute; left: 50%; top: -6px; transform: translateX(-50%);
+      width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent;
+      border-top: 18px solid var(--row-fg); filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.5));
+    }
   }
 
   @layer motion {
@@ -127,18 +162,22 @@ export const OVERLAY_HTML = String.raw`<!doctype html>
     .row.leaving { animation: leave 200ms ease-in forwards; }
     html[data-reduced-motion="true"] .row,
     html[data-reduced-motion="true"] .row.leaving { animation: none; }
+    html[data-reduced-motion="true"] .fill { transition: none; }
     @media (prefers-reduced-motion: reduce) {
       .row, .row.leaving { animation: none; }
+      .fill { transition: none; }
     }
   }
 </style>
 </head>
 <body>
+<div id="widgets" aria-live="polite"></div>
 <div id="feed" role="log" aria-live="polite" aria-label="Live chat"></div>
 <script>
 (() => {
   "use strict";
   const feed = document.getElementById("feed");
+  const widgets = document.getElementById("widgets");
   const root = document.documentElement;
   const params = new URLSearchParams(location.search);
 
@@ -217,6 +256,145 @@ export const OVERLAY_HTML = String.raw`<!doctype html>
     if (config.rowTtlMs > 0) setTimeout(() => remove(row), config.rowTtlMs);
   }
 
+  /* ---------------- goals + games ---------------- */
+
+  const GOAL_TEXT = { gifts: "Gift goal", likes: "Like goal" };
+  const GOAL_COLOR = { gifts: "var(--kind-gift)", likes: "var(--kind-like)" };
+  const WHEEL_SPIN_MS = 6000;
+  const WHEEL_COLORS = ["#62D6FF", "#FFB454", "#4ADE80", "#A78BFA", "#F87171", "#38BDF8", "#F472B6", "#FACC15"];
+  let goalsState = null;
+  let gameState = null;
+  let wheelKey = "";
+  /** Last rendered width per bar, so a re-render animates from where it was. */
+  const lastWidth = {};
+
+  function nf(n) { return Number(n || 0).toLocaleString(); }
+  function fill(key, pct) {
+    const from = lastWidth[key] || 0;
+    return '<div class="fill" data-k="' + key + '" data-w="' + pct + '" style="width:' + from + '%"></div>';
+  }
+  function reducedMotion() {
+    return !!config.reducedMotion || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+
+  function goalsHtml() {
+    if (!goalsState || !goalsState.overlay || !goalsState.goals.length) return "";
+    return '<div class="card" id="goals">' + goalsState.goals.map((g) => (
+      '<div class="goal' + (g.reached ? " done" : "") + '" style="--fill:' + GOAL_COLOR[g.kind] + '">' +
+        '<div class="goal-head"><span>' + esc(g.label || GOAL_TEXT[g.kind] || g.kind) + "</span>" +
+        '<span class="num">' + nf(g.current) + " / " + nf(g.target) + "</span></div>" +
+        '<div class="bar">' + fill("goal-" + g.kind, Math.round(g.ratio * 1000) / 10) + "</div>" +
+      "</div>"
+    )).join("") + "</div>";
+  }
+
+  function gameHtml() {
+    const g = gameState;
+    if (!g || g.kind === "none") return "";
+    if (g.kind === "poll") {
+      const total = Math.max(1, g.totalVotes);
+      return '<div class="card"><div class="q">' + esc(g.question) + "</div>" + g.options.map((o, i) => (
+        '<div class="opt" style="--fill:' + WHEEL_COLORS[i % WHEEL_COLORS.length] + '">' +
+          '<div class="opt-head"><span>' + (i + 1) + ". " + esc(o.label) + "</span>" +
+          '<span class="num">' + Math.round((o.votes / total) * 100) + "% · " + nf(o.votes) + "</span></div>" +
+          '<div class="bar">' + fill(g.id + "-" + i, Math.round((o.votes / total) * 1000) / 10) + "</div>" +
+        "</div>"
+      )).join("") + '<div class="hint">' + (g.open ? "Type the number to vote" : "Poll closed") + " · " + nf(g.totalVotes) + "</div></div>";
+    }
+    if (g.kind === "quiz") {
+      const body = g.winner
+        ? '<div class="win">🏆 ' + esc(g.winner.nickname) + "</div>" + (g.answer ? '<div class="hint">' + esc(g.answer) + "</div>" : "")
+        : g.open ? '<div class="hint">First correct answer wins · ' + nf(g.attempts) + "</div>"
+        : '<div class="hint">' + esc(g.answer || "") + "</div>";
+      return '<div class="card"><div class="q">' + esc(g.question) + "</div>" + body + "</div>";
+    }
+    if (g.kind === "wheel") {
+      const caption = g.winner ? '<div class="win" style="text-align:center">🎉 ' + esc(g.winner.nickname) + "</div>"
+        : g.spinning ? '<div class="hint" style="text-align:center">…</div>'
+        : '<div class="hint" style="text-align:center">Type <b>' + esc(g.keyword) + "</b> to enter · " + nf(g.entrantCount) + "</div>";
+      return '<div class="card"><div class="wheel-wrap"><canvas width="440" height="440"></canvas><div class="pointer"></div></div>' + caption + "</div>";
+    }
+    return "";
+  }
+
+  function drawWheel(canvas, segments) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const n = Math.max(1, segments.length);
+    const r = canvas.width / 2;
+    const step = (Math.PI * 2) / n;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(r, r);
+    for (let i = 0; i < n; i += 1) {
+      // Segment i spans clockwise from the top.
+      const a0 = -Math.PI / 2 + i * step;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, r - 2, a0, a0 + step);
+      ctx.closePath();
+      ctx.fillStyle = segments.length ? WHEEL_COLORS[i % WHEEL_COLORS.length] : "#334155";
+      ctx.fill();
+      ctx.save();
+      ctx.rotate(a0 + step / 2);
+      ctx.fillStyle = "#0B0E14";
+      ctx.font = "700 " + (n > 16 ? 16 : 20) + "px Segoe UI, sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      const label = String(segments[i] || "").slice(0, 14);
+      ctx.fillText(label, r - 14, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function spinWheel(canvas, g) {
+    const n = Math.max(1, g.segments.length);
+    const seg = 360 / n;
+    const finalDeg = 360 * 6 - ((g.winnerIndex || 0) + 0.5) * seg;
+    const elapsed = Math.max(0, Date.now() - (g.spinAt || Date.now()));
+    const remaining = g.spinning ? Math.max(0, WHEEL_SPIN_MS - elapsed) : 0;
+    if (reducedMotion() || remaining < 50) {
+      canvas.style.transition = "none";
+      canvas.style.transform = "rotate(" + finalDeg + "deg)";
+      return;
+    }
+    canvas.style.transition = "none";
+    canvas.style.transform = "rotate(0deg)";
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      canvas.style.transition = "transform " + remaining + "ms cubic-bezier(0.12, 0.8, 0.2, 1)";
+      canvas.style.transform = "rotate(" + finalDeg + "deg)";
+    }));
+  }
+
+  function renderWidgets() {
+    const g = gameState;
+    // Keep the spinning canvas alive across updates: re-render only on a new spin or game.
+    const key = g && g.kind === "wheel" ? g.id + ":" + (g.spinAt || 0) + ":" + g.segments.length + ":" + (g.winner ? 1 : 0) : "";
+    const existing = widgets.querySelector("canvas");
+    const keepWheel = existing && key !== "" && key === wheelKey;
+    if (keepWheel) {
+      const goalsCard = widgets.querySelector("#goals");
+      const html = goalsHtml();
+      if (goalsCard) goalsCard.outerHTML = html || "";
+      else if (html) widgets.insertAdjacentHTML("afterbegin", html);
+    } else {
+      widgets.innerHTML = goalsHtml() + gameHtml();
+    }
+    requestAnimationFrame(() => {
+      widgets.querySelectorAll(".fill").forEach((el) => {
+        el.style.width = el.dataset.w + "%";
+        lastWidth[el.dataset.k] = Number(el.dataset.w);
+      });
+    });
+    const canvas = widgets.querySelector("canvas");
+    if (canvas && g && g.kind === "wheel" && !keepWheel) {
+      drawWheel(canvas, g.segments);
+      if (g.spinAt) spinWheel(canvas, g);
+    }
+    wheelKey = key;
+  }
+
   let socket = null;
   let retry = 500;
 
@@ -231,6 +409,8 @@ export const OVERLAY_HTML = String.raw`<!doctype html>
       if (payload.type === "config") { config = Object.assign(config, payload.config); applyConfig(); }
       else if (payload.type === "events") { (payload.events || []).forEach(addEvent); }
       else if (payload.type === "clear") { feed.replaceChildren(); }
+      else if (payload.type === "goals") { goalsState = payload.state; renderWidgets(); }
+      else if (payload.type === "game") { gameState = payload.state; renderWidgets(); }
     };
     // OBS keeps the source alive across scene switches; reconnect forever with
     // a capped backoff so the overlay heals itself without user action.

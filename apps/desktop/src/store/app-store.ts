@@ -6,13 +6,17 @@ import {
     type ChatEvent,
     type ConnectionStatus,
     type EffectFired,
+    type GameState,
+    type GoalsState,
     type LiveControlState,
     type PanelStatus,
     type ReplayInfo,
     type ReplyItem,
     type SerialPortInfo,
     type ServerMessage,
+    type SessionInfo,
     type SessionStats,
+    type SessionSummary,
     type Settings,
     type Suggestion,
     type ViewerCard,
@@ -62,6 +66,21 @@ export interface QueuedViewerCard {
     card: ViewerCard;
 }
 
+/** Inline Romanian translation of a chat line (WS20-14). */
+export interface Translation {
+    lang: string;
+    text: string;
+}
+
+export interface SummaryState {
+    sessions: SessionInfo[];
+    current: SessionSummary | null;
+    loading: boolean;
+    error: string | null;
+    /** The summary dialog is open. */
+    open: boolean;
+}
+
 interface AppState {
     /* connection to our own sidecar (not to TikTok) */
     sidecarConnected: boolean;
@@ -106,6 +125,10 @@ interface AppState {
     viewerCards: QueuedViewerCard[];
     effects: EffectFired[];
     transcript: TranscriptState;
+    goals: GoalsState;
+    game: GameState;
+    translations: Record<string, Translation>;
+    summary: SummaryState;
 
     /* diagnostics */
     logs: LogLine[];
@@ -123,6 +146,9 @@ interface AppState {
     dismissViewerCard: (key: string) => void;
     patchTranscript: (patch: Partial<Omit<TranscriptState, "finals">>) => void;
     addTranscriptFinal: (line: TranscriptLine) => void;
+    /** Ask the sidecar for a session summary and open the dialog. */
+    openSummary: (sessionId?: number) => void;
+    closeSummary: () => void;
 }
 
 const MAX_LOGS = 300;
@@ -130,6 +156,10 @@ const MAX_SUGGESTIONS = 5;
 const MAX_EFFECTS = 10;
 const MAX_FINALS = 5;
 const MAX_CARDS = 6;
+/** Translations are keyed by event id; keep roughly one feed's worth. */
+const MAX_TRANSLATIONS = 600;
+
+const INITIAL_SUMMARY: SummaryState = { sessions: [], current: null, loading: false, error: null, open: false };
 
 const INITIAL_TRANSCRIPT: TranscriptState = {
     mic: "off",
@@ -178,6 +208,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     viewerCards: [],
     effects: [],
     transcript: INITIAL_TRANSCRIPT,
+    goals: { enabled: false, overlay: false, goals: [] },
+    game: { kind: "none" },
+    translations: {},
+    summary: INITIAL_SUMMARY,
 
     logs: [],
 
@@ -293,6 +327,42 @@ export const useAppStore = create<AppState>((set, get) => ({
                 set((state) => ({ effects: [message.effect, ...state.effects].slice(0, MAX_EFFECTS) }));
                 break;
 
+            case "goals":
+                set({ goals: message.state });
+                break;
+
+            case "game":
+                set({ game: message.state });
+                break;
+
+            case "translation":
+                set((state) => {
+                    const next = { ...state.translations, [message.eventId]: { lang: message.lang, text: message.text } };
+                    const keys = Object.keys(next);
+                    if (keys.length > MAX_TRANSLATIONS) {
+                        for (const key of keys.slice(0, keys.length - MAX_TRANSLATIONS)) delete next[key];
+                    }
+                    return { translations: next };
+                });
+                break;
+
+            case "summaries":
+                set((state) => ({ summary: { ...state.summary, sessions: message.sessions } }));
+                break;
+
+            case "summary":
+                set((state) => ({
+                    summary: {
+                        ...state.summary,
+                        current: message.summary ?? state.summary.current,
+                        loading: false,
+                        error: message.error ?? null,
+                        // A session that just ended opens the review on its own.
+                        open: state.summary.open || (message.auto && message.summary !== undefined),
+                    },
+                }));
+                break;
+
             default:
                 break;
         }
@@ -342,6 +412,14 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ),
             },
         })),
+
+    openSummary: (sessionId) => {
+        set((state) => ({ summary: { ...state.summary, open: true, loading: true, error: null } }));
+        sidecarClient.send({ type: "summaryList" });
+        sidecarClient.send(sessionId === undefined ? { type: "summaryRequest" } : { type: "summaryRequest", sessionId });
+    },
+
+    closeSummary: () => set((state) => ({ summary: { ...state.summary, open: false } })),
 }));
 
 /* ------------------------------------------------------------------ *
