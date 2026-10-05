@@ -427,6 +427,7 @@ class Sidecar {
                 break;
             case "speechTimeline":
                 this.#overlay.pushSpeech({ id: message.id, visemes: message.visemes, words: message.words });
+                this.#broadcast({ type: "speech", id: message.id, visemes: message.visemes });
                 break;
             case "codaiToken": {
                 const baseUrl = this.#codai.baseUrl;

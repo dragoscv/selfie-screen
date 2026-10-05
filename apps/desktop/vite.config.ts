@@ -6,12 +6,15 @@ import { defineConfig } from "vite";
 
 const host = process.env.TAURI_DEV_HOST;
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
     plugins: [react(), tailwindcss()],
     resolve: {
         alias: {
             "@": fileURLToPath(new URL("./src", import.meta.url)),
         },
+        // Dev: resolve workspace packages from src (export condition "source"),
+        // so edits in packages/core|pets hot-reload without a tsdown rebuild.
+        ...(command === "serve" ? { conditions: ["source", "module", "browser", "development|production"] } : {}),
     },
     // Tauri serves the renderer from a fixed port and shows Rust errors itself,
     // so Vite must not clear the screen or silently pick another port.
@@ -47,6 +50,7 @@ export default defineConfig({
             input: {
                 main: fileURLToPath(new URL("./index.html", import.meta.url)),
                 overlay: fileURLToPath(new URL("./overlay.html", import.meta.url)),
+                studio: fileURLToPath(new URL("./studio.html", import.meta.url)),
             },
             output: {
                 // Split the heavy vendor libraries out of the entry chunk so the
@@ -58,9 +62,12 @@ export default defineConfig({
                     if (id.includes("node_modules/motion") || id.includes("node_modules/framer-motion")) {
                         return "motion";
                     }
+                    if (id.includes("node_modules/three") || id.includes("node_modules/@mediapipe")) {
+                        return "studio-vendor";
+                    }
                     return undefined;
                 },
             },
         },
     },
-});
+}));

@@ -1,11 +1,15 @@
 import {
     ACCENT_PRESETS,
+    CAMERA_ROTATIONS,
     DENSITIES,
     FLASH_COLORS,
     LOCALES,
     OVERLAY_LAYOUTS,
+    PET_CHOICES,
+    PET_STYLES,
     SPEECH_ENGINES,
     SPEECH_LANGUAGES,
+    STUDIO_ORIENTATIONS,
     STREAM_SCENES,
     SURFACE_MODES,
     THEME_MODES,
@@ -27,9 +31,11 @@ import {
     cn,
 } from "@tiksee/ui";
 import { invoke } from "@tauri-apps/api/core";
+import { emitTo } from "@tauri-apps/api/event";
 import {
     Bell,
     Cable,
+    Camera,
     Copy,
     Dices,
     Eye,
@@ -56,6 +62,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { CameraRemote } from "../components/camera-remote.js";
 import { useSettingsUpdate } from "../hooks/use-settings.js";
 import { isVoicemeeter, listAudioDevices, requestDeviceAccess, type AudioDeviceList } from "../lib/audio/devices.js";
 import { acceleratorKey, isValidAccelerator } from "../lib/hotkeys.js";
@@ -72,6 +79,7 @@ const SECTIONS = [
     { id: "codai", icon: KeyRound },
     { id: "effects", icon: Lightbulb },
     { id: "interactive", icon: Target },
+    { id: "studio", icon: Camera },
     { id: "safety", icon: Shield },
     { id: "display", icon: Eye },
     { id: "overlay", icon: Layers },
@@ -125,6 +133,7 @@ export function SettingsRoute() {
                     {section === "codai" && <CodaiSection />}
                     {section === "effects" && <EffectsSection />}
                     {section === "interactive" && <InteractiveSection />}
+                    {section === "studio" && <StudioSection />}
                     {section === "safety" && <SafetySection />}
                     {section === "display" && <DisplaySection />}
                     {section === "overlay" && <OverlaySection />}
@@ -1182,6 +1191,142 @@ function DisplaySection() {
                     step={50}
                     format={(v) => String(Math.round(v))}
                     onCommit={(v) => update("display", { maxFeedEvents: Math.round(v) })}
+                />
+            </Card>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+
+function StudioSection() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const s = useAppStore((state) => state.settings.studio);
+    const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+
+    useEffect(() => {
+        void navigator.mediaDevices
+            ?.enumerateDevices()
+            .then((list) => setCameras(list.filter((d) => d.kind === "videoinput")))
+            .catch(() => undefined);
+    }, []);
+
+    // The studio window is a separate document; push every change to it live.
+    useEffect(() => {
+        void emitTo("studio", "studio://settings", s).catch(() => undefined);
+    }, [s]);
+
+    const setEnabled = (enabled: boolean) => {
+        update("studio", { enabled });
+        void invoke("toggle_studio", { show: enabled, portrait: s.orientation === "portrait" }).catch(() =>
+            toast.error(t("common.error")),
+        );
+    };
+    const petOptions = PET_CHOICES.map((p) => ({ value: p, label: t(`settings.studio.pets.${p}`) }));
+
+    return (
+        <>
+            <Card title={t("settings.studio.title")} subtitle={t("settings.studio.hint")} icon={<Camera />} tint="var(--kind-gift)">
+                <SwitchRow
+                    label={t("settings.studio.enabled")}
+                    description={t("settings.studio.enabledHint")}
+                    checked={s.enabled}
+                    onChange={setEnabled}
+                    tint="var(--kind-gift)"
+                />
+                <SelectField
+                    label={t("settings.studio.camera")}
+                    value={s.cameraId}
+                    onChange={(cameraId) => update("studio", { cameraId })}
+                    options={[
+                        { value: "", label: t("settings.studio.cameraAuto") },
+                        ...cameras.map((c, i) => ({ value: c.deviceId, label: c.label || `${t("settings.studio.camera")} ${i + 1}` })),
+                    ]}
+                />
+                <ChipSelector
+                    label={t("settings.studio.orientation")}
+                    options={STUDIO_ORIENTATIONS}
+                    value={s.orientation}
+                    onSelect={(orientation) => update("studio", { orientation })}
+                    display={(o) => t(`settings.studio.orientations.${o}`)}
+                    tint="var(--kind-gift)"
+                />
+                <SwitchRow label={t("settings.studio.mirror")} checked={s.mirror} onChange={(mirror) => update("studio", { mirror })} />
+                <ChipSelector
+                    label={t("settings.studio.rotation")}
+                    options={CAMERA_ROTATIONS.map(String) as readonly string[]}
+                    value={String(s.rotation)}
+                    onSelect={(r) => update("studio", { rotation: Number(r) as Settings["studio"]["rotation"] })}
+                    display={(r) => (r === "0" ? t("settings.studio.rotationNone") : `${r}°`)}
+                    tint="var(--kind-gift)"
+                />
+                <SwitchRow
+                    label={t("settings.studio.showStats")}
+                    description={t("settings.studio.showStatsHint")}
+                    checked={s.showStats}
+                    onChange={(showStats) => update("studio", { showStats })}
+                />
+            </Card>
+            <CameraRemote />
+            <Card title={t("settings.studio.petsTitle")} subtitle={t("settings.studio.petsHint")} icon={<Sparkles />} tint="var(--kind-like)">
+                <SelectField
+                    label={t("settings.studio.leftPet")}
+                    value={s.leftPet}
+                    options={petOptions}
+                    onChange={(v) => update("studio", { leftPet: v as Settings["studio"]["leftPet"] })}
+                />
+                <SelectField
+                    label={t("settings.studio.rightPet")}
+                    value={s.rightPet}
+                    options={petOptions}
+                    onChange={(v) => update("studio", { rightPet: v as Settings["studio"]["rightPet"] })}
+                />
+                <ChipSelector
+                    label={t("settings.studio.petStyle")}
+                    options={PET_STYLES}
+                    value={s.petStyle}
+                    onSelect={(petStyle) => update("studio", { petStyle })}
+                    display={(p) => t(`settings.studio.petStyles.${p}`)}
+                    tint="var(--kind-like)"
+                />
+            </Card>
+            <Card title={t("settings.studio.filtersTitle")} subtitle={t("settings.studio.filtersHint")} icon={<Palette />} tint="var(--kind-join)">
+                <SliderRow
+                    label={t("settings.studio.smoothing")}
+                    value={s.smoothing}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    format={(v) => `${Math.round(v * 100)}%`}
+                    onCommit={(smoothing) => update("studio", { smoothing })}
+                />
+                <SliderRow
+                    label={t("settings.studio.backgroundBlur")}
+                    value={s.backgroundBlur}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    format={(v) => (v < 0.02 ? t("settings.overlay.blurOff") : `${Math.round(v * 100)}%`)}
+                    onCommit={(backgroundBlur) => update("studio", { backgroundBlur })}
+                />
+                <SliderRow
+                    label={t("settings.studio.exposure")}
+                    value={s.exposure}
+                    min={-2}
+                    max={2}
+                    step={0.05}
+                    format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(2)} EV`}
+                    onCommit={(exposure) => update("studio", { exposure })}
+                />
+                <SliderRow
+                    label={t("settings.studio.warmth")}
+                    value={s.warmth}
+                    min={-1}
+                    max={1}
+                    step={0.02}
+                    format={(v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}`}
+                    onCommit={(warmth) => update("studio", { warmth })}
                 />
             </Card>
         </>

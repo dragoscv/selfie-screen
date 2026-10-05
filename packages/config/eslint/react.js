@@ -26,7 +26,7 @@ export default tseslint.config(
     {
         // Entry modules mount a React root and intentionally export nothing, so
         // the fast-refresh rule does not apply to them.
-        files: ["**/main.tsx", "**/overlay.tsx", "**/index.tsx"],
+        files: ["**/main.tsx", "**/overlay.tsx", "**/studio.tsx", "**/index.tsx"],
         rules: { "react-refresh/only-export-components": "off" },
     },
 );

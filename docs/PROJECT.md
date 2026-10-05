@@ -153,6 +153,8 @@ readable "port busy" error rather than failing silently.
 | Q32 | Delivery order | P0 live-ready → P1 codai brain → P2 vmui effects → P3 3D pets → P4 capture + filters → P5 native virtual camera | 2026-10-05 |
 | Q33 | Pets render path | Composite camera + pets + filters inside TikSee (pose and render on the same frame) → OBS window capture / virtual camera; browser overlay on WebGL2 only as fallback (OBS CEF 127 / LIVE Studio Chromium 136 have no reliable WebGPU) | 2026-10-05 |
 | Q34 | Texture compression | KTX-Software 4.4.2 (KTX2/Basis) installed per-user | 2026-10-05 |
+| Q42 | Camera control | Sony ZV-E10 controlled from Studio; USB PTP was the intended default, BLE remote in parallel for zoom/focus | 2026-10-05 |
+| Q43 | Camera control while live | **Bluetooth remote is the live transport.** Measured: Sony SDIO `GetExtDeviceInfo` (0x9202) over USB blanks the camera's HDMI output for as long as the session is open (luma 40 → 7, reproduced 3×; plain PTP session does not). USB PC Remote stays opt-in (`TIKSEE_CAMERA_CTL=usb`) for setting ISO/WB/shutter before going live | 2026-10-05 |
 
 ---
 
@@ -297,7 +299,10 @@ Smart-home parts live in vmui's MCP catalogue.
 | P0 | done | 0.2.0 published (`latest.json` 0.2.0, signed); installer bundles Node; release exe smoke: sidecar ready and exits with the app |
 | P1 | done except WS19-06, WS20-08/10/13/14 | Test voice → codai usage `codai-tts-ro` HTTP 200; reply queue + Live Control round-trip in the app |
 | P2 | done | Test flash from TikSee → vmui audit `mcp.flash_color cyan ok` |
-| P3–P5 | not started | Research done (Blender 5.1.2 headless, gltf-transform, KTX 4.4.2 installed); decision Q33: composite in TikSee |
+| P3 | pipeline + runtime done, real meshes blocked | Blender pipeline verified on proxy rigs; TRELLIS.2 waits on Meta DINOv3 access (VM `tiksee-trellis` stopped) |
+| P4 | composite running | Studio window 1080×1920 WebGPU: camera 59–60 fps, render 130–180 fps; camera rotation; auto-reopen after 3 s without frames |
+| Camera remote | BLE done | Paired PC ↔ ZV-E10 over WinRT; zoom tele/wide confirmed by owner with HDMI picture intact; Studio settings card (hold-to-zoom/focus, AF, photo, record) |
+| P5 | not started | `vcam/shared` crate exists, unwired |
 
 ---
 

@@ -378,6 +378,41 @@ export const translationSchema = z.object({
 export type TranslationSettings = z.infer<typeof translationSchema>;
 
 /* ------------------------------------------------------------------ *
+ * Studio: camera + filters + 3D pets in one frame (P4, decision Q33).
+ * ------------------------------------------------------------------ */
+
+export const PET_CHOICES = ["none", "parrot", "cat", "dragon", "drone", "fox", "owl", "redpanda"] as const;
+export type PetChoice = (typeof PET_CHOICES)[number];
+export const STUDIO_ORIENTATIONS = ["portrait", "landscape"] as const;
+export const PET_STYLES = ["pbr", "toon"] as const;
+/** Degrees clockwise to turn the camera image upright (camera mounted in portrait). */
+export const CAMERA_ROTATIONS = [0, 90, 180, 270] as const;
+
+export const studioSchema = z.object({
+    enabled: z.boolean().default(false),
+    /** MediaDeviceInfo.deviceId; empty picks a device labelled "USB3.0 Video", else the first camera. */
+    cameraId: z.string().default(""),
+    /** portrait 1080x1920 (TikTok), landscape 1920x1080 (Q38). */
+    orientation: z.enum(STUDIO_ORIENTATIONS).default("portrait"),
+    rotation: z.union(CAMERA_ROTATIONS.map((r) => z.literal(r))).default(0),
+    mirror: z.boolean().default(true),
+    leftPet: z.enum(PET_CHOICES).default("parrot"),
+    rightPet: z.enum(PET_CHOICES).default("none"),
+    petStyle: z.enum(PET_STYLES).default("pbr"),
+    /** 0..1 skin smoothing strength (bilateral). */
+    smoothing: z.number().min(0).max(1).default(0.35),
+    /** 0..1 background blur, needs the person segmentation mask. */
+    backgroundBlur: z.number().min(0).max(1).default(0),
+    /** Exposure in stops, -2..2. */
+    exposure: z.number().min(-2).max(2).default(0),
+    /** White-balance shift, -1 cool .. 1 warm. */
+    warmth: z.number().min(-1).max(1).default(0),
+    /** Show the fps/frame-time HUD in the studio window (never in the captured frame). */
+    showStats: z.boolean().default(false),
+});
+export type StudioSettings = z.infer<typeof studioSchema>;
+
+/* ------------------------------------------------------------------ *
  * Root.
  * ------------------------------------------------------------------ */
 
@@ -401,6 +436,7 @@ export const settingsSchema = z.object({
     goals: goalsSchema.prefault({}),
     games: gamesSchema.prefault({}),
     translation: translationSchema.prefault({}),
+    studio: studioSchema.prefault({}),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 

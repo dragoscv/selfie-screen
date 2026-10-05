@@ -1,3 +1,4 @@
+mod camera;
 mod secrets;
 mod sidecar;
 mod tiktok;
@@ -146,6 +147,41 @@ fn set_overlay_click_through(app: AppHandle, enabled: bool) -> Result<(), String
         .map_err(|e| e.to_string())
 }
 
+/// Show/hide the studio window (camera + pets composite), creating it on first use.
+/// It is a normal framed window so OBS "Window Capture" can pick it by title.
+#[tauri::command]
+async fn toggle_studio(app: AppHandle, show: bool, portrait: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("studio") {
+        if show {
+            window.show().map_err(|e| e.to_string())?;
+            window.set_focus().map_err(|e| e.to_string())?;
+        } else {
+            window.close().map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+    if !show {
+        return Ok(());
+    }
+    open_studio(&app, portrait, "studio.html")
+}
+
+fn open_studio(app: &AppHandle, portrait: bool, page: &str) -> Result<(), String> {
+    let (w, h) = if portrait {
+        (540.0, 960.0)
+    } else {
+        (960.0, 540.0)
+    };
+    WebviewWindowBuilder::new(app, "studio", WebviewUrl::App(page.into()))
+        .title("TikSee Studio")
+        .inner_size(w, h)
+        .min_inner_size(270.0, 270.0)
+        .background_color(tauri::window::Color(0, 0, 0, 255))
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Push the window-behaviour preferences the shell has to enforce natively.
 #[tauri::command]
 fn set_behaviour(
@@ -248,7 +284,7 @@ fn register_hotkeys(_app: &AppHandle, _hotkeys: &Hotkeys) -> Vec<String> {
 /// works without a WebView2 prompt; every other window (the TikTok login
 /// page) keeps the default behaviour.
 fn permission_for(label: &str, kind: PermissionKind) -> PermissionResponse {
-    let own_window = matches!(label, "main" | "overlay");
+    let own_window = matches!(label, "main" | "overlay" | "studio");
     match kind {
         PermissionKind::Microphone | PermissionKind::Camera if own_window => {
             PermissionResponse::Allow
@@ -287,6 +323,8 @@ pub fn run() {
     let app = builder
         .manage(SidecarState::default())
         .manage(BehaviourState::default())
+        .manage(camera::CameraCtl::default())
+        .manage(camera::ble::BleCtl::default())
         .on_permission_request(|webview, kind| permission_for(webview.label(), kind))
         .invoke_handler(tauri::generate_handler![
             sidecar_status,
@@ -294,6 +332,11 @@ pub fn run() {
             set_surface,
             toggle_overlay,
             set_overlay_click_through,
+            toggle_studio,
+            camera::camera_control,
+            camera::camera_set,
+            camera::camera_refresh,
+            camera::camera_ble,
             set_behaviour,
             set_autostart,
             set_hotkeys,
@@ -317,6 +360,29 @@ pub fn run() {
             }
 
             build_tray(&handle)?;
+
+            // Opt-in: the Sony SDIO handshake (0x9202) blanks the camera's HDMI
+            // output for as long as the session is open, so USB control must
+            // never start on its own while the HDMI feed is the live source.
+            if std::env::var("TIKSEE_CAMERA_CTL").as_deref() == Ok("usb")
+                && let Some(cam) = app.try_state::<camera::CameraCtl>()
+            {
+                cam.start(&handle);
+            }
+            if std::env::var("TIKSEE_CAMERA_CTL").as_deref() != Ok("off")
+                && let Some(ble) = app.try_state::<camera::ble::BleCtl>()
+            {
+                ble.start(&handle);
+            }
+
+            // Dev-only frame-budget measurement: TIKSEE_STUDIO_BENCH=synthetic|camera.
+            #[cfg(debug_assertions)]
+            if let Ok(mode) = std::env::var("TIKSEE_STUDIO_BENCH") {
+                let page = format!("studio.html?bench={mode}");
+                if let Err(error) = open_studio(&handle, true, &page) {
+                    log::warn!("studio bench window failed: {error}");
+                }
+            }
 
             if let Some(state) = app.try_state::<SidecarState>()
                 && let Err(error) = state.spawn(&handle)
@@ -356,10 +422,16 @@ pub fn run() {
         .expect("failed to build TikSee");
 
     app.run(|handle, event| {
-        if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event
-            && let Some(state) = handle.try_state::<SidecarState>()
-        {
-            state.kill();
+        if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event {
+            camera::shutdown(handle);
+            // Destroying the studio webview stops its MediaStream; a WebView2
+            // left running holds the capture card open for the next launch.
+            if let Some(studio) = handle.get_webview_window("studio") {
+                let _ = studio.destroy();
+            }
+            if let Some(state) = handle.try_state::<SidecarState>() {
+                state.kill();
+            }
         }
     });
 }

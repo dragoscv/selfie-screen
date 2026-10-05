@@ -36,6 +36,21 @@ tauri-plugin-updater = "2"
 [target."cfg(windows)".dependencies]
 window-vibrancy = "0.6"
 keyring = { version = "3", features = ["windows-native"] }
+libloading = "0.8"
+windows = { version = "0.62", features = [
+	"Devices_Bluetooth",
+	"Devices_Bluetooth_Advertisement",
+	"Devices_Bluetooth_GenericAttributeProfile",
+	"Devices_Enumeration",
+	"Foundation",
+	"Foundation_Collections",
+	"Storage_Streams",
+	"Win32_Devices_DeviceAndDriverInstallation",
+	"Win32_Foundation",
+	"Win32_Storage_FileSystem",
+	"Win32_Security",
+] }
+windows-future = "0.3"
 
 [profile.release]
 codegen-units = 1

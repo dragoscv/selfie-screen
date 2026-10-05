@@ -102,7 +102,8 @@
             "audio": "Audio devices",
             "codai": "codai",
             "effects": "Effects",
-            "interactive": "Goals & games"
+            "interactive": "Goals & games",
+            "studio": "Studio & pets"
         },
         "appearance": {
             "theme": "Theme",
@@ -451,6 +452,74 @@
             "enabled": "Translate foreign messages",
             "enabledHint": "Detected locally; only non-Romanian lines are sent to codai",
             "minLetters": "Minimum letters to translate"
+        },
+        "studio": {
+            "title": "Studio camera",
+            "hint": "Your camera, filters and 3D pets in one frame for OBS",
+            "enabled": "Open the studio window",
+            "enabledHint": "In OBS add Window Capture → \"TikSee Studio\", then start the Virtual Camera",
+            "camera": "Camera",
+            "cameraAuto": "Automatic (USB3.0 Video if present)",
+            "orientation": "Output",
+            "orientations": {
+                "portrait": "Portrait 1080×1920",
+                "landscape": "Landscape 1920×1080"
+            },
+            "mirror": "Mirror like a selfie",
+            "rotation": "Camera rotation",
+            "rotationNone": "None",
+            "showStats": "Show frame stats",
+            "showStatsHint": "fps and frame time in the studio window; F2 toggles it",
+            "petsTitle": "Pets",
+            "petsHint": "They sit on your shoulders, talk with the co-host voice and react to gifts",
+            "leftPet": "Left shoulder",
+            "rightPet": "Right shoulder",
+            "pets": {
+                "none": "None",
+                "parrot": "Parrot",
+                "cat": "Cat",
+                "dragon": "Dragon",
+                "drone": "codai drone",
+                "fox": "Fox",
+                "owl": "Owl",
+                "redpanda": "Red panda"
+            },
+            "petStyle": "Look",
+            "petStyles": {
+                "pbr": "Realistic",
+                "toon": "Cartoon"
+            },
+            "filtersTitle": "Filters",
+            "filtersHint": "Applied on the GPU before the pets are drawn",
+            "smoothing": "Skin smoothing",
+            "backgroundBlur": "Background blur",
+            "exposure": "Exposure",
+            "warmth": "Warmth",
+            "remote": {
+                "title": "Camera remote",
+                "hint": "Zoom, focus and record over Bluetooth without touching the HDMI picture",
+                "status": {
+                    "searching": "Searching",
+                    "pairable": "Ready to pair",
+                    "connected": "Connected",
+                    "error": "Error"
+                },
+                "step1": "On the camera: MENU → Network → Bluetooth Settings → Bluetooth Function: On",
+                "step2": "MENU → Network → Bluetooth Rmt Ctrl: On",
+                "step3": "Bluetooth Settings → Pairing (the camera shows Pairing…)",
+                "step4": "Press Pair below, then confirm OK on the camera",
+                "pair": "Pair",
+                "zoomIn": "Zoom in",
+                "zoomOut": "Zoom out",
+                "focusNear": "Focus near",
+                "focusFar": "Focus far",
+                "af": "Autofocus",
+                "focused": "In focus",
+                "photo": "Photo",
+                "record": "Record",
+                "stop": "Stop",
+                "recording": "Recording"
+            }
         }
     },
     "people": {

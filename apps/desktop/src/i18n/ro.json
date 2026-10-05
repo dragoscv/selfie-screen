@@ -102,7 +102,8 @@
             "audio": "Dispozitive audio",
             "codai": "codai",
             "effects": "Efecte",
-            "interactive": "Obiective și jocuri"
+            "interactive": "Obiective și jocuri",
+            "studio": "Studio și animăluțe"
         },
         "appearance": {
             "theme": "Temă",
@@ -452,6 +453,74 @@
             "enabled": "Tradu mesajele străine",
             "enabledHint": "Detectare locală; doar mesajele care nu sunt în română ajung la codai",
             "minLetters": "Minimum de litere pentru traducere"
+        },
+        "studio": {
+            "title": "Camera de studio",
+            "hint": "Camera, filtrele și animăluțele 3D într-un singur cadru pentru OBS",
+            "enabled": "Deschide fereastra de studio",
+            "enabledHint": "În OBS adaugă Window Capture → „TikSee Studio”, apoi pornește Virtual Camera",
+            "camera": "Cameră",
+            "cameraAuto": "Automat (USB3.0 Video dacă există)",
+            "orientation": "Ieșire",
+            "orientations": {
+                "portrait": "Vertical 1080×1920",
+                "landscape": "Orizontal 1920×1080"
+            },
+            "mirror": "Oglindește ca la selfie",
+            "rotation": "Rotire cameră",
+            "rotationNone": "Fără",
+            "showStats": "Arată statistici de cadre",
+            "showStatsHint": "fps și timp pe cadru în fereastra de studio; F2 comută",
+            "petsTitle": "Animăluțe",
+            "petsHint": "Stau pe umerii tăi, vorbesc cu vocea co-gazdei și reacționează la cadouri",
+            "leftPet": "Umărul stâng",
+            "rightPet": "Umărul drept",
+            "pets": {
+                "none": "Niciunul",
+                "parrot": "Papagal",
+                "cat": "Pisică",
+                "dragon": "Dragon",
+                "drone": "Drona codai",
+                "fox": "Vulpe",
+                "owl": "Bufniță",
+                "redpanda": "Panda roșu"
+            },
+            "petStyle": "Aspect",
+            "petStyles": {
+                "pbr": "Realist",
+                "toon": "Desen animat"
+            },
+            "filtersTitle": "Filtre",
+            "filtersHint": "Aplicate pe GPU înainte de a desena animăluțele",
+            "smoothing": "Netezire piele",
+            "backgroundBlur": "Fundal estompat",
+            "exposure": "Expunere",
+            "warmth": "Căldură culoare",
+            "remote": {
+                "title": "Telecomandă cameră",
+                "hint": "Zoom, focalizare și înregistrare prin Bluetooth, fără să afecteze imaginea HDMI",
+                "status": {
+                    "searching": "Caut camera",
+                    "pairable": "Gata de împerechere",
+                    "connected": "Conectată",
+                    "error": "Eroare"
+                },
+                "step1": "Pe cameră: MENU → Rețea → Setări Bluetooth → Funcție Bluetooth: Pornit",
+                "step2": "MENU → Rețea → Telecomandă Bluetooth: Pornit",
+                "step3": "Setări Bluetooth → Împerechere (camera afișează Pairing…)",
+                "step4": "Apasă Împerechează mai jos, apoi confirmă OK pe cameră",
+                "pair": "Împerechează",
+                "zoomIn": "Zoom înainte",
+                "zoomOut": "Zoom înapoi",
+                "focusNear": "Focus aproape",
+                "focusFar": "Focus departe",
+                "af": "Autofocus",
+                "focused": "Focalizat",
+                "photo": "Fotografie",
+                "record": "Înregistrează",
+                "stop": "Oprește",
+                "recording": "Înregistrează"
+            }
         }
     },
     "people": {

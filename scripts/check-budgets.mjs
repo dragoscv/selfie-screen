@@ -14,6 +14,9 @@ const budgets = [
     ["desktop live route", /^live-.*\.js$/, "apps/desktop/dist/assets", 35 * KB],
     ["desktop speaker (lazy)", /^speaker-.*\.js$/, "apps/desktop/dist/assets", 5 * KB],
     ["desktop mic (lazy)", /^mic-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
+    // Separate window; three/webgpu + MediaPipe never load in the main window.
+    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 10 * KB],
+    ["desktop studio vendor", /^studio-vendor-.*\.js$/, "apps/desktop/dist/assets", 380 * KB],
     ["sidecar bundle", /^index\.js$/, "apps/sidecar/dist", 80 * KB],
 ];
 

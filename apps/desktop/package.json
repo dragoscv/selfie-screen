@@ -4,8 +4,8 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "dev": "vite",
-        "build": "vite build",
+        "dev": "node scripts/studio-assets.mjs && vite",
+        "build": "node scripts/studio-assets.mjs && vite build",
         "preview": "vite preview",
         "tauri": "tauri",
         "tauri:dev": "tauri dev",
@@ -17,6 +17,7 @@
         "clean": "rimraf dist .turbo"
     },
     "dependencies": {
+        "@mediapipe/tasks-vision": "catalog:",
         "@number-flow/react": "catalog:",
         "@tanstack/react-virtual": "catalog:",
         "@tauri-apps/api": "catalog:",
@@ -30,6 +31,7 @@
         "@tauri-apps/plugin-shell": "catalog:",
         "@tauri-apps/plugin-store": "catalog:",
         "@tiksee/core": "workspace:*",
+        "@tiksee/pets": "workspace:*",
         "@tiksee/ui": "workspace:*",
         "cmdk": "catalog:",
         "i18next": "catalog:",
@@ -41,6 +43,7 @@
         "react-resizable-panels": "catalog:",
         "recharts": "catalog:",
         "sonner": "catalog:",
+        "three": "catalog:",
         "zod": "catalog:",
         "zustand": "catalog:"
     },
@@ -50,6 +53,7 @@
         "@tiksee/config": "workspace:*",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
+        "@types/three": "catalog:",
         "@typescript/native": "catalog:",
         "@vitejs/plugin-react": "catalog:",
         "eslint": "catalog:",

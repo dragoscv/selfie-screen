@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 
+import type { Backdrop } from "./backdrop.js";
 import { petPixelHeight, petUrl, type PetId } from "./catalogue.js";
 import type { ShoulderAnchor, Side } from "./shoulders.js";
 import { PetStateMachine, type PetClip, type PetEvent } from "./state-machine.js";
@@ -45,6 +46,7 @@ export class PetStage {
     #loader: GLTFLoader | null = null;
     #speech: { visemes: readonly VisemeEvent[]; startMs: number } | null = null;
     #hidden = false;
+    #backdrop: Backdrop | null = null;
 
     constructor(options: StageOptions) {
         this.#o = options;
@@ -76,6 +78,21 @@ export class PetStage {
     get backend(): "webgpu" | "webgl" {
         const b = (this.renderer as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend;
         return b?.isWebGPUBackend ? "webgpu" : "webgl";
+    }
+
+    get width(): number {
+        return this.#o.width;
+    }
+
+    get height(): number {
+        return this.#o.height;
+    }
+
+    /** Draw a camera backdrop under the pets in the same frame (null removes it). */
+    setBackdrop(backdrop: Backdrop | null): void {
+        if (this.#backdrop) this.scene.remove(this.#backdrop.mesh);
+        this.#backdrop = backdrop;
+        if (backdrop) this.scene.add(backdrop.mesh);
     }
 
     resize(width: number, height: number): void {

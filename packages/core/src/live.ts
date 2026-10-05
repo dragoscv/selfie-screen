@@ -313,6 +313,8 @@ export const liveServerMessages = [
         eventId: z.string().optional(),
     }),
     z.object({ type: z.literal("sayCancel"), id: z.string() }),
+    /** Viseme timeline of the utterance now playing, for the studio pets' lip-sync. */
+    z.object({ type: z.literal("speech"), id: z.string(), visemes: z.array(visemeSchema) }),
     z.object({ type: z.literal("viewerCard"), card: viewerCardSchema }),
     z.object({ type: z.literal("suggestion"), suggestion: suggestionSchema }),
     z.object({ type: z.literal("effect"), effect: effectFiredSchema }),

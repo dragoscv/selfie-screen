@@ -246,12 +246,49 @@ fn build_command(app: &AppHandle) -> Result<Command, String> {
                 .arg(script)
         }
         None => {
-            let script = dev_script()?;
-            log::info!("[sidecar] launching system node with {}", script.display());
-            shell.command("node").arg(script)
+            if let Some(src) = dev_source() {
+                // Hot reload: node restarts the sidecar on every save in
+                // apps/sidecar/src or packages/*/src; the new "ready" line
+                // re-emits sidecar://ready and the windows reconnect.
+                log::info!("[sidecar] launching watch mode on {}", src.display());
+                let sidecar_src = src.parent().unwrap_or(&src).to_path_buf();
+                let sidecar_dir = sidecar_src.parent().unwrap_or(&sidecar_src).to_path_buf();
+                let core_src = sidecar_dir.join("../../packages/core/src");
+                // --watch-path limits restarts to source edits; the default
+                // import-graph watch also fired on node_modules churn.
+                shell
+                    .command("node")
+                    .arg(format!("--watch-path={}", sidecar_src.display()))
+                    .arg(format!("--watch-path={}", core_src.display()))
+                    .args([
+                        "--watch-preserve-output",
+                        "--conditions=source",
+                        "--import",
+                        "tsx",
+                    ])
+                    .arg(&src)
+                    .current_dir(sidecar_dir)
+            } else {
+                let script = dev_script()?;
+                log::info!("[sidecar] launching system node with {}", script.display());
+                shell.command("node").arg(script)
+            }
         }
     };
     Ok(command.envs(sidecar_env(app)))
+}
+
+/// `TIKSEE_SIDECAR_WATCH=1` (set by `pnpm dev:app`) runs the sidecar from source.
+fn dev_source() -> Option<PathBuf> {
+    if !cfg!(debug_assertions) || std::env::var("TIKSEE_SIDECAR_WATCH").ok().as_deref() != Some("1")
+    {
+        return None;
+    }
+    let src = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../sidecar/src/index.ts")
+        .canonicalize()
+        .ok()?;
+    Some(strip_verbatim(&src))
 }
 
 fn bundled_script(app: &AppHandle) -> Option<PathBuf> {

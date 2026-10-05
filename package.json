@@ -16,12 +16,14 @@
         "test": "turbo run test",
         "clean": "turbo run clean && rimraf node_modules",
         "desktop": "pnpm --filter @tiksee/desktop dev",
+        "dev:app": "node scripts/dev-app.mjs",
         "sidecar": "pnpm --filter @tiksee/sidecar dev",
         "verify": "turbo run typecheck lint test build",
         "budgets": "node scripts/check-budgets.mjs",
         "prepare": "git config core.hooksPath .githooks"
     },
     "devDependencies": {
+        "@gltf-transform/cli": "catalog:",
         "@tiksee/config": "workspace:*",
         "@typescript/native": "catalog:",
         "prettier": "3.9.9",

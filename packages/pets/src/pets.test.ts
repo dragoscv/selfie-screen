@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import { PETS, PET_IDS, petPixelHeight } from "./catalogue.js";
+import {
+    coverFraming,
+    outputSize,
+    outputToVideo,
+    rawToUpright,
+    uprightSize,
+    uprightToRawAffine,
+    videoToOutput,
+    type Rotation,
+} from "./framing.js";
 import { OneEuro } from "./one-euro.js";
 import { ShoulderTracker, type Landmark } from "./shoulders.js";
 import { PetStateMachine } from "./state-machine.js";
+import { FrameStats } from "./stats.js";
 import { MOUTH_SHAPES, mouthForViseme, mouthWeights } from "./visemes.js";
 
 describe("visemes", () => {
@@ -107,5 +118,57 @@ describe("catalogue", () => {
             expect(px).toBeLessThan(300);
             expect(PETS[id].id).toBe(id);
         }
+    });
+});
+
+describe("framing", () => {
+    it("crops a landscape camera to a portrait output around the centre", () => {
+        const { width, height } = outputSize("portrait");
+        const f = coverFraming(1920, 1080, width, height, false);
+        expect(f.scaleY).toBe(1);
+        expect(f.scaleX).toBeCloseTo((1080 / 1920) / (1920 / 1080));
+        expect(videoToOutput(f, 0.5, 0.5)).toEqual([0.5, 0.5]);
+    });
+
+    it("mirrors horizontally and round-trips", () => {
+        const f = coverFraming(1920, 1080, 1080, 1920, true);
+        const [u, v] = videoToOutput(f, 0.45, 0.3);
+        expect(u).toBeGreaterThan(0.5);
+        const [x, y] = outputToVideo(f, u, v);
+        expect(x).toBeCloseTo(0.45);
+        expect(y).toBeCloseTo(0.3);
+    });
+
+    it("letterboxes nothing when aspect ratios match", () => {
+        const f = coverFraming(1920, 1080, 1920, 1080, false);
+        expect(f).toMatchObject({ scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 });
+    });
+});
+
+describe("rotation", () => {
+    it("affine upright->raw inverts rawToUpright for every rotation", () => {
+        for (const r of [0, 90, 180, 270] as Rotation[]) {
+            const [u, v] = rawToUpright(r, 0.2, 0.7);
+            const [[a, b, c], [d, e, f]] = uprightToRawAffine(r);
+            expect(a * u + b * v + c).toBeCloseTo(0.2);
+            expect(d * u + e * v + f).toBeCloseTo(0.7);
+        }
+    });
+
+    it("swaps the frame size for sideways cameras", () => {
+        expect(uprightSize(90, 1920, 1080)).toEqual([1080, 1920]);
+        expect(uprightSize(180, 1920, 1080)).toEqual([1920, 1080]);
+    });
+});
+
+describe("FrameStats window", () => {
+    it("reports fps, work time and p95 interval over a window", () => {
+        const s = new FrameStats(60);
+        for (let i = 0; i <= 60; i++) s.record(i * (1000 / 60), 4);
+        const snap = s.snapshot();
+        expect(snap.fps).toBeCloseTo(60, 0);
+        expect(snap.workMs).toBeCloseTo(4);
+        expect(snap.p95IntervalMs).toBeCloseTo(16.67, 1);
+        expect(snap.frames).toBe(61);
     });
 });
