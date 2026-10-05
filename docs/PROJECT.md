@@ -151,6 +151,8 @@ readable "port busy" error rather than failing silently.
 | Q30 | System One | Use it for async enrichment **and** improve it in codai (batch `items[]`, per-request timeout, opt-in fallback, SDK helper) | 2026-10-05 |
 | Q31 | Live Control | Always-visible bar: mute, pause replies, skip, effects off, Shop LIVE mode (no AI voice), hide pets — on hotkeys + Stream Deck | 2026-10-05 |
 | Q32 | Delivery order | P0 live-ready → P1 codai brain → P2 vmui effects → P3 3D pets → P4 capture + filters → P5 native virtual camera | 2026-10-05 |
+| Q33 | Pets render path | Composite camera + pets + filters inside TikSee (pose and render on the same frame) → OBS window capture / virtual camera; browser overlay on WebGL2 only as fallback (OBS CEF 127 / LIVE Studio Chromium 136 have no reliable WebGPU) | 2026-10-05 |
+| Q34 | Texture compression | KTX-Software 4.4.2 (KTX2/Basis) installed per-user | 2026-10-05 |
 
 ---
 
@@ -287,6 +289,15 @@ Smart-home parts live in vmui's MCP catalogue.
 | P3 | 3D pets | WS23 |
 | P4 | Capture + beauty filters + composite | WS24 |
 | P5 | Native virtual camera | WS25 |
+
+### 10.4 Status (2026-10-05)
+
+| Phase | State | Evidence |
+| --- | --- | --- |
+| P0 | done | 0.2.0 published (`latest.json` 0.2.0, signed); installer bundles Node; release exe smoke: sidecar ready and exits with the app |
+| P1 | done except WS19-06, WS20-08/10/13/14 | Test voice → codai usage `codai-tts-ro` HTTP 200; reply queue + Live Control round-trip in the app |
+| P2 | done | Test flash from TikSee → vmui audit `mcp.flash_color cyan ok` |
+| P3–P5 | not started | Research done (Blender 5.1.2 headless, gltf-transform, KTX 4.4.2 installed); decision Q33: composite in TikSee |
 
 ---
 
