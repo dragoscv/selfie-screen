@@ -32,7 +32,9 @@ import { appDataDir } from "./paths.js";
 import { SecretStore } from "./secrets.js";
 import { StreamManager } from "./streams.js";
 
-const VERSION = "0.1.0";
+declare const __TIKSEE_VERSION__: string | undefined;
+/** Injected by tsdown from package.json; `dev` (tsx) has no define. */
+const VERSION = typeof __TIKSEE_VERSION__ === "string" ? __TIKSEE_VERSION__ : "dev";
 const log = logger.scoped("[sidecar]");
 
 const dataDir = join(homedir(), ".tiksee");
