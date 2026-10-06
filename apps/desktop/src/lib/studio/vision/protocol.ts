@@ -1,6 +1,6 @@
 import type { IdentityProfile, VisionSettings } from "@tiksee/core";
 
-import type { CalibrationSample, EnrolSample, VisionFrame } from "../controller.js";
+import type { CalibrationSample, EnrolSample, RawLandmark, VisionFrame } from "../controller.js";
 
 /** Optional ONNX models, downloaded on demand (see models.ts). */
 export type OptionalModel = "identity" | "dogIdentity" | "depth";
@@ -31,6 +31,8 @@ export type FromWorker =
     | { id: number; type: "ok" }
     | { id: number; type: "error"; message: string }
     | { id: number; type: "frame"; frame: VisionFrame }
+    /** Early pose-only result for frame `id`, sent before hands/face/objects run (does not answer the request). */
+    | { id: number; type: "pose"; tMs: number; poses: RawLandmark[][]; ownerIndex: number }
     | { id: number; type: "calibration"; sample: CalibrationSample }
     | { id: number; type: "enrolment"; sample: EnrolSample | null }
     | { id: number; type: "progress"; progress: number };

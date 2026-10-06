@@ -1,6 +1,6 @@
 import type { IdentityProfile, VisionSettings } from "@tiksee/core";
 
-import type { CalibrationSample, EnrolSample, VisionFrame, VisionRuntime } from "../controller.js";
+import type { CalibrationSample, EnrolSample, RawLandmark, VisionFrame, VisionRuntime } from "../controller.js";
 import type { VisionPipeline } from "./pipeline.js";
 import type { FromWorker, OptionalModel, PipelineConfig, Rotation, ToWorker } from "./protocol.js";
 
@@ -8,9 +8,13 @@ import type { FromWorker, OptionalModel, PipelineConfig, Rotation, ToWorker } fr
  * Studio vision runtime.
  *
  * Default: every model runs in a dedicated Web Worker (`./worker.ts`), so the
- * render loop never waits on inference. Each push() turns the <video> into a
- * downscaled ImageBitmap (≤ 640 px long edge, transferred, zero-copy); the
- * worker drops frames while busy, and so do we (one frame in flight).
+ * render loop never waits on inference. Frames are driven by the camera, not
+ * the render loop: `attach(video)` registers `requestVideoFrameCallback`, and
+ * each NEW camera frame (presentedFrames changed) becomes a downscaled
+ * ImageBitmap (≤ 640 px long edge, transferred, zero-copy) stamped with its
+ * capture time on the performance clock. One frame in flight; while busy only
+ * the newest frame is remembered and sent as soon as the in-flight one returns.
+ * The worker posts the pose result early (`latestPose()`), before the rest.
  *
  * Worker loading: `new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })`
  * — the only form Vite 8 bundles in both dev (module worker) and build (IIFE =
@@ -35,16 +39,30 @@ type Backend =
     | { kind: "worker"; worker: Worker }
     | { kind: "main"; pipeline: VisionPipeline };
 
+export interface PoseResult {
+    tMs: number;
+    arrivalMs: number;
+    seq: number;
+    pose: RawLandmark[] | null;
+}
+
 export class StudioVision implements VisionRuntime {
     #backend: Backend | null = null;
     #latest: VisionFrame | null = null;
+    #latestPose: PoseResult | null = null;
+    #poseSeq = 0;
     #seq = 1;
     readonly #pending = new Map<number, Pending>();
     #inFlight = false;
     #config: PipelineConfig | null = null;
     #closed = false;
     #lastPush = -Infinity;
-    /** ms between pushes; ~30 Hz is what the landmarkers track well. */
+    #video: HTMLVideoElement | null = null;
+    #rvfc: number | null = null;
+    #lastPresented = -1;
+    /** Capture time of the newest camera frame that arrived while one was in flight. */
+    #pendingCapture: number | null = null;
+    /** ms between pushes in the legacy (no requestVideoFrameCallback) path. */
     readonly #intervalMs: number;
 
     constructor(intervalMs = 1000 / 30) {
@@ -73,6 +91,7 @@ export class StudioVision implements VisionRuntime {
         }
         const { VisionPipeline } = await import("./pipeline.js");
         const pipeline = new VisionPipeline();
+        pipeline.onPose = (tMs, poses, ownerIndex) => this.#onPose(tMs, poses, ownerIndex);
         this.#config = { ...this.#config, stagger: true };
         await pipeline.init(this.#config);
         this.#backend = { kind: "main", pipeline };
@@ -86,12 +105,51 @@ export class StudioVision implements VisionRuntime {
         else await b.pipeline.apply(this.#config);
     }
 
+    /** Drive vision from `video`'s own frames (requestVideoFrameCallback). Idempotent per element. */
+    attach(video: HTMLVideoElement): void {
+        if (this.#closed || this.#video === video) return;
+        this.#detach();
+        this.#video = video;
+        this.#lastPresented = -1;
+        this.#pendingCapture = null;
+        if (typeof video.requestVideoFrameCallback === "function") this.#arm(video);
+    }
+
+    /** Legacy entry point: attaches on first call; only does work when rVFC is unavailable. */
     push(video: HTMLVideoElement, tMs: number): void {
+        this.attach(video);
+        if (typeof video.requestVideoFrameCallback === "function") return;
+        if (this.#inFlight || tMs - this.#lastPush < this.#intervalMs) return;
+        this.#lastPush = tMs;
+        this.#send(video, performance.now());
+    }
+
+    #arm(video: HTMLVideoElement): void {
+        this.#rvfc = video.requestVideoFrameCallback((now, meta) => {
+            if (this.#closed || this.#video !== video) return;
+            this.#arm(video);
+            if (meta.presentedFrames === this.#lastPresented) return;
+            this.#lastPresented = meta.presentedFrames;
+            const captureMs = meta.captureTime ?? meta.expectedDisplayTime - (meta.processingDuration ?? 0) * 1000;
+            const t = Number.isFinite(captureMs) && captureMs > 0 ? captureMs : now;
+            if (this.#inFlight) this.#pendingCapture = t;
+            else this.#send(video, t);
+        });
+    }
+
+    #detach(): void {
+        const v = this.#video;
+        if (v && this.#rvfc !== null && typeof v.cancelVideoFrameCallback === "function") v.cancelVideoFrameCallback(this.#rvfc);
+        this.#rvfc = null;
+        this.#video = null;
+    }
+
+    #send(video: HTMLVideoElement, captureMs: number): void {
         const b = this.#backend;
         if (!b || this.#closed || this.#inFlight || !this.#config?.settings.enabled) return;
-        if (video.readyState < 2 || video.videoWidth === 0 || tMs - this.#lastPush < this.#intervalMs) return;
-        this.#lastPush = tMs;
+        if (video.readyState < 2 || video.videoWidth === 0) return;
         this.#inFlight = true;
+        const tMs = captureMs;
         const rawW = video.videoWidth;
         const rawH = video.videoHeight;
         const s = Math.min(1, LONG_EDGE / Math.max(rawW, rawH));
@@ -109,17 +167,35 @@ export class StudioVision implements VisionRuntime {
                     if (r.type !== "frame") return;
                     frame = r.frame;
                 } else frame = await b.pipeline.process(bitmap, tMs, rawW, rawH);
+                const arrivalMs = performance.now();
+                frame.captureMs = tMs;
+                frame.arrivalMs = arrivalMs;
                 frame.timings["grab"] = grab;
-                frame.timings["roundtrip"] = performance.now() - t0;
+                frame.timings["roundtrip"] = arrivalMs - t0;
+                frame.timings["latency"] = arrivalMs - tMs;
                 frame.timings["mode.worker"] = b.kind === "worker" ? 1 : 0;
                 this.#latest = frame;
             })
             .catch((e: unknown) => console.warn("[vision] frame failed:", e))
-            .finally(() => (this.#inFlight = false));
+            .finally(() => {
+                this.#inFlight = false;
+                const next = this.#pendingCapture;
+                this.#pendingCapture = null;
+                if (next !== null && this.#video) this.#send(this.#video, next);
+            });
     }
 
     latest(): VisionFrame | null {
         return this.#latest;
+    }
+
+    /** Newest pose-only result (arrives before the full frame). */
+    latestPose(): PoseResult | null {
+        return this.#latestPose;
+    }
+
+    #onPose(tMs: number, poses: RawLandmark[][], ownerIndex: number): void {
+        this.#latestPose = { tMs, arrivalMs: performance.now(), seq: ++this.#poseSeq, pose: poses[ownerIndex] ?? poses[0] ?? null };
     }
 
     async sampleCalibration(ms: number): Promise<CalibrationSample> {
@@ -153,6 +229,7 @@ export class StudioVision implements VisionRuntime {
 
     close(): void {
         this.#closed = true;
+        this.#detach();
         const b = this.#backend;
         this.#backend = null;
         if (b?.kind === "worker") {
@@ -182,6 +259,11 @@ export class StudioVision implements VisionRuntime {
     }
 
     #onMessage(m: FromWorker): void {
+        if (m.type === "pose") {
+            // Extra message for an in-flight frame id; the "frame" reply still answers it.
+            this.#onPose(m.tMs, m.poses, m.ownerIndex);
+            return;
+        }
         const p = this.#pending.get(m.id);
         if (!p) return;
         if (m.type === "progress") {

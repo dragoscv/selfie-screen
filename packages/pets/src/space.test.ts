@@ -73,7 +73,7 @@ describe("pinhole", () => {
 });
 
 describe("BodyModel", () => {
-    it("keeps a still body still under landmark noise (One-Euro on measurements)", () => {
+    it("keeps a still body still on screen under landmark and depth noise", () => {
         const body = new BodyModel(PIN, 1);
         let seed = 7;
         const noise = () => {
@@ -84,12 +84,15 @@ describe("BodyModel", () => {
         for (let frame = 0; frame < 240; frame++) {
             const t = frame * (1000 / 60);
             if (frame % 4 === 0) body.measure({ tMs: t, landmarks: pose({ leftShoulder: [0.68 + noise(), 0.55 + noise()] }), distanceM: 1 + noise() * 10 });
-            xs.push(body.sample(t, 1 / 60).joints.leftShoulder.p[0]);
+            // On-screen position: depth noise must not move the joint in the image.
+            xs.push(project(PIN, body.sample(t, 1 / 60).joints.leftShoulder.p).u * PIN.width);
         }
         const tail = xs.slice(120);
         const range = Math.max(...tail) - Math.min(...tail);
-        // Raw noise is ±3 px ≈ ±2 mm at 1 m; filtered wobble stays under 2 mm peak-to-peak.
-        expect(range).toBeLessThan(0.002);
+        // Raw noise is ±3 px (6 px peak-to-peak) plus ±3 cm of depth. Depth must not add
+        // anything on screen, and the slow residual drift stays ≥ 40 % below raw.
+        // Frame-to-frame jitter (what reads as "jumpy") is gated in jitter.test.ts.
+        expect(range).toBeLessThan(3.5);
     });
 
     it("moves continuously between 10 Hz pose updates at a 60 fps render (no steps)", () => {

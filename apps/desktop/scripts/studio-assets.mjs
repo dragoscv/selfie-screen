@@ -44,6 +44,8 @@ copyDir(join(three, "examples", "jsm", "libs", "basis"), join(pub, "basis"), (n)
 const MP = "https://storage.googleapis.com/mediapipe-models";
 const MODELS = [
     { url: `${MP}/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`, md5: "BKdd33yBGsehpFIyZt19iA==", name: "pose_landmarker_lite.task" },
+    // x-goog-hash checked 2026-10-06 (/latest/ is a different object: WprYiR...).
+    { url: `${MP}/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task`, md5: "g4eWidNz0UO+CUyXI1Xkjg==", name: "pose_landmarker_full.task" },
     { url: `${MP}/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task`, md5: "Tb9IXEcyB2URAKGJU0PzWg==", name: "gesture_recognizer.task" },
     { url: `${MP}/face_landmarker/face_landmarker/float16/1/face_landmarker.task`, md5: "sOcnSQehZEQE/vZrKN1thQ==", name: "face_landmarker.task" },
     { url: `${MP}/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite`, md5: "zr9kr2w15avXNElGhQZIQg==", name: "efficientdet_lite0.tflite" },

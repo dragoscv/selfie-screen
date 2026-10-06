@@ -553,6 +553,10 @@ export const visionSchema = z.object({
         .default({ hand: true, twoHands: true, motion: true, face: true, posture: true, state: true, presence: true }),
     /** Up to this many hands / faces / poses tracked. */
     maxPeople: z.number().int().min(1).max(4).default(2),
+    /** Track several people's bodies (turns off MediaPipe's built-in landmark smoothing); faces/hands still track maxPeople. */
+    multiPersonPose: z.boolean().default(false),
+    /** Pose landmarker variant: "full" is steadier, "lite" is cheaper. */
+    poseModel: z.enum(["lite", "full"]).default("full"),
     /** Global gate for every signal-driven rule. */
     rulesEnabled: z.boolean().default(true),
     /** Sensitive rules need an arm (open palm hold) within this window. */

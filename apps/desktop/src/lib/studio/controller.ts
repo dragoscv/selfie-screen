@@ -150,7 +150,12 @@ export interface RawLandmark {
 
 /** Everything the render engine needs from one vision tick, in raw camera space. */
 export interface VisionFrame {
+    /** = captureMs (performance clock). */
     tMs: number;
+    /** Camera capture time of the analysed frame (performance clock). */
+    captureMs?: number;
+    /** performance.now() when the result reached the main thread. */
+    arrivalMs?: number;
     /** Pose landmarks per person (33 each), raw camera coords. */
     poses: RawLandmark[][];
     /** Person segmentation mask (raw camera space, row 0 = top), or null. */
@@ -173,10 +178,14 @@ export interface VisionFrame {
 export interface VisionRuntime {
     init(settings: VisionSettings, rotation: 0 | 90 | 180 | 270, mirror: boolean): Promise<void>;
     apply(settings: VisionSettings, rotation: 0 | 90 | 180 | 270, mirror: boolean): Promise<void>;
-    /** Feed the current camera frame; never blocks the render loop (drops frames when busy). */
+    /** Attach the camera <video>; frames are then pulled per NEW camera frame (requestVideoFrameCallback). */
+    attach?(video: HTMLVideoElement): void;
+    /** Legacy: attaches `video` on first call, otherwise a no-op. */
     push(video: HTMLVideoElement, tMs: number): void;
     /** Newest completed result (the same object until a new one lands). */
     latest(): VisionFrame | null;
+    /** Newest pose-only result (arrives before the full frame). */
+    latestPose(): { tMs: number; arrivalMs: number; seq: number; pose: RawLandmark[] | null } | null;
     sampleCalibration(ms: number): Promise<CalibrationSample>;
     sampleEnrolment(kind: "person" | "dog"): Promise<EnrolSample | null>;
     ensureModels(which: ("identity" | "dogIdentity" | "depth")[], onProgress?: (p: number) => void): Promise<void>;

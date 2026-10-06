@@ -19,10 +19,16 @@ import {
  * The owner's skeleton in world metres, sampled every RENDER frame from pose
  * measurements that arrive at 10-30 Hz.
  *
- * Why this exists (the old pets flickered and stepped):
- *  - Measurements are timestamped and the render samples a short-latency
- *    critically-damped spring toward a velocity-extrapolated target, so motion
- *    is continuous at any render rate instead of jumping when a pose lands.
+ * Smoothness (owner: "the skeleton is jumpy"):
+ *  - Each measurement is filtered in IMAGE space (px, One-Euro) and in depth
+ *    separately, then unprojected ONCE. Filtering metres and rescaling by the
+ *    raw depth leaked depth noise into x/y (~50 px at a wrist near the edge).
+ *  - Samples are kept per joint with their CAPTURE time. The render shows the
+ *    body `delayMs` in the past and interpolates between real samples with a
+ *    cubic Hermite (Catmull-Rom tangents): continuous position AND velocity,
+ *    no overshoot from guessing ahead. The delay adapts to the measured
+ *    arrival latency + interval (p90), clamped 50-160 ms. When samples run out
+ *    it extrapolates at most one interval, then holds.
  *  - Each joint has its own confidence with hysteresis (on above 0.6, off below
  *    0.35) and keeps its last good position when unseen. Nothing toggles per
  *    frame; consumers fade on `conf`.
@@ -31,18 +37,19 @@ import {
  *    (hip-relative, in image-width units, scaled to metres by the shoulder span).
  */
 
-/** Seconds; time constant of the render-rate follow spring. */
-export const FOLLOW_TAU_S = 0.12;
-/** Extrapolate at most this far past the newest measurement, at half the measured velocity. */
-export const MAX_EXTRAPOLATE_MS = 60;
 /**
- * One-Euro on each MEASURED joint (in metres): MediaPipe landmarks jitter by a few
- * pixels (= 1-2 cm at 1 m) and depth by several cm per frame. minCutoff 0.8 Hz keeps
- * a still body still; beta 1.5 (per m/s) lets real motion through with little lag.
+ * One-Euro on image px (output frame). With MediaPipe's own smoothing on
+ * (numPoses 1) this only removes residual jitter: 1.2 Hz at rest, cutoff
+ * rising ~3.5 Hz per 500 px/s of motion.
  */
-export const JOINT_FILTER: OneEuroOptions = { minCutoff: 0.8, beta: 1.5, dCutoff: 1 };
-/** Depth gets a stronger filter: it is the noisiest axis. */
-export const DEPTH_FILTER: OneEuroOptions = { minCutoff: 0.4, beta: 0.6, dCutoff: 1 };
+export const JOINT_FILTER: OneEuroOptions = { minCutoff: 1.2, beta: 0.007, dCutoff: 1 };
+/** Depth (m) is the noisiest axis: strong low-pass, speed-adaptive. */
+export const DEPTH_FILTER: OneEuroOptions = { minCutoff: 0.3, beta: 0.3, dCutoff: 1 };
+/** Interpolation delay bounds (ms). */
+export const MIN_DELAY_MS = 50;
+export const MAX_DELAY_MS = 160;
+/** Samples kept per joint. */
+const RING = 8;
 /** A joint unseen for this long is gone (conf decays to 0 over FADE_MS after it). */
 export const LOST_AFTER_MS = 600;
 export const FADE_MS = 400;
@@ -51,18 +58,19 @@ export const CONF_OFF = 0.35;
 /** Owner absent for this long = not present. */
 export const ABSENT_AFTER_MS = 1500;
 
+interface Sample {
+    t: number;
+    p: Vec3;
+}
+
 interface JointTrack {
-    /** Measurement filters: x/y (metres) and depth separately. */
+    /** Measurement filters: image px and depth separately. */
     fxy: OneEuroPoint;
     fz: OneEuroPoint;
-    /** Two latest measurements for velocity. */
-    a: Vec3 | null;
-    ta: number;
-    b: Vec3 | null;
-    tb: number;
-    /** Rendered (smoothed) position and velocity. */
+    /** Filtered samples (room metres) by capture time, oldest first. */
+    ring: Sample[];
+    /** Rendered position. */
     p: Vec3;
-    v: Vec3;
     on: boolean;
     conf: number;
     seenAt: number;
@@ -82,16 +90,55 @@ function newTrack(): JointTrack {
     return {
         fxy: new OneEuroPoint(2, JOINT_FILTER),
         fz: new OneEuroPoint(1, DEPTH_FILTER),
-        a: null,
-        ta: 0,
-        b: null,
-        tb: 0,
+        ring: [],
         p: [0, 0, -1],
-        v: [0, 0, 0],
         on: false,
         conf: 0,
         seenAt: -Infinity,
     };
+}
+
+/** Cubic Hermite between p1 (t1) and p2 (t2) with Catmull-Rom tangents from p0 and p3. */
+export function hermite(p0: Sample, p1: Sample, p2: Sample, p3: Sample, t: number): Vec3 {
+    const dt = Math.max(p2.t - p1.t, 1e-3);
+    const s = Math.min(Math.max((t - p1.t) / dt, 0), 1);
+    const s2 = s * s;
+    const s3 = s2 * s;
+    const h00 = 2 * s3 - 3 * s2 + 1;
+    const h10 = s3 - 2 * s2 + s;
+    const h01 = -2 * s3 + 3 * s2;
+    const h11 = s3 - s2;
+    const out: Vec3 = [0, 0, 0];
+    for (let i = 0; i < 3; i++) {
+        // Tangents in units per ms, scaled to the segment length.
+        const m1 = ((p2.p[i] ?? 0) - (p0.p[i] ?? 0)) / Math.max(p2.t - p0.t, 1e-3);
+        const m2 = ((p3.p[i] ?? 0) - (p1.p[i] ?? 0)) / Math.max(p3.t - p1.t, 1e-3);
+        out[i] = h00 * (p1.p[i] ?? 0) + h10 * dt * m1 + h01 * (p2.p[i] ?? 0) + h11 * dt * m2;
+    }
+    return out;
+}
+
+/** Position of a joint at render time `t` from its sample ring. */
+export function sampleRing(ring: readonly Sample[], t: number): Vec3 | null {
+    const n = ring.length;
+    if (n === 0) return null;
+    const last = ring[n - 1] as Sample;
+    if (n === 1 || t <= (ring[0] as Sample).t) return t <= (ring[0] as Sample).t ? (ring[0] as Sample).p : last.p;
+    if (t >= last.t) {
+        // Past the newest sample: extrapolate at most one interval at half velocity, then hold.
+        const prev = ring[n - 2] as Sample;
+        const span = Math.max(last.t - prev.t, 1);
+        const ahead = Math.min(t - last.t, span);
+        const k = (0.5 * ahead) / span;
+        return [last.p[0] + (last.p[0] - prev.p[0]) * k, last.p[1] + (last.p[1] - prev.p[1]) * k, last.p[2] + (last.p[2] - prev.p[2]) * k];
+    }
+    let i = 0;
+    while (i < n - 2 && (ring[i + 1] as Sample).t <= t) i++;
+    const p1 = ring[i] as Sample;
+    const p2 = ring[i + 1] as Sample;
+    const p0 = ring[i - 1] ?? p1;
+    const p3 = ring[i + 2] ?? p2;
+    return hermite(p0, p1, p2, p3, t);
 }
 
 export interface BodyMeasurement {
@@ -111,6 +158,10 @@ export class BodyModel {
     #snapshot: BodySnapshot | null = null;
     /** Camera tilt (deg down) estimated from the upright neck; null until enough samples. */
     #tiltEst: number | null = null;
+    /** Recent (arrival - capture) + interval, ms, for the adaptive delay. */
+    readonly #lags: number[] = [];
+    #lastCapture = -Infinity;
+    #delay = 90;
 
     constructor(pinhole: Pinhole, initialDistanceM = 1) {
         this.#pin = pinhole;
@@ -130,14 +181,32 @@ export class BodyModel {
         return this.#tiltEst;
     }
 
-    /** Feed one pose result. Cheap; call when a new vision frame lands. */
-    measure(m: BodyMeasurement): void {
+    /** Current interpolation delay (ms) behind real time. */
+    get delayMs(): number {
+        return this.#delay;
+    }
+
+    /**
+     * Feed one pose result. `m.tMs` = capture time; `arrivalMs` = when it reached us
+     * (performance clock), used to size the interpolation delay.
+     */
+    measure(m: BodyMeasurement, arrivalMs = m.tMs): void {
         if (m.distanceM !== undefined && Number.isFinite(m.distanceM) && m.distanceM > 0.2) {
             // Distance itself is noisy: low-pass it (~0.3 s).
             this.#distance += (m.distanceM - this.#distance) * 0.25;
         }
         const lm = m.landmarks;
         if (!lm) return;
+        if (m.tMs <= this.#lastCapture) return; // stale / duplicate frame
+        const interval = Number.isFinite(this.#lastCapture) ? m.tMs - this.#lastCapture : 33;
+        this.#lastCapture = m.tMs;
+        this.#lags.push(Math.max(0, arrivalMs - m.tMs) + Math.min(interval, 200));
+        if (this.#lags.length > 40) this.#lags.shift();
+        const sorted = [...this.#lags].sort((a, b) => a - b);
+        const p90 = sorted[Math.floor(sorted.length * 0.9)] ?? 90;
+        const want = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, p90 + 8));
+        // Move the delay slowly (no time-warp jumps).
+        this.#delay += (want - this.#delay) * 0.1;
         this.#lastPoseAt = m.tMs;
         // MediaPipe z is in image-WIDTH units relative to the hips. Convert to metres using
         // the shoulder span measured in the same units (shoulder width = 0.4 m).
@@ -148,8 +217,10 @@ export class BodyModel {
         const mPerZ = spanW > 0.02 ? SHOULDER_WIDTH_M / spanW : 0;
         // Torso reference z: the shoulders' mean z (hips are often out of frame).
         const refZ = ls && rs ? (ls.z + rs.z) / 2 : 0;
-        // Camera-frame copy (no tilt/height) for the auto-tilt estimate.
+        // Camera-frame pinhole (no tilt/height): filtering happens there.
         const camPin: Pinhole = { width: this.#pin.width, height: this.#pin.height, vfovDeg: this.#pin.vfovDeg };
+        const W = this.#pin.width;
+        const H = this.#pin.height;
         const camPts: Partial<Record<BodyJoint, Vec3>> = {};
         for (const joint of BODY_JOINTS) {
             const l = lm[POSE_INDEX[joint]];
@@ -161,25 +232,17 @@ export class BodyModel {
             const inFrame = l.u > -0.15 && l.u < 1.15 && l.v > -0.15 && l.v < 1.15;
             if (vis < CONF_OFF || !inFrame) continue;
             const depth = Math.max(0.3, this.#distance + (mPerZ ? (l.z - refZ) * mPerZ : 0));
-            // Filter in the camera frame (image-plane metres + depth), then go to the room.
-            const raw = unproject(camPin, l.u, l.v, depth);
-            const [fx = raw[0], fy = raw[1]] = t.fxy.filter([raw[0], raw[1]], m.tMs);
+            // Filter where the noise lives: image px for x/y, metres for depth. Unproject once.
+            const [px = l.u * W, py = l.v * H] = t.fxy.filter([l.u * W, l.v * H], m.tMs);
             const [fd = depth] = t.fz.filter([depth], m.tMs);
-            // Re-project the filtered x/y to the filtered depth along the same ray.
-            const k = fd / depth;
-            const cam: Vec3 = [fx * k, fy * k, -fd];
+            const cam = unproject(camPin, px / W, py / H, fd);
             camPts[joint] = cam;
             const p = camToWorld(this.#pin, cam);
-            t.a = t.b;
-            t.ta = t.tb;
-            t.b = p;
-            t.tb = m.tMs;
+            t.ring.push({ t: m.tMs, p });
+            if (t.ring.length > RING) t.ring.shift();
             t.seenAt = m.tMs;
             if (vis >= CONF_ON) t.on = true;
-            if (!t.on && t.a === null) {
-                // First sight below CONF_ON: start the spring at the point so it doesn't fly in.
-                t.p = p;
-            }
+            if (t.ring.length === 1) t.p = p;
         }
         this.#estimateTilt(camPts);
     }
@@ -202,31 +265,20 @@ export class BodyModel {
         for (const t of this.#tracks.values()) {
             t.fxy.reset();
             t.fz.reset();
-            t.a = null;
-            t.b = null;
+            t.ring = [];
         }
+        this.#lastCapture = -Infinity;
     }
 
-    /** Advance the render-rate spring to `nowMs` and return the snapshot. Call once per render frame. */
+    /** Interpolate every joint at `nowMs - delayMs` and return the snapshot. Call once per render frame. */
     sample(nowMs: number, dtSec: number): BodySnapshot {
-        const k = 1 - Math.exp(-Math.max(dtSec, 0) / FOLLOW_TAU_S);
+        const at = nowMs - this.#delay;
         const joints = {} as Record<BodyJoint, BodyJointState>;
         for (const joint of BODY_JOINTS) {
             const t = this.#tracks.get(joint) as JointTrack;
             const age = nowMs - t.seenAt;
-            if (t.b) {
-                let target = t.b;
-                if (t.a && t.tb > t.ta) {
-                    const v = scale(sub(t.b, t.a), 1 / (t.tb - t.ta));
-                    const ahead = Math.min(Math.max(nowMs - t.tb, 0), MAX_EXTRAPOLATE_MS);
-                    // Half velocity: full extrapolation overshoots on every direction change.
-                    target = add(t.b, scale(v, ahead * 0.5));
-                }
-                if (t.conf === 0 && t.on) t.p = target;
-                const np = add(t.p, scale(sub(target, t.p), k));
-                t.v = dtSec > 0 ? scale(sub(np, t.p), 1 / dtSec) : t.v;
-                t.p = np;
-            }
+            const p = sampleRing(t.ring, at);
+            if (p) t.p = p;
             // Confidence: hysteresis on measurement presence, then a linear fade.
             if (age > LOST_AFTER_MS) t.on = false;
             const want = t.on ? 1 : 0;

@@ -319,6 +319,7 @@ export class StudioEngine implements StudioController {
     #bodySnap: ReturnType<BodyModel["sample"]> | null = null;
     #poseHz = 0;
     #lastPoseAt = 0;
+    #poseSeq = -1;
     #lastRender = 0;
     readonly #stats = new FrameStats();
     readonly #cb: EngineCallbacks;
@@ -933,23 +934,33 @@ export class StudioEngine implements StudioController {
             radius: fo ? Math.max(fo.h * 0.75, 0.05) : 0.12,
         });
 
-        // 3D: the output pinhole follows the crop + digital zoom; the body model is measured
-        // when a pose lands and sampled (spring + extrapolation) every render frame.
+        // 3D: the output pinhole follows the crop + digital zoom; the body model is fed the
+        // OWNER's pose as soon as it lands (early pose message, capture-timed) and is
+        // interpolated a short fixed delay behind real time every render frame.
         stage.setFov(outputVfov(this.#settings.vfovDeg, f));
         const tilt = this.#settings.cameraTiltAuto ? (this.#body.estimatedTiltDeg ?? this.#settings.cameraTiltDeg) : this.#settings.cameraTiltDeg;
         stage.setCameraPose(Math.round(tilt * 2) / 2, this.#settings.cameraHeightM);
         if (this.#effects) this.#effects.tiltDeg = stage.pinhole.tiltDeg ?? 0;
         const pin = stage.pinhole;
         this.#body.pinhole = pin;
-        const pose = frame?.poses[0] ?? null;
-        if (freshVision && frame) {
-            this.#body.measure({ tMs: frame.tMs || now, landmarks: pose ? poseToOutput(pose, f, rotation) : null, distanceM: frame.ownerDistanceM });
+        const early = this.#synthetic ? null : (this.#vision?.latestPose() ?? null);
+        let pose = frame?.poses[0] ?? null;
+        if (early && early.seq !== this.#poseSeq) {
+            this.#poseSeq = early.seq;
+            pose = early.pose;
+            this.#body.measure(
+                { tMs: early.tMs, landmarks: pose ? poseToOutput(pose, f, rotation) : null, distanceM: this.#ownerM },
+                early.arrivalMs,
+            );
             if (pose) {
-                const gap = now - this.#lastPoseAt;
+                const gap = early.tMs - this.#lastPoseAt;
                 if (this.#lastPoseAt > 0 && gap > 0) this.#poseHz = this.#poseHz * 0.8 + (1000 / gap) * 0.2;
-                this.#lastPoseAt = now;
+                this.#lastPoseAt = early.tMs;
             }
-        }
+        } else if (!early && freshVision && frame) {
+            // Synthetic bench / runtimes without the early pose message.
+            this.#body.measure({ tMs: frame.tMs || now, landmarks: pose ? poseToOutput(pose, f, rotation) : null, distanceM: frame.ownerDistanceM });
+        } else if (early) pose = early.pose;
         const body = this.#body.sample(now, dt);
         this.#bodySnap = body;
         this.#placeAnchors(pose, f, rotation);

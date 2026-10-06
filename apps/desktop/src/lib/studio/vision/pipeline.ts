@@ -71,7 +71,7 @@ async function withModuleFactory<T>(make: () => Promise<T>): Promise<T> {
     return make();
 }
 const ASSETS = {
-    pose: "/mediapipe/pose_landmarker_lite.task",
+    pose: { lite: "/mediapipe/pose_landmarker_lite.task", full: "/mediapipe/pose_landmarker_full.task" },
     gesture: "/mediapipe/gesture_recognizer.task",
     face: "/mediapipe/face_landmarker.task",
     objects: "/mediapipe/efficientdet_lite0.tflite",
@@ -179,6 +179,12 @@ function rawBox(points: readonly NormalizedLandmark[]): Box {
 }
 
 export class VisionPipeline {
+    /**
+     * Called right after the pose landmarker returns, before hands/face/objects/depth/identity.
+     * `ownerIndex` = index into `poses` of the owner tracked on the PREVIOUS frame, or -1.
+     * Landmarks carry raw visibility.
+     */
+    onPose: ((tMs: number, poses: RawLandmark[][], ownerIndex: number) => void) | null = null;
     #cfg: PipelineConfig | null = null;
     #tasks: Tasks = { pose: null, gesture: null, face: null, objects: null };
     #fileset: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>> | null = null;
@@ -256,11 +262,16 @@ export class VisionPipeline {
         if (!fileset) return;
         const n = s.maxPeople;
         const changedN = prev?.settings.maxPeople !== n;
-        await this.#ensure("pose", s.enabled, changedN, () =>
+        // MediaPipe only smooths landmarks in-graph (One-Euro + visibility LP) when numPoses == 1.
+        const numPoses = n > 1 && s.multiPersonPose ? n : 1;
+        const prevPoses = prev ? (prev.settings.maxPeople > 1 && prev.settings.multiPersonPose ? prev.settings.maxPeople : 1) : -1;
+        const poseModel = s.poseModel;
+        const changedPose = numPoses !== prevPoses || prev?.settings.poseModel !== poseModel;
+        await this.#ensure("pose", s.enabled, changedPose, () =>
             PoseLandmarker.createFromOptions(fileset, {
-                ...this.#base(ASSETS.pose, "pose"),
+            ...this.#base(ASSETS.pose[poseModel], "pose"),
                 runningMode: "VIDEO",
-                numPoses: n,
+            numPoses,
                 minPoseDetectionConfidence: 0.5,
                 minPosePresenceConfidence: 0.5,
                 minTrackingConfidence: 0.5,
@@ -408,6 +419,7 @@ export class VisionPipeline {
             try {
                 const r = t.pose.detectForVideo(bitmap, ts);
                 this.#poses = r.landmarks.map((lm) => lm.map((p) => ({ x: p.x, y: p.y, z: p.z, visibility: p.visibility })));
+                this.#emitPose(tMs, disp);
                 const masks = r.segmentationMasks ?? [];
                 const first = masks[0];
                 if (first) {
@@ -675,6 +687,34 @@ export class VisionPipeline {
 
     #lastHands: HandDet[] = [];
     #lastFaces: FaceDet[] = [];
+
+    /** Early pose hook; owner = the pose nearest the previous frame's owner track box. */
+    #emitPose(tMs: number, disp: (p: { x: number; y: number }, w?: number, h?: number) => Pt): void {
+        const cb = this.onPose;
+        if (!cb) return;
+        const poses = this.#poses;
+        let ownerIndex = -1;
+        const owner = this.#people.tracks.find((tr) => tr.id === this.#ownerTrack);
+        if (poses.length === 1) ownerIndex = 0;
+        else if (owner && poses.length > 1) {
+            const oc = { x: owner.box.x + owner.box.w / 2, y: owner.box.y + owner.box.h / 2 };
+            let bestD = Infinity;
+            poses.forEach((lm, i) => {
+                const box = boxOfPoints(lm.map((p) => ({ ...disp(p, 1, 1), visibility: p.visibility ?? 1 })), 0.5);
+                if (!box) return;
+                const d = Math.hypot(box.x + box.w / 2 - oc.x, box.y + box.h / 2 - oc.y);
+                if (d < bestD) {
+                    bestD = d;
+                    ownerIndex = i;
+                }
+            });
+        }
+        try {
+            cb(tMs, poses, ownerIndex);
+        } catch (e) {
+            console.warn("[vision] onPose failed", e);
+        }
+    }
 
     #personState(track: number): PersonState {
         let st = this.#state.get(track);
