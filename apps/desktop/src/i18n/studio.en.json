@@ -158,6 +158,10 @@
             },
             "safeZones": "TikTok LIVE safe zones",
             "horizon": "Horizon level",
+            "debug3d": {
+                "label": "3D debug",
+                "hint": "Skeleton, depth grid and pet anchors (F3). Preview only."
+            },
             "cleanFeed": "Clean feed",
             "cleanFeedHint": "Hide every aid and see exactly what viewers see.",
             "clean": "Clean",

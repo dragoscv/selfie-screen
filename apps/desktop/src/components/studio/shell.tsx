@@ -20,6 +20,7 @@ import { StatusBar } from "./status.js";
 // On-demand flows stay out of the studio entry chunk (budget: scripts/check-budgets.mjs).
 const ArEditor = lazy(() => import("./ar-editor.js").then((m) => ({ default: m.ArEditor })));
 const Calibration = lazy(() => import("./calibration.js").then((m) => ({ default: m.Calibration })));
+const Debug3d = lazy(() => import("./debug3d.js").then((m) => ({ default: m.Debug3d })));
 const Enrol = lazy(() => import("./enrol.js").then((m) => ({ default: m.Enrol })));
 const Tutorial = lazy(() => import("./tutorial.js").then((m) => ({ default: m.Tutorial })));
 
@@ -89,6 +90,11 @@ export function StudioShell(props: StudioShellProps) {
     const [active, setActive] = useState(true);
     const [userHidden, setUserHidden] = useState(false);
     const idleTimer = useRef(0);
+    // Latest settings for the window keydown handler (F3) without re-binding it on every patch.
+    const latest = useRef({ studio, patchStudio });
+    useEffect(() => {
+        latest.current = { studio, patchStudio };
+    }, [studio, patchStudio]);
 
     const poke = useCallback(() => {
         setActive(true);
@@ -121,6 +127,10 @@ export function StudioShell(props: StudioShellProps) {
             } else if (e.key === "Escape") {
                 setPanel(null);
                 setRadial(null);
+            } else if (e.key === "F3" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                const { studio: s, patchStudio: patch } = latest.current;
+                patch({ monitor: { ...s.monitor, debug3d: !s.monitor.debug3d } });
             }
         };
         window.addEventListener("keydown", onKey);
@@ -191,6 +201,11 @@ export function StudioShell(props: StudioShellProps) {
                         >
                             <Guides />
                             {studio.monitor.afBox && <AfBoxes />}
+                            {studio.monitor.debug3d && (
+                                <Suspense fallback={null}>
+                                    <Debug3d />
+                                </Suspense>
+                            )}
                             <GestureHud />
                             <Coach />
                         </motion.div>

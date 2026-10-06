@@ -1,4 +1,5 @@
 import type { AR_EFFECTS } from "@tiksee/core";
+import { unproject, type Pinhole, type Vec3 } from "@tiksee/pets";
 import * as THREE from "three/webgpu";
 import { float, floor, instancedBufferAttribute, mod, texture, uv, vec2, vec4 } from "three/tsl";
 
@@ -17,11 +18,11 @@ interface BurstSpec {
     count: number;
     /** Lifetime range, s. */
     life: [number, number];
-    /** Initial speed range, m/s at the burst depth. */
+    /** Initial speed range, m/s. */
     speed: [number, number];
-    /** Direction: "up" cone or "radial". */
+    /** Direction: "up" cone (+Y) or "radial" (in the XY plane). */
     dir: "up" | "radial";
-    /** m/s², positive = down. */
+    /** m/s², positive = falls (accelerates towards -Y); negative = rises. */
     gravity: number;
     /** Glyph height range, m. */
     size: [number, number];
@@ -39,7 +40,7 @@ const SPECS: Readonly<Record<Exclude<ArEffect, "countdown">, BurstSpec>> = {
     wow: { cells: [G("😮")], count: 5, life: [1.8, 2.6], speed: [0.1, 0.25], dir: "up", gravity: -0.05, size: [0.08, 0.14], spin: 0.3 },
 };
 
-/** Particle state in output pixels (y down), structure-of-arrays, no per-frame allocation. */
+/** Particle state in world metres (+Y up), structure-of-arrays, no per-frame allocation. */
 export class ParticleField {
     readonly x = new Float32Array(MAX_PARTICLES);
     readonly y = new Float32Array(MAX_PARTICLES);
@@ -73,17 +74,15 @@ export class ParticleField {
         return oldest;
     }
 
-    /**
-     * Spawn a burst at output pixel (x, y). `pxPerM` converts metres at the
-     * burst depth to pixels; `zM` is kept for draw ordering.
-     */
-    spawn(effect: ArEffect, x: number, y: number, pxPerM: number, zM: number): void {
+    /** Spawn a burst at world point `p` (metres, camera frame). */
+    spawn(effect: ArEffect, p: Vec3): void {
         const r = this.#rand;
         const lerp = (a: [number, number]): number => a[0] + (a[1] - a[0]) * r();
+        const [x, y, z] = p;
         if (effect === "countdown") {
             [G("3"), G("2"), G("1")].forEach((cell, k) => {
                 const i = this.#add();
-                this.#init(i, x, y - 0.12 * pxPerM, zM, 0, 0, 0, 1, k, 0.3 * pxPerM, 0, 0, cell);
+                this.#init(i, x, y + 0.12, z, 0, 0, 0, 1, k, 0.3, 0, 0, cell);
                 this.pop[i] = 1;
             });
             return;
@@ -91,21 +90,21 @@ export class ParticleField {
         const s = SPECS[effect];
         for (let n = 0; n < s.count; n++) {
             const i = this.#add();
-            const speed = lerp(s.speed) * pxPerM;
-            const a = s.dir === "up" ? -Math.PI / 2 + (r() - 0.5) * 1.2 : r() * Math.PI * 2;
+            const speed = lerp(s.speed);
+            const a = s.dir === "up" ? Math.PI / 2 + (r() - 0.5) * 1.2 : r() * Math.PI * 2;
             const cell = s.cells[Math.floor(r() * s.cells.length)] ?? 0;
-            const jitter = 0.04 * pxPerM;
+            const jitter = 0.04;
             this.#init(
                 i,
                 x + (r() - 0.5) * jitter,
                 y + (r() - 0.5) * jitter,
-                zM,
+                z,
                 Math.cos(a) * speed,
                 Math.sin(a) * speed,
-                s.gravity * pxPerM,
+                -s.gravity,
                 lerp(s.life),
                 0,
-                lerp(s.size) * pxPerM,
+                lerp(s.size),
                 r() * Math.PI * 2,
                 (r() - 0.5) * s.spin,
                 cell,
@@ -217,7 +216,20 @@ function atlasTexture(): THREE.CanvasTexture {
     return t;
 }
 
-/** One instanced draw for every particle, in the pixel-space AR scene. */
+/** Effects burst from 0.2 m in front of the owner's face. */
+export const EFFECT_FRONT_M = 0.2;
+
+/**
+ * World point an effect bursts from: 0.2 m in front of the owner, at the top
+ * 15 % of the face box (output-normalised, y down); no face -> (0.5, 0.3).
+ */
+export function effectOrigin(pin: Pinhole, face: { x: number; y: number; w: number; h: number } | undefined, ownerM: number): Vec3 {
+    const u = face ? face.x + face.w / 2 : 0.5;
+    const v = face ? face.y + face.h * 0.15 : 0.3;
+    return unproject(pin, u, v, Math.max(0.3, ownerM - EFFECT_FRONT_M));
+}
+
+/** One instanced draw for every particle, billboards in the world-metre scene. */
 export class EffectLayer {
     readonly field: ParticleField;
     readonly #mesh: THREE.InstancedMesh;
@@ -243,7 +255,7 @@ export class EffectLayer {
         const m = new THREE.MeshBasicNodeMaterial();
         m.colorNode = vec4(tex.rgb, tex.a.mul(alpha));
         m.transparent = true;
-        m.depthTest = false;
+        m.depthTest = true;
         m.depthWrite = false;
         m.side = THREE.DoubleSide;
         this.#mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), m, MAX_PARTICLES);
@@ -254,13 +266,20 @@ export class EffectLayer {
         scene.add(this.#mesh);
     }
 
-    spawn(effect: ArEffect, x: number, y: number, pxPerM: number, zM: number): void {
-        this.field.spawn(effect, x, y, pxPerM, zM);
+    spawn(effect: ArEffect, p: Vec3): void {
+        this.field.spawn(effect, p);
     }
+
+    /** Camera pitch down (deg): billboards stay parallel to the image plane. */
+    tiltDeg = 0;
 
     update(dt: number): void {
         const f = this.field;
         f.step(dt);
+        const t = (this.tiltDeg * Math.PI) / 180;
+        // Image-plane axes in the room: right = +X, up = (0, cos t, -sin t), normal = (0, sin t, cos t).
+        const uy = Math.cos(t);
+        const uz = -Math.sin(t);
         const m = this.#mesh.instanceMatrix.array as Float32Array;
         const cells = this.#cell.array as Float32Array;
         const alphas = this.#alpha.array as Float32Array;
@@ -270,22 +289,23 @@ export class EffectLayer {
             const c = Math.cos(f.rot[i] ?? 0) * s;
             const sn = Math.sin(f.rot[i] ?? 0) * s;
             const o = i * 16;
-            // Column-major TRS; y scale negated for the y-down pixel camera.
+            // Column-major TRS in the image plane (billboard), rolled by rot.
+            // Columns: local X = c*right + sn*up, local Y = -sn*right + c*up, local Z = s*normal.
             m[o] = c;
-            m[o + 1] = sn;
-            m[o + 2] = 0;
+            m[o + 1] = sn * uy;
+            m[o + 2] = sn * uz;
             m[o + 3] = 0;
-            m[o + 4] = sn;
-            m[o + 5] = -c;
-            m[o + 6] = 0;
+            m[o + 4] = -sn;
+            m[o + 5] = c * uy;
+            m[o + 6] = c * uz;
             m[o + 7] = 0;
             m[o + 8] = 0;
-            m[o + 9] = 0;
-            m[o + 10] = 1;
+            m[o + 9] = -uz * s;
+            m[o + 10] = uy * s;
             m[o + 11] = 0;
             m[o + 12] = f.x[i] ?? 0;
             m[o + 13] = f.y[i] ?? 0;
-            m[o + 14] = 100;
+            m[o + 14] = f.z[i] ?? 0;
             m[o + 15] = 1;
             cells[i] = f.cell[i] ?? 0;
             alphas[i] = a;

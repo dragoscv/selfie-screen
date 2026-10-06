@@ -17,7 +17,9 @@ const budgets = [
     // Separate window; three/webgpu + MediaPipe never load in the main window.
     // 0.3.0: engine (output RT, AR, monitor, scopes, vcam pump) + control surface = 38.5 KB measured;
     // tutorial / calibration / enrol / AR editor are lazy chunks.
-    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 45 * KB],
+    // 0.4.0: + clip buffer (42.4) + 3D pets runtime (BodyModel, PetRoamer, PetActor, metre space) = 48.3 KB;
+    // the 3D debug overlay (8.5 KB raw) and the MP4 muxer stay lazy.
+    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 52 * KB],
     ["desktop studio vendor", /^studio-vendor-.*\.js$/, "apps/desktop/dist/assets", 380 * KB],
     // Vision worker (MediaPipe + ONNX glue) and its main-thread fallback pipeline; measured 211 / 113 KB.
     ["studio vision worker", /^worker-.*\.js$/, "apps/desktop/dist/assets", 230 * KB],

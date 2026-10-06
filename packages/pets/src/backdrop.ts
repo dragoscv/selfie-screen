@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu";
-import { abs, exp, float, length, max, mix, texture, uniform, uv, vec2, vec3, vec4 } from "three/tsl";
+import { abs, exp, float, length, max, mix, positionGeometry, texture, uniform, uv, vec2, vec3, vec4 } from "three/tsl";
 
 import { uprightToRawAffine, type Framing, type Rotation } from "./framing.js";
 
@@ -100,8 +100,8 @@ export class Backdrop {
         this.#video.generateMipmaps = false;
         const u = this.#u;
 
-        // Output uv is y-down here (plane uv.y=0 sits at the top of the y-down camera).
-        const out = uv();
+        // Output uv, y down: the plane's uv has v = 1 at the top, so flip it.
+        const out = vec2(uv().x, float(1).sub(uv().y));
         const [vx, vy] = this.#upright(out);
         // Video textures are flipY: v=0 is the bottom row of the frame. Texel offsets are in upright pixels.
         const at = (dx: number, dy: number) => {
@@ -155,6 +155,10 @@ export class Backdrop {
         const graded = background.mul(gain).mul(wb).clamp(0, 1);
 
         const material = new THREE.MeshBasicNodeMaterial();
+        // Full-screen in CLIP space, independent of the camera (the stage camera is a
+        // perspective camera in metres). Plane [-0.5, 0.5] -> clip [-1, 1]; uv.y=0 is
+        // the top row of the output (plane uv v=1 at +y, flipped below).
+        material.vertexNode = vec4(positionGeometry.xy.mul(2), 0.999, 1);
         material.colorNode = vec4(graded, 1);
         material.blending = THREE.NoBlending;
         material.depthTest = false;
@@ -202,8 +206,6 @@ export class Backdrop {
     /** Fit the quad to the output and point it at the right crop of the camera. */
     /** `uprightW/H` = camera frame size after rotation. */
     layout(width: number, height: number, framing: Framing, uprightW: number, uprightH: number, rotation: Rotation = 0): void {
-        this.mesh.scale.set(width, height, 1);
-        this.mesh.position.set(width / 2, height / 2, -900);
         this.#u.scale.value.set(framing.scaleX, framing.scaleY);
         this.#u.offset.value.set(framing.offsetX, framing.offsetY);
         this.#u.mirror.value = framing.mirror ? 1 : 0;

@@ -1,4 +1,5 @@
 import type { ArObject, IdentityProfile, RuleAction, SignalEvent, StudioSettings, VisionSettings, VisionSnapshot } from "@tiksee/core";
+import type { AnchorId, BodySnapshot, PetDebug, Pinhole, Vec3 } from "@tiksee/pets";
 
 /**
  * Contract between the studio engine (render + vision + vcam) and the studio
@@ -95,6 +96,18 @@ export interface EnrolSample {
     quality: number;
 }
 
+/** Live 3D state for the preview-only debug overlay (F3). */
+export interface Debug3dState {
+    /** Output pinhole (width/height px of the output, vfovDeg after digital zoom). */
+    pin: Pinhole;
+    body: BodySnapshot | null;
+    pets: readonly PetDebug[];
+    /** Anchor points per side, world metres (null = unavailable). */
+    anchors: Readonly<Record<"left" | "right", Readonly<Record<AnchorId, Vec3 | null>>>>;
+    /** Render timings ms (EMA) and rates. */
+    perf: { renderMs: number; fps: number; poseHz: number; poseAgeMs: number; petsActive: number };
+}
+
 export interface StudioController {
     /** Subscribe to per-frame UI info (throttled to ~15 Hz). Returns an unsubscribe. */
     onFrame(cb: (info: StudioFrameInfo) => void): () => void;
@@ -119,6 +132,8 @@ export interface StudioController {
     pickArObject(x: number, y: number): ArObject["id"] | null;
     /** Output-normalised -> preview element coords helper data. */
     readonly outputSize: { width: number; height: number };
+    /** Live 3D state for the debug overlay; null before start. Read inside rAF, do not hold. */
+    debug3d(): Debug3dState | null;
 }
 
 /* ------------------------------------------------------------------ *

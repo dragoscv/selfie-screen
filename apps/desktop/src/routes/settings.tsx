@@ -1272,6 +1272,53 @@ function StudioSection() {
                     checked={s.showStats}
                     onChange={(showStats) => update("studio", { showStats })}
                 />
+                <ChipSelector
+                    label={t("settings.studio.previewFps")}
+                    options={["60", "120", "0"] as const}
+                    value={String(s.previewFps) as "60" | "120" | "0"}
+                    onSelect={(v) => update("studio", { previewFps: Number(v) as 60 | 120 | 0 })}
+                    display={(v) => (v === "0" ? t("settings.studio.previewFpsMonitor") : `${v} fps`)}
+                    tint="var(--kind-gift)"
+                />
+                <SliderRow
+                    label={t("settings.studio.vfov")}
+                    value={s.vfovDeg}
+                    min={25}
+                    max={110}
+                    step={1}
+                    format={(v) => `${Math.round(v)}°`}
+                    onCommit={(vfovDeg) => update("studio", { vfovDeg: Math.round(vfovDeg) })}
+                    tint="var(--kind-gift)"
+                />
+                <p className="text-xs text-fg-muted">{t("settings.studio.vfovHint")}</p>
+                <SwitchRow
+                    label={t("settings.studio.tiltAuto")}
+                    description={t("settings.studio.tiltAutoHint")}
+                    checked={s.cameraTiltAuto}
+                    onChange={(cameraTiltAuto) => update("studio", { cameraTiltAuto })}
+                />
+                <SliderRow
+                    label={t("settings.studio.tilt")}
+                    value={s.cameraTiltDeg}
+                    min={-30}
+                    max={60}
+                    step={1}
+                    format={(v) => `${Math.round(v)}°`}
+                    onCommit={(cameraTiltDeg) => update("studio", { cameraTiltDeg: Math.round(cameraTiltDeg) })}
+                    tint="var(--kind-gift)"
+                    disabled={s.cameraTiltAuto}
+                />
+                <SliderRow
+                    label={t("settings.studio.cameraHeight")}
+                    value={s.cameraHeightM}
+                    min={0.3}
+                    max={3}
+                    step={0.05}
+                    format={(v) => `${v.toFixed(2)} m`}
+                    onCommit={(cameraHeightM) => update("studio", { cameraHeightM: Math.round(cameraHeightM * 100) / 100 })}
+                    tint="var(--kind-gift)"
+                />
+                <p className="text-xs text-fg-muted">{t("settings.studio.mountHint")}</p>
             </Card>
             <VirtualCameraCard />
             <ClipsCard />
@@ -1537,6 +1584,7 @@ function MonitorCard() {
             <SwitchRow label={t("settings.studio.monitor.safeZones")} checked={m.safeZones} onChange={(safeZones) => set({ safeZones })} tint="var(--kind-chat)" />
             <SwitchRow label={t("settings.studio.monitor.afBox")} checked={m.afBox} onChange={(afBox) => set({ afBox })} tint="var(--kind-chat)" />
             <SwitchRow label={t("settings.studio.monitor.horizon")} checked={m.horizon} onChange={(horizon) => set({ horizon })} tint="var(--kind-chat)" />
+            <SwitchRow label={t("settings.studio.monitor.debug3d")} description={t("settings.studio.monitor.debug3dHint")} checked={m.debug3d} onChange={(debug3d) => set({ debug3d })} tint="var(--kind-chat)" />
             <ChipSelector
                 label={t("settings.studio.monitor.loupeZoom")}
                 options={["2", "4"] as const}

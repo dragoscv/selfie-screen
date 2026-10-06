@@ -6,6 +6,17 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 
 ### Added
 - **Instant clips**: the Studio keeps the last 15/30/60 seconds of what viewers see, encoded on the GPU (about 30 MB of memory at 8 Mbps × 30 s). Press Ctrl+Shift+K, add the "Save clip" studio action to a rule, or press Highlight to save an MP4 to Videos\TikSee. Settings → Studio → Instant clips.
+- **New pets**: all seven pets rebuilt as proper models (parrot, cat, dragon, drone, fox, owl, red panda) with faces, blinking eyes, lip-sync and new moves (walk, hop, wave).
+- **Pets live in 3D around you**: they perch on your shoulders, head or a raised hand, fly around your head (passing behind you) and hop between spots; they wave back when you wave, hop to a heart and go where you point. When you leave the frame they wait at the bottom edge instead of vanishing.
+- **3D debug view** (F3 in the Studio): your skeleton in metres, the floor, your shoulder height and where every pet is heading. Preview only.
+- **Camera mount**: tell TikSee how high your camera is and how much it looks down (or let it estimate the tilt), so the 3D space matches your room. Settings → Studio.
+
+### Changed
+- Pets, AR objects and effects share one real 3D space (perspective, metres), so sizes and in-front/behind are consistent.
+- The Studio renders at 60 fps by default (the camera rate) instead of the monitor refresh, using much less GPU; Settings → Studio → Preview frame rate.
+
+### Fixed
+- Pets no longer flicker, jump between positions or disappear when your shoulders leave the frame.
 
 ## [0.3.0] — 2026-10-06
 

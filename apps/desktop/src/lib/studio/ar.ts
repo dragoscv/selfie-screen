@@ -1,7 +1,22 @@
 import type { ArObject } from "@tiksee/core";
-import { PET_IDS, toNodeMaterials, type Backdrop, type LoadedModel, type PetId, type PetStage } from "@tiksee/pets";
+import {
+    fadeToward,
+    personInFront,
+    PET_IDS,
+    pixelsAt,
+    project,
+    toNodeMaterials,
+    unproject,
+    type Backdrop,
+    type LoadedModel,
+    type PetId,
+    type PetStage,
+    type Pinhole,
+} from "@tiksee/pets";
 import * as THREE from "three/webgpu";
 import { float, max, output, screenUV, texture, uniform, vec4 } from "three/tsl";
+
+export { fadeToward, OCCLUSION_FADE_MS, OCCLUSION_HYSTERESIS_M, personInFront } from "@tiksee/pets";
 
 /**
  * Nominal vertical field of view of the OUTPUT frame. A phone/ZV-E10 at 16 mm
@@ -9,9 +24,6 @@ import { float, max, output, screenUV, texture, uniform, vec4 } from "three/tsl"
  * believable without calibration. focalPx = (H / 2) / tan(fov / 2).
  */
 export const NOMINAL_VFOV_DEG = 60;
-/** Distance band where the in-front/behind decision does not flip. */
-export const OCCLUSION_HYSTERESIS_M = 0.1;
-export const OCCLUSION_FADE_MS = 150;
 
 export function focalPx(outH: number, vfovDeg = NOMINAL_VFOV_DEG): number {
     return outH / 2 / Math.tan((vfovDeg * Math.PI) / 360);
@@ -19,39 +31,23 @@ export function focalPx(outH: number, vfovDeg = NOMINAL_VFOV_DEG): number {
 
 /** On-screen height (px) of something `sizeM` tall at `zM` metres. */
 export function pixelHeight(sizeM: number, zM: number, outH: number, vfovDeg = NOMINAL_VFOV_DEG): number {
-    return (sizeM * focalPx(outH, vfovDeg)) / Math.max(zM, 0.05);
-}
-
-/**
- * Whether the person is in front of the object, with hysteresis: it flips to
- * "in front" only once the person is 0.1 m closer than the object, and back
- * only once 0.1 m farther. Unknown distance keeps the previous decision.
- */
-export function personInFront(prev: boolean, personM: number | undefined, objectM: number, band = OCCLUSION_HYSTERESIS_M): boolean {
-    if (personM === undefined || !Number.isFinite(personM)) return prev;
-    if (prev) return personM < objectM + band;
-    return personM < objectM - band;
-}
-
-/** Linear crossfade toward `target` (0/1) over `fadeMs`. */
-export function fadeToward(value: number, target: number, dtMs: number, fadeMs = OCCLUSION_FADE_MS): number {
-    const step = dtMs / Math.max(fadeMs, 1);
-    return target > value ? Math.min(target, value + step) : Math.max(target, value - step);
+    return pixelsAt({ width: outH, height: outH, vfovDeg }, sizeM, zM);
 }
 
 /** Body anchors in output-normalised coords (y down), null when not seen. */
 export type Anchors = Partial<Record<Exclude<ArObject["anchor"], "world">, [number, number]>>;
 
-function animate(o: ArObject, tSec: number): { dx: number; dy: number; rot: number; scale: number } {
+/** Per-frame animation: `dy` is a vertical offset in object heights (+ = up). */
+function animate(o: ArObject, tSec: number): { dy: number; rot: number; scale: number } {
     switch (o.animate) {
         case "bob":
-            return { dx: 0, dy: Math.sin(tSec * 2) * 0.04, rot: 0, scale: 1 };
+            return { dy: Math.sin(tSec * 2) * 0.04, rot: 0, scale: 1 };
         case "spin":
-            return { dx: 0, dy: 0, rot: tSec * 1.2, scale: 1 };
+            return { dy: 0, rot: tSec * 1.2, scale: 1 };
         case "pulse":
-            return { dx: 0, dy: 0, rot: 0, scale: 1 + Math.sin(tSec * 4) * 0.06 };
+            return { dy: 0, rot: 0, scale: 1 + Math.sin(tSec * 4) * 0.06 };
         default:
-            return { dx: 0, dy: 0, rot: 0, scale: 1 };
+            return { dy: 0, rot: 0, scale: 1 };
     }
 }
 
@@ -106,15 +102,16 @@ interface Placed {
     z: FloatUniform;
     dispose(): void;
     mixer?: THREE.AnimationMixer;
-    /** Last drawn screen rect, output px, for picking. */
+    /** Last drawn screen rect, output-normalised (y down), for picking. */
     rect: { x: number; y: number; w: number; h: number; visible: boolean };
 }
 
 /**
- * AR objects placed in depth over the camera. Each material multiplies its
- * alpha by (1 - occlusion) where occlusion = mask(uv) when the person is in
- * front (body-scale distance, hysteresis + crossfade), or — with a depth map —
- * per pixel where the scene depth is nearer than the object.
+ * AR objects placed in world metres (camera frame, +Y up, -Z forward). Each
+ * material multiplies its alpha by (1 - occlusion) where occlusion = mask(uv)
+ * when the person is in front (body-scale distance, hysteresis + crossfade),
+ * or — with a depth map — per pixel where the scene depth is nearer than the
+ * object. Objects depth-test against the pets.
  */
 export class ArLayer {
     readonly #scene: THREE.Scene;
@@ -213,13 +210,12 @@ export class ArLayer {
         const m = new THREE.MeshBasicNodeMaterial();
         m.colorNode = vec4(t.rgb, t.a.mul(this.#visibility(front, z)));
         m.transparent = true;
-        m.depthTest = false;
+        m.depthTest = true;
         m.depthWrite = false;
         m.side = THREE.DoubleSide;
         const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
         mesh.frustumCulled = false;
-        // y-down camera: flip the quad so the texture is upright.
-        mesh.scale.y = -1;
+        // y-up world + flipY textures: the plane renders upright as is.
         const holder = new THREE.Group();
         holder.add(mesh);
         this.#base(o, key, holder, 1, aspect, () => {
@@ -253,15 +249,20 @@ export class ArLayer {
             const prev = (m.outputNode ?? output) as THREE.Node<"vec4">;
             m.outputNode = vec4(prev.rgb, max(prev.a, float(0)).mul(vis));
             m.transparent = true;
+            m.depthWrite = true;
         });
         this.#base(o, key, model.root, model.height, 1, () => model.mixer.stopAllAction(), { front, z, mixer: model.mixer });
     }
 
+    #pin: Pinhole | null = null;
+
     /**
-     * Place every object for this frame. `personM` = owner distance (body scale
-     * or depth), `anchors` in output-normalised coords.
+     * Place every object for this frame in world metres. `pin` = the output
+     * camera, `personM` = owner distance (body scale or depth), `anchors` in
+     * output-normalised coords (y down).
      */
-    update(outW: number, outH: number, personM: number | undefined, anchors: Anchors, tSec: number, dtSec: number, hidden: boolean): void {
+    update(pin: Pinhole, personM: number | undefined, anchors: Anchors, tSec: number, dtSec: number, hidden: boolean): void {
+        this.#pin = pin;
         for (const p of this.#placed.values()) {
             const o = p.obj;
             let ax = o.x;
@@ -278,33 +279,45 @@ export class ArLayer {
                 ay = a[1] + (o.y - 0.5);
             }
             const anim = animate(o, tSec);
-            const hPx = pixelHeight(o.size, o.z, outH) * anim.scale;
-            const wPx = hPx * p.aspect;
-            const cx = ax * outW;
-            const cy = (ay + anim.dy * (o.size / Math.max(o.z, 0.3))) * outH;
+            const sizeM = o.size * anim.scale;
+            const [wx, wy, wz] = unproject(pin, ax, ay, o.z);
             p.root.visible = o.visible && !hidden;
-            p.root.position.set(cx, cy, -o.z);
-            const s = hPx / p.height;
-            p.root.scale.set(o.kind === "model" ? s : wPx, s, o.kind === "model" ? s : 1);
-            p.root.rotation.set(0, o.kind === "model" ? anim.rot : 0, ((o.rotation * Math.PI) / 180) + (o.kind === "model" ? 0 : anim.rot));
-            // Far objects draw first.
+            p.root.position.set(wx, wy + anim.dy * o.size, wz);
+            const roll = (o.rotation * Math.PI) / 180;
+            if (o.kind === "model") {
+                // glTF model: Y up, facing +Z (towards the camera), feet at the origin.
+                const s = sizeM / Math.max(p.height, 1e-6);
+                p.root.scale.set(s, s, s);
+                p.root.rotation.set(0, anim.rot, roll);
+            } else {
+                    // Billboard: parallel to the image plane (the camera's pitch), then roll on screen.
+                p.root.scale.set(sizeM * p.aspect, sizeM, 1);
+                    p.root.rotation.set((-(pin.tiltDeg ?? 0) * Math.PI) / 180, 0, roll + anim.rot, "YXZ");
+            }
+            // Depth test handles correctness; this only sorts transparent draws.
             p.root.renderOrder = 100 - o.z * 10;
             p.inFront = personInFront(p.inFront, personM, o.z);
             p.front.value = fadeToward(p.front.value, p.inFront ? 1 : 0, dtSec * 1000);
             p.z.value = o.z;
             p.mixer?.update(dtSec);
-            p.rect = { x: cx - wPx / 2, y: cy - hPx / 2, w: wPx, h: hPx, visible: p.root.visible };
+            const c = project(pin, [p.root.position.x, p.root.position.y, p.root.position.z]);
+            const hN = pixelsAt(pin, sizeM, o.z) / Math.max(pin.height, 1);
+            const wN = (pixelsAt(pin, sizeM * p.aspect, o.z) / Math.max(pin.width, 1));
+            // Models stand on their origin (feet): their box extends upward.
+            const cy = o.kind === "model" ? c.v - hN / 2 : c.v;
+            p.rect = { x: c.u - wN / 2, y: cy - hN / 2, w: wN, h: hN, visible: p.root.visible };
         }
     }
 
     /** Topmost (nearest) visible object under an output-normalised point. */
     pick(x: number, y: number, outW: number, outH: number): string | null {
+        if (!this.#pin) return null;
         let best: Placed | null = null;
         const px = x * outW;
         const py = y * outH;
         for (const p of this.#placed.values()) {
             const r = p.rect;
-            if (!r.visible || px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) continue;
+            if (!r.visible || px < r.x * outW || px > (r.x + r.w) * outW || py < r.y * outH || py > (r.y + r.h) * outH) continue;
             if (!best || p.obj.z < best.obj.z) best = p;
         }
         return best?.obj.id ?? null;

@@ -416,6 +416,8 @@ export const monitorSchema = z.object({
     loupeZoom: z.union([z.literal(2), z.literal(4)]).default(2),
     /** Hide every preview aid (what the viewers see). */
     cleanFeed: z.boolean().default(false),
+    /** 3D debug overlay: body skeleton in metres, depth grid, pet anchors/paths, occlusion (preview only, F3). */
+    debug3d: z.boolean().default(false),
 });
 export type MonitorSettings = z.infer<typeof monitorSchema>;
 
@@ -496,6 +498,16 @@ export const studioSchema = z.object({
     virtualCamera: z.boolean().default(true),
     /** 30 or 60 fps virtual-camera output. */
     virtualCameraFps: z.union([z.literal(30), z.literal(60)]).default(60),
+    /** Studio render cap: 60 (= camera, default), 120, or 0 = monitor refresh. Frames above the camera rate are redrawn identical images. */
+    previewFps: z.union([z.literal(60), z.literal(120), z.literal(0)]).default(60),
+    /** Vertical field of view of the OUTPUT frame (before digital zoom), degrees; drives 3D placement of pets/AR/effects. */
+    vfovDeg: z.number().min(25).max(110).default(60),
+    /** Camera mount: degrees the camera looks DOWN (a webcam on top of the monitor looking at a seated owner ≈ 10-20). */
+    cameraTiltDeg: z.number().min(-30).max(60).default(15),
+    /** Estimate the tilt from the owner's upright neck (shoulders -> ears) and use it instead of `cameraTiltDeg`. Off by default: MediaPipe depth is noisy. */
+    cameraTiltAuto: z.boolean().default(false),
+    /** Camera lens height above the floor, metres (monitor top at a desk ≈ 1.2). */
+    cameraHeightM: z.number().min(0.3).max(3).default(1.2),
     /** Preview-only monitoring aids; never in the output frame. */
     monitor: monitorSchema.prefault({}),
     /** Digital framing: zoom, auto-reframe on the face, synthetic depth of field. */

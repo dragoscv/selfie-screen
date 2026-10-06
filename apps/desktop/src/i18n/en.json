@@ -475,6 +475,15 @@
             "rotationNone": "None",
             "showStats": "Show frame stats",
             "showStatsHint": "fps and frame time in the studio window; F2 toggles it",
+            "previewFps": "Preview frame rate",
+            "previewFpsMonitor": "Monitor",
+            "tilt": "Camera tilt (looking down)",
+            "tiltAuto": "Estimate the tilt from your posture",
+            "tiltAutoHint": "Uses your upright neck; turn off and set it by hand if pets lean",
+            "cameraHeight": "Camera height above the floor",
+            "mountHint": "Webcam on top of a monitor while seated: about 15° and 1.2 m. F3 shows the floor and your shoulder height to check it",
+            "vfov": "Camera field of view",
+            "vfovHint": "Vertical angle of your camera; places pets, AR objects and effects at the right size in 3D (F3 shows the result)",
             "petsTitle": "Pets",
             "petsHint": "They sit on your shoulders, talk with the co-host voice and react to gifts",
             "leftPet": "Left shoulder",
@@ -563,7 +572,9 @@
                 "safeZones": "TikTok safe zones",
                 "afBox": "Autofocus box",
                 "horizon": "Horizon level",
-                "loupeZoom": "Loupe magnification"
+                "loupeZoom": "Loupe magnification",
+                "debug3d": "3D debug view",
+                "debug3dHint": "Skeleton in metres, depth grid, pet anchors and paths (F3 in the studio). Preview only"
             },
             "framing": {
                 "title": "Framing",

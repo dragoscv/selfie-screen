@@ -158,6 +158,10 @@
             },
             "safeZones": "Zone sigure TikTok LIVE",
             "horizon": "Nivel orizont",
+            "debug3d": {
+                "label": "Depanare 3D",
+                "hint": "Schelet, grilă de adâncime și ancorele animalelor (F3). Doar în previzualizare."
+            },
             "cleanFeed": "Imagine curată",
             "cleanFeedHint": "Ascunde toate ajutoarele și vezi exact ce văd spectatorii.",
             "clean": "Curat",

@@ -235,6 +235,7 @@ function MonitorPanel() {
                 <ChipSelector label={t("studio.controls.monitor.guides")} options={GUIDE_KINDS} value={m.guides} onSelect={(guides) => set({ guides })} display={(v) => t(`studio.controls.monitor.guideKinds.${v}`)} />
                 <SwitchRow label={t("studio.controls.monitor.safeZones")} checked={m.safeZones} onChange={(safeZones) => set({ safeZones })} />
                 <SwitchRow label={t("studio.controls.monitor.horizon")} checked={m.horizon} onChange={(horizon) => set({ horizon })} />
+                <SwitchRow label={t("studio.controls.monitor.debug3d.label")} description={t("studio.controls.monitor.debug3d.hint")} checked={m.debug3d} onChange={(debug3d) => set({ debug3d })} />
                 <SwitchRow label={t("studio.controls.monitor.cleanFeed")} description={t("studio.controls.monitor.cleanFeedHint")} checked={m.cleanFeed} onChange={(cleanFeed) => set({ cleanFeed })} />
             </Section>
         </>
@@ -310,7 +311,7 @@ function usePillValue(id: PanelId): string {
             return studio.framing.autoReframe ? t("studio.controls.framing.autoShort") : studio.framing.dof ? "DoF" : t("studio.common.off");
         case "monitor": {
             if (m.cleanFeed) return t("studio.controls.monitor.clean");
-            const n = [m.peaking, m.zebra, m.falseColor, m.clipping, m.scope !== "none", m.guides !== "none", m.safeZones].filter(Boolean).length;
+            const n = [m.peaking, m.zebra, m.falseColor, m.clipping, m.scope !== "none", m.guides !== "none", m.safeZones, m.debug3d].filter(Boolean).length;
             return t("studio.controls.monitor.aids", { count: n });
         }
         case "camera":

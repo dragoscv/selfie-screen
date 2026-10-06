@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { fadeToward, focalPx, personInFront, pixelHeight, NOMINAL_VFOV_DEG } from "./ar.js";
 import { bleCommand, bleRelease, cameraStatus, CameraRemote, type BleCommand } from "./camera-ble.js";
-import { MAX_PARTICLES, ParticleField } from "./effects.js";
+import { effectOrigin, MAX_PARTICLES, ParticleField } from "./effects.js";
 import { DigitalFraming, Spring, ZOOM_MAX } from "./framing.js";
 import { falseColorFor, monitorActive } from "./monitor.js";
 import { BUFFER_USAGE, MAP_MODE, nv12Length, parseVcamStatus, rgbaToNv12, yuv } from "./output.js";
@@ -142,9 +142,11 @@ describe("AR depth", () => {
 });
 
 describe("AR effects", () => {
+    const AT: [number, number, number] = [0, 0.1, -0.8];
+
     it("caps live particles at 400 and expires them", () => {
         const field = new ParticleField(() => 0.5);
-        for (let i = 0; i < 20; i++) field.spawn("confetti", 540, 600, 1000, 0.8);
+        for (let i = 0; i < 20; i++) field.spawn("confetti", AT);
         expect(field.count).toBe(MAX_PARTICLES);
         for (let i = 0; i < 200; i++) field.step(1 / 60);
         expect(field.count).toBe(0);
@@ -152,14 +154,54 @@ describe("AR effects", () => {
 
     it("countdown spawns three numerals, staggered by a second", () => {
         const field = new ParticleField(() => 0.5);
-        field.spawn("countdown", 540, 600, 1000, 0.8);
+        field.spawn("countdown", AT);
         expect(field.count).toBe(3);
+        expect(field.y[0]).toBeGreaterThan(AT[1]); // above the origin (+Y up)
         expect(field.look(0)[0]).toBe(0); // not started yet (first frame)
         field.step(0.2);
         expect(field.look(0)[0]).toBeGreaterThan(0);
         expect(field.look(1)[0]).toBe(0);
     });
+
+    it("an up burst (hearts) rises in world metres", () => {
+        const field = new ParticleField(() => 0.5);
+        field.spawn("hearts", AT);
+        const y0 = field.y[0] ?? 0;
+        expect(field.vy[0]).toBeGreaterThan(0);
+        for (let i = 0; i < 30; i++) field.step(1 / 60);
+        expect(field.y[0]).toBeGreaterThan(y0);
+        expect(field.z[0]).toBeCloseTo(AT[2], 6); // Float32Array storage
+    });
+
+    it("confetti falls under gravity and stays at metre scale", () => {
+        const field = new ParticleField(() => 0.5);
+        field.spawn("confetti", AT);
+        const vy0 = field.vy[0] ?? 0;
+        field.step(0.5);
+        expect(field.vy[0]).toBeLessThan(vy0); // -Y velocity grows
+        expect(field.vy[0]).toBeCloseTo(vy0 - 0.9 * 0.5, 6);
+        for (let i = 0; i < field.count; i++) {
+            expect(Math.abs((field.x[i] ?? 0) - AT[0])).toBeLessThan(2);
+            expect(Math.abs((field.y[i] ?? 0) - AT[1])).toBeLessThan(2);
+            expect(field.size[i]).toBeLessThan(0.1);
+        }
+    });
+
+    it("effect origin sits 0.2 m in front of the owner, at the top of the face", () => {
+        const pin = { width: 1080, height: 1920, vfovDeg: 60 };
+        const centre = effectOrigin(pin, { x: 0.4, y: 0.35, w: 0.2, h: 0.2 }, 1.2);
+        expect(centre[0]).toBeCloseTo(0, 6);
+        expect(centre[1]).toBeCloseTo(unprojectY(pin, 0.35 + 0.2 * 0.15, 1.0), 6);
+        expect(centre[2]).toBeCloseTo(-1.0, 6);
+        const fallback = effectOrigin(pin, undefined, 0.4);
+        expect(fallback[2]).toBeCloseTo(-0.3, 6); // clamped to 0.3 m
+        expect(fallback[1]).toBeGreaterThan(0); // v 0.3 = above centre
+    });
 });
+
+function unprojectY(pin: { height: number; vfovDeg: number }, v: number, d: number): number {
+    return (-(v - 0.5) * d * 2 * Math.tan((pin.vfovDeg * Math.PI) / 360));
+}
 
 describe("camera BLE mapping", () => {
     it("maps CAMERA_ACTIONS to camera_ble action/value", () => {
@@ -206,7 +248,7 @@ describe("monitor + scopes", () => {
     });
 
     it("clean feed disables every aid", () => {
-        const m = { peaking: true, peakingColor: "red", peakingThreshold: 0.15, zebra: false, zebraLevel: 95, falseColor: false, clipping: false, guides: "thirds", safeZones: true, scope: "none", afBox: true, horizon: true, loupeZoom: 2, cleanFeed: false } as const;
+        const m = { peaking: true, peakingColor: "red", peakingThreshold: 0.15, zebra: false, zebraLevel: 95, falseColor: false, clipping: false, guides: "thirds", safeZones: true, scope: "none", afBox: true, horizon: true, loupeZoom: 2, cleanFeed: false, debug3d: false } as const;
         expect(monitorActive(m)).toBe(true);
         expect(monitorActive({ ...m, cleanFeed: true })).toBe(false);
     });

@@ -11,9 +11,11 @@ import {
 } from "@tiksee/core";
 import {
     Backdrop,
+    BodyModel,
     FrameStats,
     PetStage,
-    ShoulderTracker,
+    anchorPoints,
+    unproject,
     coverFraming,
     evenSize,
     outputSize,
@@ -24,22 +26,25 @@ import {
     type Framing,
     type FrameStatsSnapshot,
     type Landmark,
+    type OutputLandmark,
     type PetClip,
     type PetId,
     type Rotation,
     type ShoulderAnchor,
+    type ShoulderTracker,
     type Side,
     type VisemeEvent,
 } from "@tiksee/pets";
 import * as THREE from "three/webgpu";
-import { screenUV, texture } from "three/tsl";
+import { positionGeometry, screenUV, texture, vec4 } from "three/tsl";
 
-import { ArLayer, focalPx, type Anchors } from "./ar.js";
+import { ArLayer, type Anchors } from "./ar.js";
 import { CameraRemote, type HoldAction } from "./camera-ble.js";
 import { clipFileName } from "./clip-ring.js";
 import { ClipRecorder, type ClipState, type SavedClip } from "./clips.js";
 import type {
     CalibrationSample,
+    Debug3dState,
     DogBox,
     EnrolSample,
     FaceBox,
@@ -49,7 +54,7 @@ import type {
     VisionFrame,
     VisionRuntime,
 } from "./controller.js";
-import { EffectLayer } from "./effects.js";
+import { EffectLayer, effectOrigin } from "./effects.js";
 import { DigitalFraming } from "./framing.js";
 import { PreviewPass } from "./monitor.js";
 import { VcamPump } from "./output.js";
@@ -69,9 +74,37 @@ const CLIP_COMMANDS: Readonly<Record<string, PetClip>> = {
 };
 /** UI info rate. */
 const INFO_HZ = 15;
-/** Effects pop this far in front of the owner. */
-const EFFECT_FRONT_M = 0.2;
 const DEFAULT_OWNER_M = 1;
+/** Gestures the pets answer, and how. */
+const PET_GESTURES: Readonly<Partial<Record<SignalEvent["signal"], "wave" | "heart" | "point_left" | "point_right" | "point_up">>> = {
+    wave: "wave",
+    heart: "heart",
+    point_left: "point_left",
+    point_right: "point_right",
+    point_up: "point_up",
+};
+
+/** Output-normalised landmarks from a raw pose through rotation + framing (MediaPipe z kept). */
+export function poseToOutput(
+    pose: readonly { x: number; y: number; z: number; visibility?: number }[],
+    f: Framing,
+    rotation: Rotation,
+): OutputLandmark[] {
+    return pose.map((p) => {
+        const [u, v] = rawToOutput(f, rotation, p.x, p.y);
+        return { u, v, z: p.z, visibility: p.visibility ?? 1 };
+    });
+}
+
+/**
+ * Vertical FOV of the OUTPUT image: the camera's vFOV over the output's
+ * vertical extent, narrowed by the cover crop and the digital zoom
+ * (framing.scaleY = fraction of the upright camera height shown).
+ */
+export function outputVfov(cameraVfovDeg: number, f: Framing): number {
+    const half = Math.tan((cameraVfovDeg * Math.PI) / 360) * f.scaleY;
+    return (Math.atan(half) * 360) / Math.PI;
+}
 const POSE = { nose: 0, leftShoulder: 11, rightShoulder: 12, leftWrist: 15, rightWrist: 16 } as const;
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -282,7 +315,11 @@ const ema = (prev: number, v: number): number => (prev === 0 ? v : prev * 0.9 + 
 export class StudioEngine implements StudioController {
     readonly #canvas: HTMLCanvasElement;
     readonly #video = document.createElement("video");
-    readonly #tracker = new ShoulderTracker();
+    readonly #body = new BodyModel({ width: 1080, height: 1920, vfovDeg: 60 });
+    #bodySnap: ReturnType<BodyModel["sample"]> | null = null;
+    #poseHz = 0;
+    #lastPoseAt = 0;
+    #lastRender = 0;
     readonly #stats = new FrameStats();
     readonly #cb: EngineCallbacks;
     readonly #synthetic: boolean;
@@ -383,6 +420,7 @@ export class StudioEngine implements StudioController {
         const backdrop = new Backdrop(this.#video);
         this.#backdrop = backdrop;
         this.#camScene.add(backdrop.mesh);
+        stage.setBackdrop(backdrop);
         this.#ar = new ArLayer(stage.scene, backdrop, stage, (m) => this.#cb.onError?.(m));
         this.#effects = new EffectLayer(stage.scene);
         const query = typeof location === "undefined" ? null : new URLSearchParams(location.search);
@@ -416,7 +454,9 @@ export class StudioEngine implements StudioController {
         this.#camRT = new THREE.RenderTarget(width, height, { colorSpace: THREE.SRGBColorSpace, depthBuffer: false, generateMipmaps: false });
         this.#outRT = new THREE.RenderTarget(width, height, { colorSpace: THREE.SRGBColorSpace, samples: 4, generateMipmaps: false });
         // The graded camera at the bottom of the output scene; pets and AR draw over it.
+        // Clip-space quad at the far plane: fills the frame under the perspective camera.
         const m = new THREE.MeshBasicNodeMaterial();
+        m.vertexNode = vec4(positionGeometry.xy.mul(2), 0.999, 1);
         m.colorNode = texture(this.#camRT.texture, screenUV);
         m.blending = THREE.NoBlending;
         m.depthTest = false;
@@ -426,14 +466,8 @@ export class StudioEngine implements StudioController {
         this.#copy.renderOrder = -1000;
         this.#copy.frustumCulled = false;
         stage.scene.add(this.#copy);
-        this.#layoutCopy(width, height);
         this.#preview = new PreviewPass(this.#outRT.texture, this.#camRT.texture);
         this.#scopes = new ScopeSampler(this.#camRT.texture);
-    }
-
-    #layoutCopy(width: number, height: number): void {
-        this.#copy?.scale.set(width, height, 1);
-        this.#copy?.position.set(width / 2, height / 2, -1000);
     }
 
     #resize(width: number, height: number): void {
@@ -442,7 +476,6 @@ export class StudioEngine implements StudioController {
         stage.resize(width, height);
         this.#camRT?.setSize(width, height);
         this.#outRT?.setSize(width, height);
-        this.#layoutCopy(width, height);
         this.#cb.onStep?.(`output ${width}x${height}`);
     }
 
@@ -723,11 +756,57 @@ export class StudioEngine implements StudioController {
     #spawnEffect(effect: Extract<RuleAction, { type: "effect" }>["effect"], zM?: number): void {
         const stage = this.#stage;
         if (!stage || !this.#effects) return;
-        const z = Math.max(0.3, zM ?? (this.#ownerM ?? DEFAULT_OWNER_M) - EFFECT_FRONT_M);
+        const pin = stage.pinhole;
         const f = this.#ownerFace;
-        const x = (f ? f.x + f.w / 2 : 0.5) * stage.width;
-        const y = (f ? f.y + f.h * 0.15 : 0.3) * stage.height;
-        this.#effects.spawn(effect, x, y, focalPx(stage.height) / z, z);
+        const p =
+            zM !== undefined
+                ? unproject(pin, f ? f.x + f.w / 2 : 0.5, f ? f.y + f.h * 0.15 : 0.3, Math.max(0.3, zM))
+                : effectOrigin(pin, f, this.#ownerM ?? DEFAULT_OWNER_M);
+        this.#effects.spawn(effect, p);
+    }
+
+    /** Live 3D state for the preview-only debug overlay (F3). */
+    debug3d(): Debug3dState | null {
+        const stage = this.#stage;
+        if (!stage) return null;
+        const pin = stage.pinhole;
+        const t = performance.now() / 1000;
+        const body = this.#bodySnap;
+        return {
+            pin,
+            body,
+            pets: stage.debug,
+            anchors: { left: anchorPoints(body, pin, "left", t, null), right: anchorPoints(body, pin, "right", t, null) },
+            perf: {
+                renderMs: this.#timings["render"] ?? 0,
+                fps: this.#stats.snapshot().fps,
+                poseHz: this.#poseHz,
+                poseAgeMs: body?.poseAgeMs ?? 0,
+                petsActive: stage.activeCount,
+            },
+        };
+    }
+
+    /** Owner gestures the pets react to: wave back, heart = happy hop + hearts, point = fly/walk there. */
+    #petGestures(events: readonly SignalEvent[]): void {
+        const stage = this.#stage;
+        if (!stage) return;
+        for (const e of events) {
+            if (e.phase === "end" || !e.subject.owner) continue;
+            const g = PET_GESTURES[e.signal];
+            if (!g) continue;
+            if (g === "wave" || g === "heart") {
+                stage.send({ type: "gesture", gesture: g });
+                if (g === "heart") this.#spawnEffect("hearts");
+                continue;
+            }
+            // Pointing: a spot 0.35 m beside the head (or above it), at the owner's depth.
+            const b = this.#bodySnap;
+            if (!b?.present) continue;
+            const dx = g === "point_left" ? -0.35 : g === "point_right" ? 0.35 : 0;
+            const dy = g === "point_up" ? 0.3 : 0.05;
+            stage.goTo("point", [b.head.p[0] + dx, b.head.p[1] + dy, b.head.p[2] + 0.05]);
+        }
     }
 
     cameraHold(action: HoldAction, speed: 1 | 2 | 3): void {
@@ -773,6 +852,7 @@ export class StudioEngine implements StudioController {
             const inv = Math.max(depthAt(frame.depth, face.x + face.w / 2, face.y + face.h / 2), 0.02);
             backdrop.setDepth(frame.depth.data, frame.depth.width, frame.depth.height, inv * (frame.ownerDistanceM ?? DEFAULT_OWNER_M), inv);
         } else backdrop.setDepth(null, 0, 0);
+        if (frame.events.length > 0) this.#petGestures(frame.events);
         const armedChanged = frame.armed !== this.#armed;
         this.#armed = frame.armed;
         if (frame.events.length > 0 || armedChanged) for (const cb of this.#signalSubs) cb(frame.events, frame.armed);
@@ -799,6 +879,10 @@ export class StudioEngine implements StudioController {
         const camRT = this.#camRT;
         const outRT = this.#outRT;
         if (!stage || !backdrop || !camRT || !outRT) return;
+        // Render cap (previewFps): beyond the camera rate every extra frame redraws the same image.
+        const cap = this.#settings.previewFps;
+        if (cap > 0 && now - this.#lastRender < 1000 / cap - 1.5) return;
+        this.#lastRender = now;
         const t0 = performance.now();
         const W = stage.width;
         const H = stage.height;
@@ -820,7 +904,8 @@ export class StudioEngine implements StudioController {
             this.#timings["visionPush"] = ema(this.#timings["visionPush"] ?? 0, performance.now() - tv);
             frame = this.#vision?.latest() ?? null;
         }
-        if (frame && frame !== this.#lastVision) {
+        const freshVision = !!frame && frame !== this.#lastVision;
+        if (frame && freshVision) {
             this.#lastVision = frame;
             this.#ingest(frame);
         }
@@ -848,12 +933,29 @@ export class StudioEngine implements StudioController {
             radius: fo ? Math.max(fo.h * 0.75, 0.05) : 0.12,
         });
 
+        // 3D: the output pinhole follows the crop + digital zoom; the body model is measured
+        // when a pose lands and sampled (spring + extrapolation) every render frame.
+        stage.setFov(outputVfov(this.#settings.vfovDeg, f));
+        const tilt = this.#settings.cameraTiltAuto ? (this.#body.estimatedTiltDeg ?? this.#settings.cameraTiltDeg) : this.#settings.cameraTiltDeg;
+        stage.setCameraPose(Math.round(tilt * 2) / 2, this.#settings.cameraHeightM);
+        if (this.#effects) this.#effects.tiltDeg = stage.pinhole.tiltDeg ?? 0;
+        const pin = stage.pinhole;
+        this.#body.pinhole = pin;
         const pose = frame?.poses[0] ?? null;
-        const anchors = anchorsInOutput(this.#tracker, pose, vw, vh, W, H, mirror, now, rotation, f);
+        if (freshVision && frame) {
+            this.#body.measure({ tMs: frame.tMs || now, landmarks: pose ? poseToOutput(pose, f, rotation) : null, distanceM: frame.ownerDistanceM });
+            if (pose) {
+                const gap = now - this.#lastPoseAt;
+                if (this.#lastPoseAt > 0 && gap > 0) this.#poseHz = this.#poseHz * 0.8 + (1000 / gap) * 0.2;
+                this.#lastPoseAt = now;
+            }
+        }
+        const body = this.#body.sample(now, dt);
+        this.#bodySnap = body;
         this.#placeAnchors(pose, f, rotation);
-        this.#ar?.update(W, H, this.#ownerM, this.#arAnchors, now / 1000, dt, this.#hidden);
+        this.#ar?.update(pin, this.#ownerM, this.#arAnchors, now / 1000, dt, this.#hidden);
         this.#effects?.update(dt);
-        stage.update(anchors, dt);
+        stage.update(body.present ? body : null, dt);
 
         // Pass 1: graded camera. Pass 2: output composite. Pass 3: preview to the canvas.
         const r = stage.renderer;
@@ -888,7 +990,7 @@ export class StudioEngine implements StudioController {
             this.#cb.onStats?.({
                 ...this.#stats.snapshot(),
                 backend: stage.backend,
-                tracking: anchors !== null,
+                tracking: body.present,
                 video: { fps: this.#videoFps, luma: this.#luma, state: this.#videoState },
                 timings: { ...this.#timings, ...this.#pump?.timings, ...this.#clips?.timings, ...(frame?.timings ?? {}) },
             });

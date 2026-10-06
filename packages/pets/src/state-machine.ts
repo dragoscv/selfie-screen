@@ -2,7 +2,7 @@
  * Pet behaviour, independent of rendering. Clip names match the actions baked
  * by assets/pets/blender/anims.py. Pure and clock-injected so it is testable.
  */
-export const PET_CLIPS = ["idle", "look", "talk", "react", "dance", "sleep", "fly"] as const;
+export const PET_CLIPS = ["idle", "look", "talk", "react", "dance", "sleep", "fly", "walk", "hop", "wave"] as const;
 export type PetClip = (typeof PET_CLIPS)[number];
 
 export type PetEvent =
@@ -10,7 +10,9 @@ export type PetEvent =
     | { type: "speechEnd" }
     | { type: "gift"; tier: "small" | "big" }
     | { type: "chat" }
-    | { type: "command"; clip: PetClip };
+    | { type: "command"; clip: PetClip }
+    /** The owner waved / made a heart: wave back / happy hop. */
+    | { type: "gesture"; gesture: "wave" | "heart" };
 
 export interface PetBehaviour {
     /** Quiet time before the pet falls asleep (Q41). */
@@ -30,6 +32,9 @@ const ONE_SHOT: Readonly<Record<PetClip, number>> = {
     dance: 4800,
     sleep: 0,
     fly: 2000,
+    walk: 0,
+    hop: 600,
+    wave: 1200,
 };
 
 export class PetStateMachine {
@@ -85,6 +90,9 @@ export class PetStateMachine {
                 break;
             case "command":
                 this.#play(event.clip, now);
+                break;
+            case "gesture":
+                this.#play(event.gesture === "wave" ? "wave" : "hop", now);
                 break;
         }
     }
