@@ -302,7 +302,7 @@ Smart-home parts live in vmui's MCP catalogue.
 
 | Phase | State | Evidence |
 | --- | --- | --- |
-| P0 | done | 0.2.0 published (`latest.json` 0.2.0, signed); installer bundles Node; release exe smoke: sidecar ready and exits with the app |
+| P0 | done | 0.3.0 published 2026-10-06 from clean tree 60d349b (`latest.json` 0.3.0, signed; installer HTTP 200, 69591679 bytes); 0.2.0 before it; installer bundles Node |
 | P1 | done | WS20-08/10/13/14 shipped in e04c976; WS19-06 codai-live-agent in codai 5b32d8c + public mirror v0.1.0 (npm first publish pending owner login) |
 | P2 | done | Test flash from TikSee → vmui audit `mcp.flash_color cyan ok` |
 | P3 | pipeline + runtime done, real meshes blocked | Blender pipeline verified on proxy rigs; TRELLIS.2 waits on Meta DINOv3 access (VM `tiksee-trellis` stopped) |
