@@ -28,6 +28,8 @@ def args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--pet", required=True)
     p.add_argument("--input")
+    p.add_argument("--procedural", action="store_true",
+                   help="build the stylised model from models.py instead of a raw/proxy mesh")
     p.add_argument("--out", required=True)
     return p.parse_args(argv)
 
@@ -266,6 +268,10 @@ def bake_clips(arm: bpy.types.Object) -> list[str]:
 def main() -> None:
     a = args()
     spec = pet_spec(a.pet)
+    if a.procedural:
+        from procedural import run
+        run(a.pet, spec, Path(a.out))
+        return
     reset_scene()
     obj = import_mesh(a.input) if a.input else proxy(spec["family"])
     obj.name = a.pet
