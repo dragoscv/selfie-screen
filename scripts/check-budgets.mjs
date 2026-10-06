@@ -19,7 +19,9 @@ const budgets = [
     // tutorial / calibration / enrol / AR editor are lazy chunks.
     // 0.4.0: + clip buffer (42.4) + 3D pets runtime (BodyModel, PetRoamer, PetActor, metre space) = 48.3 KB;
     // the 3D debug overlay (8.5 KB raw) and the MP4 muxer stay lazy.
-    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 52 * KB],
+    // + metric owner distance (body solve, iris, Kalman) and the fluid-skeleton interpolation: 51.6 KB
+    // measured; space calibration, ChArUco and MoGe-2 are lazy chunks.
+    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 55 * KB],
     ["desktop studio vendor", /^studio-vendor-.*\.js$/, "apps/desktop/dist/assets", 380 * KB],
     // Vision worker (MediaPipe + ONNX glue) and its main-thread fallback pipeline; measured 211 / 113 KB.
     ["studio vision worker", /^worker-.*\.js$/, "apps/desktop/dist/assets", 230 * KB],
@@ -29,6 +31,9 @@ const budgets = [
     ["desktop rule graph (lazy)", /^rule-graph-editor-.*\.js$/, "apps/desktop/dist/assets", 70 * KB],
     // 0.4.0: MP4 muxer for studio clips (mediabunny, tree-shaken), loaded on the first save.
     ["studio clip muxer (lazy)", /^clip-mux-.*\.js$/, "apps/desktop/dist/assets", 60 * KB],
+    // 0.4.0: lens calibration (ChArUco + Zhang, 7.4 KB) and the js-aruco2 detector (10.3 KB) load on demand.
+    ["studio lens calibration (lazy)", /^charuco-.*\.js$/, "apps/desktop/dist/assets", 10 * KB],
+    ["studio aruco detector (lazy)", /^aruco-.*\.js$/, "apps/desktop/dist/assets", 13 * KB],
     // 0.3.0 adds the rules engine, vision log and identities: 85.1 KB measured.
     ["sidecar bundle", /^index\.js$/, "apps/sidecar/dist", 95 * KB],
 ];

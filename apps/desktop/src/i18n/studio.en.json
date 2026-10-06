@@ -422,5 +422,104 @@
         "save": "Save",
         "saved": "{{name}} saved",
         "privacy": "Recognition data stays on this PC and is never uploaded."
+    },
+    "space": {
+        "title": "Calibrate 3D space",
+        "open": "Calibrate 3D space",
+        "progress": "Step {{n}} of {{total}}: {{step}}",
+        "calibratedShort": "3D space calibrated · {{vfov}}° field of view",
+        "notCalibrated": "3D space not calibrated: pets use average sizes",
+        "back": "Back",
+        "next": "Next",
+        "skip": "Skip",
+        "save": "Save",
+        "start": "Start",
+        "retry": "Measure again",
+        "capturing": "Measuring…",
+        "countdown": "Starting in {{n}}",
+        "hold": "Hold still…",
+        "measured": "Measurement done",
+        "failed": "Measurement failed: {{error}}",
+        "saved": "3D space saved",
+        "camera": {
+            "title": "Camera",
+            "body": "Pick your camera so pets, AR objects and effects get the right size in 3D.",
+            "preset": "Camera model",
+            "lens": "Lens focal length",
+            "manual": "Vertical field of view",
+            "vfov": "Field of view: {{value}} ({{source}})"
+        },
+        "lens": {
+            "title": "Precise lens calibration (ChArUco)",
+            "body": "Print the ChArUco board or show it full screen on a phone, then move it slowly in front of the camera: near, far, tilted and into every corner of the frame.",
+            "board": "Show the board",
+            "boardAlt": "ChArUco calibration board",
+            "boardUnavailable": "The board cannot be drawn here. Use a ChArUco board you already have.",
+            "start": "Start lens calibration",
+            "stop": "Stop",
+            "views": "Views: {{n}} of {{needed}}",
+            "coverage": "Frame coverage",
+            "result": "Measured field of view {{vfov}}, error {{rms}} px"
+        },
+        "scene": {
+            "title": "Analyse the scene (one-time 141 MB download)",
+            "running": "Analysing… {{pct}}%",
+            "accept": "Use this field of view"
+        },
+        "you": {
+            "title": "You",
+            "body": "Your real height lets TikSee measure everything else in metres.",
+            "height": "Your height",
+            "hint": "Optional. Between 120 and 220 cm.",
+            "invalid": "Enter a height between {{min}} and {{max}} cm."
+        },
+        "standing": {
+            "title": "Stand up",
+            "body": "Stand 1-2 m from the camera, whole body visible if possible, arms down, facing the lens."
+        },
+        "seated": {
+            "title": "Sit down",
+            "body": "Sit as you do when streaming and look at the camera."
+        },
+        "review": {
+            "title": "Review",
+            "useTilt": "Use the measured camera tilt and height",
+            "hint": "Skipped steps keep the values you already had."
+        },
+        "fields": {
+            "camera": "Camera",
+            "vfov": "Field of view",
+            "height": "Your height",
+            "tilt": "Camera tilt",
+            "cameraHeight": "Camera height",
+            "distance": "Distance",
+            "shoulder": "Shoulder width",
+            "iris": "Iris",
+            "headHeight": "Head height",
+            "desk": "Desk height",
+            "wall": "Wall distance"
+        },
+        "issues": {
+            "noBody": "Nobody was found. Step into the frame and try again.",
+            "notFullBody": "Your whole body was not visible: step back a little.",
+            "headOut": "Your head left the frame: lower the camera or step back.",
+            "smallIris": "Your eyes are too small in the image: come closer for this step.",
+            "unstable": "Too much movement: hold still while measuring."
+        },
+        "sources": {
+            "preset": "camera preset",
+            "charuco": "ChArUco calibration",
+            "moge": "scene analysis",
+            "manual": "set by hand"
+        },
+        "presets": {
+            "sony-zv-e10": "Sony ZV-E10 (APS-C, set the lens)",
+            "logitech-c920": "Logitech C920 / C922",
+            "logitech-brio-90": "Logitech Brio (90°)",
+            "logitech-brio-78": "Logitech Brio (78°)",
+            "logitech-brio-65": "Logitech Brio (65°)",
+            "laptop": "Laptop webcam",
+            "custom": "Custom / calibrated"
+        }
     }
 }

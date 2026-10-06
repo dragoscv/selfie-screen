@@ -1,0 +1,26 @@
+diff --git a/src/aruco.js b/src/aruco.js
+--- a/src/aruco.js
++++ b/src/aruco.js
+@@ -30,8 +30,8 @@
+ */
+ 
+ var AR = {};
+-var CV = this.CV || require('./cv').CV;
+-this.AR = AR;
++var CV = require('./cv').CV;
++exports.AR = AR;
+ 
+ AR.DICTIONARIES = {
+   ARUCO: {
+diff --git a/src/cv.js b/src/cv.js
+--- a/src/cv.js
++++ b/src/cv.js
+@@ -29,7 +29,7 @@
+ */
+ 
+ var CV = CV || {};
+-this.CV = CV;
++exports.CV = CV;
+ 
+ CV.Image = function(width, height, data){
+   this.width = width || 0;

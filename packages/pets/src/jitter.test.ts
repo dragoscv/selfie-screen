@@ -72,7 +72,7 @@ describe("skeleton smoothness (replayed 30 Hz noisy pose, 60 Hz render)", () => 
     it("a still wrist near the frame edge barely moves (depth noise does not leak into x/y)", () => {
         const { trace } = replay(() => 0.85, 6);
         const J = jitter(tail(trace, 120));
-        console.log(`[jitter] still wrist J=${J.toFixed(3)} px/frame²`);
+        console.warn(`[jitter] still wrist J=${J.toFixed(3)} px/frame²`);
         expect(J).toBeLessThan(0.3);
     });
 
@@ -80,14 +80,14 @@ describe("skeleton smoothness (replayed 30 Hz noisy pose, 60 Hz render)", () => 
         const { trace } = replay((t) => 0.7 + 0.12 * Math.sin((2 * Math.PI * t) / 2000), 8);
         const S = stepping(tail(trace, 120));
         const J = jitter(tail(trace, 120));
-        console.log(`[jitter] 0.5 Hz sine S=${S.toFixed(2)} J=${J.toFixed(3)}`);
+        console.warn(`[jitter] 0.5 Hz sine S=${S.toFixed(2)} J=${J.toFixed(3)}`);
         expect(S).toBeLessThan(1.5);
     });
 
     it("lag on a 1 Hz motion stays within the interpolation delay budget", () => {
         const { trace, truth } = replay((t) => 0.7 + 0.1 * Math.sin((2 * Math.PI * t) / 1000), 8);
         const L = lagMs(trace.x.slice(120), truth.slice(120), FRAME);
-        console.log(`[jitter] 1 Hz lag=${L.toFixed(0)} ms`);
+        console.warn(`[jitter] 1 Hz lag=${L.toFixed(0)} ms`);
         // Capture->render delay (≈ p90 of latency + interval) plus filter phase lag.
         expect(L).toBeLessThan(260);
     });

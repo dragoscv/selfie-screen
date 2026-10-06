@@ -39,6 +39,7 @@
         "@dagrejs/dagre": "catalog:",
         "cmdk": "catalog:",
         "i18next": "catalog:",
+        "js-aruco2": "catalog:",
         "lucide-react": "catalog:",
         "motion": "catalog:",
         "mediabunny": "catalog:",

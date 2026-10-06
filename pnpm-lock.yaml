@@ -305,6 +305,9 @@ catalogs:
     i18next:
       specifier: 26.4.2
       version: 26.4.2
+    js-aruco2:
+      specifier: 2.0.0
+      version: 2.0.0
     lucide-react:
       specifier: 1.51.0
       version: 1.51.0
@@ -383,6 +386,9 @@ catalogs:
     zustand:
       specifier: 5.0.15
       version: 5.0.15
+
+patchedDependencies:
+  js-aruco2@2.0.0: 2895a984368db0c1bc0a3f455c7c1cbf369f157e10021b47c4f2d5ae7746c0ae
 
 importers:
 
@@ -475,6 +481,9 @@ importers:
       i18next:
         specifier: 'catalog:'
         version: 26.4.2(@typescript/typescript6@6.0.2)
+      js-aruco2:
+        specifier: 'catalog:'
+        version: 2.0.0(patch_hash=2895a984368db0c1bc0a3f455c7c1cbf369f157e10021b47c4f2d5ae7746c0ae)
       lucide-react:
         specifier: 'catalog:'
         version: 1.51.0(@types/react@19.3.0)(react@19.3.0)
@@ -3593,6 +3602,10 @@ packages:
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+
+  js-aruco2@2.0.0:
+    resolution: {integrity: sha512-2R9P7INqIkg1fsGBazSDLChmfwJpbaYN26gO6wFr1TLIOrvwQf0YzuhwVZAPF8frQ4cjdppAN0dRmExEd/6wqw==}
+    engines: {node: '>=12.0.0'}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -7202,6 +7215,8 @@ snapshots:
       '@pkgjs/parseargs': 0.11.0
 
   jiti@2.7.0: {}
+
+  js-aruco2@2.0.0(patch_hash=2895a984368db0c1bc0a3f455c7c1cbf369f157e10021b47c4f2d5ae7746c0ae): {}
 
   js-tokens@4.0.0: {}
 

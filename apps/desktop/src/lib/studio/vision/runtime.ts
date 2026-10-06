@@ -2,7 +2,7 @@ import type { IdentityProfile, VisionSettings } from "@tiksee/core";
 
 import type { CalibrationSample, EnrolSample, RawLandmark, VisionFrame, VisionRuntime } from "../controller.js";
 import type { VisionPipeline } from "./pipeline.js";
-import type { FromWorker, OptionalModel, PipelineConfig, Rotation, ToWorker } from "./protocol.js";
+import type { FromWorker, OptionalModel, PipelineConfig, PoseEarly, Rotation, ToWorker, WorldLandmark } from "./protocol.js";
 
 /**
  * Studio vision runtime.
@@ -43,7 +43,16 @@ export interface PoseResult {
     tMs: number;
     arrivalMs: number;
     seq: number;
+    /** Owner's image landmarks, normalised to the RAW frame (rawW x rawH). */
     pose: RawLandmark[] | null;
+    /** Owner's MediaPipe world landmarks (metres, hip origin, raw image axes, y down) — see WorldLandmark. */
+    world: WorldLandmark[] | null;
+    rawW: number;
+    rawH: number;
+    /** Owner iris diameter, RAW px, from the most recent face result (or null). */
+    irisPx: number | null;
+    /** Age of the face result behind irisPx, ms. */
+    irisAgeMs: number;
 }
 
 export class StudioVision implements VisionRuntime {
@@ -91,7 +100,7 @@ export class StudioVision implements VisionRuntime {
         }
         const { VisionPipeline } = await import("./pipeline.js");
         const pipeline = new VisionPipeline();
-        pipeline.onPose = (tMs, poses, ownerIndex) => this.#onPose(tMs, poses, ownerIndex);
+        pipeline.onPose = (early) => this.#onPose(early);
         this.#config = { ...this.#config, stagger: true };
         await pipeline.init(this.#config);
         this.#backend = { kind: "main", pipeline };
@@ -194,8 +203,19 @@ export class StudioVision implements VisionRuntime {
         return this.#latestPose;
     }
 
-    #onPose(tMs: number, poses: RawLandmark[][], ownerIndex: number): void {
-        this.#latestPose = { tMs, arrivalMs: performance.now(), seq: ++this.#poseSeq, pose: poses[ownerIndex] ?? poses[0] ?? null };
+    #onPose(e: PoseEarly): void {
+        const i = e.poses[e.ownerIndex] ? e.ownerIndex : 0;
+        this.#latestPose = {
+            tMs: e.tMs,
+            arrivalMs: performance.now(),
+            seq: ++this.#poseSeq,
+            pose: e.poses[i] ?? null,
+            world: e.worldPoses[i] ?? null,
+            rawW: e.rawW,
+            rawH: e.rawH,
+            irisPx: e.irisPx,
+            irisAgeMs: e.irisAgeMs,
+        };
     }
 
     async sampleCalibration(ms: number): Promise<CalibrationSample> {
@@ -261,7 +281,7 @@ export class StudioVision implements VisionRuntime {
     #onMessage(m: FromWorker): void {
         if (m.type === "pose") {
             // Extra message for an in-flight frame id; the "frame" reply still answers it.
-            this.#onPose(m.tMs, m.poses, m.ownerIndex);
+            this.#onPose(m);
             return;
         }
         const p = this.#pending.get(m.id);

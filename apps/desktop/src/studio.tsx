@@ -249,6 +249,7 @@ function Studio() {
             void listen<{ mode: "tutorial" | "calibrate" }>("studio://tutorial", (e) =>
                 setModal({ kind: e.payload.mode === "calibrate" ? "calibrate" : "tutorial" }),
             ).then(keep);
+            void listen("studio://space", () => setModal({ kind: "space" })).then(keep);
             void listen<{ port: number }>("sidecar://ready", (e) => sidecarClient.connect(e.payload.port)).then(keep);
             // Global hotkeys broadcast to every window; the studio owns the clip buffer.
             void listen<string>("hotkey", (e) => {

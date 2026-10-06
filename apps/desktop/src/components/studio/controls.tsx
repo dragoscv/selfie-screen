@@ -19,6 +19,7 @@ import {
     MonitorCog,
     PawPrint,
     Plus,
+    Ruler,
     ScanFace,
     Search,
     SunMedium,
@@ -242,8 +243,8 @@ function MonitorPanel() {
     );
 }
 
-function CameraPanel() {
-    const { controller, frames } = useStudio();
+function CameraPanel({ onSpace }: { onSpace: () => void }) {
+    const { controller, frames, studio } = useStudio();
     const { t } = useTranslation();
     const recording = useFrame(frames, (i) => i?.camera.recording ?? false);
     const [counting, setCounting] = useState(false);
@@ -270,6 +271,10 @@ function CameraPanel() {
                 />
             </div>
             <p className="text-[0.6875rem] text-white/70">{t("studio.controls.camera.hint")}</p>
+            <ActionButton icon={<Ruler className="size-4" aria-hidden />} label={t("studio.space.open")} onClick={onSpace} />
+            <p className="text-[0.6875rem] text-white/70">
+                {studio.space.calibratedAt > 0 ? t("studio.space.calibratedShort", { vfov: Math.round(studio.vfovDeg) }) : t("studio.space.notCalibrated")}
+            </p>
         </Section>
     );
 }
@@ -354,7 +359,7 @@ function Pill({ id, onOpen }: { id: PanelId; onOpen: (id: PanelId) => void }) {
     );
 }
 
-function Panel({ id, onClose, onLoupe }: { id: PanelId; onClose: () => void; onLoupe: (on: boolean) => void }) {
+function Panel({ id, onClose, onLoupe, onSpace }: { id: PanelId; onClose: () => void; onLoupe: (on: boolean) => void; onSpace: () => void }) {
     const { t } = useTranslation();
     const reduced = useReducedMotion();
     const ref = useRef<HTMLDivElement>(null);
@@ -402,7 +407,7 @@ function Panel({ id, onClose, onLoupe }: { id: PanelId; onClose: () => void; onL
                 {id === "look" && <LookPanel />}
                 {id === "framing" && <FramingPanel />}
                 {id === "monitor" && <MonitorPanel />}
-                {id === "camera" && <CameraPanel />}
+                {id === "camera" && <CameraPanel onSpace={onSpace} />}
                 {id === "pets" && <PetsPanel />}
             </motion.div>
         </motion.div>
@@ -415,11 +420,14 @@ export function ControlDock({
     onOpenChange,
     onAr,
     onLoupe,
+    onSpace,
 }: {
     open: PanelId | null;
     onOpenChange: (id: PanelId | null) => void;
     onAr: () => void;
     onLoupe: (on: boolean) => void;
+    /** Open the 3D space calibration wizard. */
+    onSpace: () => void;
 }) {
     const { t } = useTranslation();
     const dock = useRef<HTMLDivElement>(null);
@@ -448,7 +456,7 @@ export function ControlDock({
     return (
         <LayoutGroup id="studio-dock">
             <div ref={dock} className="relative w-full @[34rem]/studio:w-auto">
-                <AnimatePresence>{open && <Panel key={open} id={open} onClose={() => onOpenChange(null)} onLoupe={onLoupe} />}</AnimatePresence>
+                <AnimatePresence>{open && <Panel key={open} id={open} onClose={() => onOpenChange(null)} onLoupe={onLoupe} onSpace={onSpace} />}</AnimatePresence>
                 <nav
                     aria-label={t("studio.controls.label")}
                     // One row that scales with the window (pills flex, text uses container units);

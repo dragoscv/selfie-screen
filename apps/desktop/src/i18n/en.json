@@ -645,6 +645,14 @@
                 "record": "Record",
                 "stop": "Stop",
                 "recording": "Recording"
+            },
+            "space": {
+                "preset": "Camera model",
+                "lens": "Lens focal length",
+                "calibrate": "Calibrate 3D space",
+                "sent": "Calibration opened in the studio window",
+                "calibratedAt": "3D space calibrated {{date}} · field of view from {{source}}",
+                "never": "3D space not calibrated · field of view from {{source}}"
             }
         }
     },

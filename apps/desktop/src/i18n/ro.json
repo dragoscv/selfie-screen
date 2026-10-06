@@ -647,6 +647,14 @@
                 "record": "Înregistrează",
                 "stop": "Oprește",
                 "recording": "Înregistrează"
+            },
+            "space": {
+                "preset": "Modelul camerei",
+                "lens": "Distanța focală a obiectivului",
+                "calibrate": "Calibrează spațiul 3D",
+                "sent": "Calibrarea s-a deschis în fereastra studioului",
+                "calibratedAt": "Spațiu 3D calibrat {{date}} · câmp vizual din {{source}}",
+                "never": "Spațiul 3D nu e calibrat · câmp vizual din {{source}}"
             }
         }
     },

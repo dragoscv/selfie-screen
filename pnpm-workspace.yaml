@@ -22,6 +22,11 @@ allowBuilds:
   # onnxruntime-web -> onnx-proto -> protobufjs: its postinstall only prints a version notice.
   protobufjs: false
 
+# js-aruco2 publishes through top-level `this` (`this.CV = CV`), which Rolldown
+# compiles to `(void 0).CV` in an ESM build -> TypeError. Use `exports.*` instead.
+patchedDependencies:
+  js-aruco2@2.0.0: patches/js-aruco2@2.0.0.patch
+
 catalog:
   # --- core runtime ---
   react: 19.3.0
@@ -89,6 +94,8 @@ catalog:
   "@dagrejs/dagre": 3.1.1
   # --- studio clips (verified 2026-10-06; 1.61.2/.3 still inside the 24 h quarantine) ---
   mediabunny: 1.61.1
+  # --- lens calibration (verified 2026-10-06; MIT, pure JS ArUco, published 2025-06-19) ---
+  js-aruco2: 2.0.0
 
   # --- tauri ---
   "@tauri-apps/api": 2.12.1

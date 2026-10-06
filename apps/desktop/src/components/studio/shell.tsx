@@ -22,12 +22,13 @@ const ArEditor = lazy(() => import("./ar-editor.js").then((m) => ({ default: m.A
 const Calibration = lazy(() => import("./calibration.js").then((m) => ({ default: m.Calibration })));
 const Debug3d = lazy(() => import("./debug3d.js").then((m) => ({ default: m.Debug3d })));
 const Enrol = lazy(() => import("./enrol.js").then((m) => ({ default: m.Enrol })));
+const SpaceCalibration = lazy(() => import("./space-calibration.js").then((m) => ({ default: m.SpaceCalibration })));
 const Tutorial = lazy(() => import("./tutorial.js").then((m) => ({ default: m.Tutorial })));
 
 const IDLE_MS = 3000;
 const EMPTY_RECT: Rect = { left: 0, top: 0, width: 0, height: 0 };
 
-export type StudioModal = { kind: "tutorial" } | { kind: "calibrate" } | { kind: "enrol"; request: EnrolRequest } | null;
+export type StudioModal = { kind: "tutorial" } | { kind: "calibrate" } | { kind: "space" } | { kind: "enrol"; request: EnrolRequest } | null;
 
 export interface StudioShellProps {
     controller: StudioController;
@@ -237,7 +238,16 @@ export function StudioShell(props: StudioShellProps) {
                             </div>
                             {!blocking && (
                                 <div className="pointer-events-auto absolute inset-x-3 bottom-4 flex justify-center">
-                                    <ControlDock open={panel} onOpenChange={setPanel} onAr={() => setArOpen(true)} onLoupe={setLoupeHeld} />
+                                    <ControlDock
+                                        open={panel}
+                                        onOpenChange={setPanel}
+                                        onAr={() => setArOpen(true)}
+                                        onLoupe={setLoupeHeld}
+                                        onSpace={() => {
+                                            setPanel(null);
+                                            onModal({ kind: "space" });
+                                        }}
+                                    />
                                 </div>
                             )}
                         </motion.div>
@@ -258,6 +268,7 @@ export function StudioShell(props: StudioShellProps) {
                 <Suspense fallback={null}>
                     {modal?.kind === "tutorial" && <Tutorial onClose={() => onModal(null)} />}
                     {modal?.kind === "calibrate" && <Calibration onClose={() => onModal(null)} />}
+                    {modal?.kind === "space" && <SpaceCalibration onClose={() => onModal(null)} />}
                     {modal?.kind === "enrol" && <Enrol request={modal.request} onClose={() => onModal(null)} />}
                 </Suspense>
 

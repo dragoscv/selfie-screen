@@ -42,7 +42,7 @@ scope.onmessage = (ev: MessageEvent<ToWorker>) => {
                 return;
             }
             busy = true;
-            pipeline.onPose = (tMs, poses, ownerIndex) => reply({ id: m.id, type: "pose", tMs, poses, ownerIndex });
+            pipeline.onPose = (early) => reply({ id: m.id, type: "pose", ...early });
             pipeline
                 .process(m.bitmap, m.tMs, m.rawW, m.rawH)
                 .then(

@@ -36,7 +36,7 @@ import type { CalibrationSample, DogBox, EnrolSample, FaceBox, GestureHint, RawL
 import { DepthModel } from "./depth.js";
 import { alignFace, cropBox, Embedder, orderFacePoints, thumbnail, type Crop } from "./identity.js";
 import { ensureModels } from "./models.js";
-import type { OptionalModel, PipelineConfig, Rotation } from "./protocol.js";
+import type { OptionalModel, PipelineConfig, PoseEarly, Rotation, WorldLandmark } from "./protocol.js";
 
 /**
  * The vision pipeline: MediaPipe tasks + ONNX models -> per-frame VisionFrame.
@@ -90,6 +90,36 @@ const HINT_FAMILIES = new Set<SignalFamily>(["hand", "twoHands", "face"]);
 
 /** Face mesh indices (478-point model with irises). */
 const FM = { RIGHT_IRIS: 468, LEFT_IRIS: 473, NOSE_TIP: 1, MOUTH_LEFT: 291, MOUTH_RIGHT: 61, LIP_TOP: 13, LIP_BOTTOM: 14 };
+/** Iris ring point pairs (opposite sides) per eye: right iris 469-472, left iris 474-477. */
+const IRIS_RINGS: readonly (readonly [readonly [number, number], readonly [number, number]])[] = [
+    [
+        [469, 471],
+        [470, 472],
+    ],
+    [
+        [474, 476],
+        [475, 477],
+    ],
+];
+
+/** Mean iris diameter over both eyes in RAW px; `lm` = raw-normalised face landmarks. */
+function irisDiameterPx(lm: readonly NormalizedLandmark[], rawW: number, rawH: number): number | null {
+    const dist = (a: number, b: number): number | null => {
+        const p = lm[a];
+        const q = lm[b];
+        return p && q ? Math.hypot((p.x - q.x) * rawW, (p.y - q.y) * rawH) : null;
+    };
+    const eyes: number[] = [];
+    for (const [[a, b], [c, d]] of IRIS_RINGS) {
+        const d1 = dist(a, b);
+        const d2 = dist(c, d);
+        if (d1 === null && d2 === null) continue;
+        eyes.push(Math.max(d1 ?? 0, d2 ?? 0));
+    }
+    if (!eyes.length) return null;
+    const m = eyes.reduce((s, v) => s + v, 0) / eyes.length;
+    return m > 0 ? m : null;
+}
 
 interface Tasks {
     pose: PoseLandmarker | null;
@@ -106,6 +136,7 @@ interface HandDet {
 }
 
 interface FaceDet {
+    /** Face landmarks exactly as MediaPipe returns them: normalised to the RAW frame (no rotation/mirror). */
     raw: NormalizedLandmark[];
     disp: Pt[];
     bs: Blendshapes;
@@ -181,10 +212,10 @@ function rawBox(points: readonly NormalizedLandmark[]): Box {
 export class VisionPipeline {
     /**
      * Called right after the pose landmarker returns, before hands/face/objects/depth/identity.
-     * `ownerIndex` = index into `poses` of the owner tracked on the PREVIOUS frame, or -1.
-     * Landmarks carry raw visibility.
+        * See PoseEarly: image + world landmarks, owner index (previous frame's track, or -1), raw frame
+        * size, and the owner's iris diameter from the most recent face result (face runs after pose).
      */
-    onPose: ((tMs: number, poses: RawLandmark[][], ownerIndex: number) => void) | null = null;
+        onPose: ((early: PoseEarly) => void) | null = null;
     #cfg: PipelineConfig | null = null;
     #tasks: Tasks = { pose: null, gesture: null, face: null, objects: null };
     #fileset: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>> | null = null;
@@ -419,7 +450,9 @@ export class VisionPipeline {
             try {
                 const r = t.pose.detectForVideo(bitmap, ts);
                 this.#poses = r.landmarks.map((lm) => lm.map((p) => ({ x: p.x, y: p.y, z: p.z, visibility: p.visibility })));
-                this.#emitPose(tMs, disp);
+                // World landmarks kept as MediaPipe returns them (metres, hip-centred, raw image axes, y down).
+                this.#worldPoses = this.#poses.map((_, i) => (at(r.worldLandmarks, i) ?? []).map((p) => ({ x: p.x, y: p.y, z: p.z, visibility: p.visibility ?? 0 })));
+                this.#emitPose(tMs, disp, rawW, rawH);
                 const masks = r.segmentationMasks ?? [];
                 const first = masks[0];
                 if (first) {
@@ -463,6 +496,7 @@ export class VisionPipeline {
             const t0 = performance.now();
             try {
                 const r = t.face.detectForVideo(bitmap, ts);
+                this.#lastFacesAt = tMs;
                 faces = r.faceLandmarks.map((lm, i) => {
                     const d = lm.map((p) => disp(p, 1, 1));
                     const box = boxOfPoints(d, 0) ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -687,9 +721,16 @@ export class VisionPipeline {
 
     #lastHands: HandDet[] = [];
     #lastFaces: FaceDet[] = [];
+    /** tMs of the frame that produced `#lastFaces` (-Infinity before the first face run). */
+    #lastFacesAt = -Infinity;
+    #worldPoses: WorldLandmark[][] = [];
 
-    /** Early pose hook; owner = the pose nearest the previous frame's owner track box. */
-    #emitPose(tMs: number, disp: (p: { x: number; y: number }, w?: number, h?: number) => Pt): void {
+    /**
+     * Early pose hook; owner = the pose nearest the previous frame's owner track box.
+     * Iris: among the most recent faces (previous face run — face runs after pose), the one whose
+     * RAW box contains / is nearest the owner's nose (within the box's larger side, like #group).
+     */
+    #emitPose(tMs: number, disp: (p: { x: number; y: number }, w?: number, h?: number) => Pt, rawW: number, rawH: number): void {
         const cb = this.onPose;
         if (!cb) return;
         const poses = this.#poses;
@@ -709,8 +750,31 @@ export class VisionPipeline {
                 }
             });
         }
+        let irisPx: number | null = null;
+        const nose = poses[ownerIndex]?.[0];
+        if (nose) {
+            let bestD = Infinity;
+            for (const f of this.#lastFaces) {
+                const b = rawBox(f.raw);
+                const d = Math.hypot((b.x + b.w / 2 - nose.x) * rawW, (b.y + b.h / 2 - nose.y) * rawH);
+                if (d >= Math.max(b.w * rawW, b.h * rawH) || d >= bestD) continue;
+                const px = irisDiameterPx(f.raw, rawW, rawH);
+                if (px === null) continue;
+                bestD = d;
+                irisPx = px;
+            }
+        }
         try {
-            cb(tMs, poses, ownerIndex);
+            cb({
+                tMs,
+                poses,
+                worldPoses: this.#worldPoses,
+                ownerIndex,
+                rawW,
+                rawH,
+                irisPx,
+                irisAgeMs: irisPx === null ? Infinity : Math.max(0, tMs - this.#lastFacesAt),
+            });
         } catch (e) {
             console.warn("[vision] onPose failed", e);
         }

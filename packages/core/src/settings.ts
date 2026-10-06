@@ -501,7 +501,28 @@ export const studioSchema = z.object({
     /** Studio render cap: 60 (= camera, default), 120, or 0 = monitor refresh. Frames above the camera rate are redrawn identical images. */
     previewFps: z.union([z.literal(60), z.literal(120), z.literal(0)]).default(60),
     /** Vertical field of view of the OUTPUT frame (before digital zoom), degrees; drives 3D placement of pets/AR/effects. */
-    vfovDeg: z.number().min(25).max(110).default(60),
+    vfovDeg: z.number().min(15).max(110).default(45),
+    /** Where `vfovDeg` came from: a camera preset (+ lens mm), the space calibration, or typed by hand. */
+    cameraPreset: z.enum(["sony-zv-e10", "logitech-c920", "logitech-brio-90", "logitech-brio-78", "logitech-brio-65", "laptop", "custom"]).default("sony-zv-e10"),
+    /** Lens focal length (mm) for interchangeable-lens presets (ZV-E10 kit lens 16-50). */
+    lensMm: z.number().min(8).max(200).default(16),
+    /** Owner body metrics from the space calibration (0 = not calibrated yet: population averages are used). */
+    space: z
+        .object({
+            heightM: z.number().min(0).max(2.5).default(0),
+            shoulderM: z.number().min(0).max(0.7).default(0),
+            irisM: z.number().min(0).max(0.02).default(0),
+            seatedHeadM: z.number().min(0).max(2.5).default(0),
+            /** Owner height / MediaPipe world-landmark height (per-person scale of the metric skeleton). */
+            worldScale: z.number().min(0.5).max(2).default(1),
+            /** How vfovDeg was obtained: "preset" | "charuco" | "moge" | "manual". */
+            fovSource: z.enum(["preset", "charuco", "moge", "manual"]).default("preset"),
+            /** Lens distortion k1, k2 from ChArUco (0 = none). */
+            k1: z.number().default(0),
+            k2: z.number().default(0),
+            calibratedAt: z.number().int().default(0),
+        })
+        .prefault({}),
     /** Camera mount: degrees the camera looks DOWN (a webcam on top of the monitor looking at a seated owner ≈ 10-20). */
     cameraTiltDeg: z.number().min(-30).max(60).default(15),
     /** Estimate the tilt from the owner's upright neck (shoulders -> ears) and use it instead of `cameraTiltDeg`. Off by default: MediaPipe depth is noisy. */

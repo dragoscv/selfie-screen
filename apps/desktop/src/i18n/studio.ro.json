@@ -425,5 +425,104 @@
         "save": "Salvează",
         "saved": "{{name}} a fost salvat",
         "privacy": "Datele de recunoaștere rămân pe acest PC și nu sunt încărcate nicăieri."
+    },
+    "space": {
+        "title": "Calibrează spațiul 3D",
+        "open": "Calibrează spațiul 3D",
+        "progress": "Pasul {{n}} din {{total}}: {{step}}",
+        "calibratedShort": "Spațiu 3D calibrat · câmp vizual {{vfov}}°",
+        "notCalibrated": "Spațiul 3D nu e calibrat: animăluțele folosesc dimensiuni medii",
+        "back": "Înapoi",
+        "next": "Înainte",
+        "skip": "Sari peste",
+        "save": "Salvează",
+        "start": "Începe",
+        "retry": "Măsoară din nou",
+        "capturing": "Se măsoară…",
+        "countdown": "Începe în {{n}}",
+        "hold": "Nu te mișca…",
+        "measured": "Măsurătoare gata",
+        "failed": "Măsurătoarea a eșuat: {{error}}",
+        "saved": "Spațiul 3D a fost salvat",
+        "camera": {
+            "title": "Camera",
+            "body": "Alege camera ca animăluțele, obiectele AR și efectele să aibă mărimea corectă în 3D.",
+            "preset": "Modelul camerei",
+            "lens": "Distanța focală a obiectivului",
+            "manual": "Câmpul vizual vertical",
+            "vfov": "Câmp vizual: {{value}} ({{source}})"
+        },
+        "lens": {
+            "title": "Calibrare precisă a obiectivului (ChArUco)",
+            "body": "Tipărește tabla ChArUco sau afișeaz-o pe tot ecranul unui telefon, apoi mișc-o încet în fața camerei: aproape, departe, înclinată și în fiecare colț al cadrului.",
+            "board": "Arată tabla",
+            "boardAlt": "Tablă de calibrare ChArUco",
+            "boardUnavailable": "Tabla nu poate fi desenată aici. Folosește o tablă ChArUco pe care o ai deja.",
+            "start": "Pornește calibrarea obiectivului",
+            "stop": "Oprește",
+            "views": "Cadre: {{n}} din {{needed}}",
+            "coverage": "Acoperirea cadrului",
+            "result": "Câmp vizual măsurat {{vfov}}, eroare {{rms}} px"
+        },
+        "scene": {
+            "title": "Analizează scena (descărcare unică de 141 MB)",
+            "running": "Se analizează… {{pct}}%",
+            "accept": "Folosește acest câmp vizual"
+        },
+        "you": {
+            "title": "Tu",
+            "body": "Înălțimea ta reală îi permite lui TikSee să măsoare totul în metri.",
+            "height": "Înălțimea ta",
+            "hint": "Opțional. Între 120 și 220 cm.",
+            "invalid": "Introdu o înălțime între {{min}} și {{max}} cm."
+        },
+        "standing": {
+            "title": "Ridică-te",
+            "body": "Stai în picioare la 1-2 m de cameră, cu tot corpul în cadru dacă se poate, cu brațele jos, cu fața spre obiectiv."
+        },
+        "seated": {
+            "title": "Așază-te",
+            "body": "Stai pe scaun ca atunci când transmiți live și privește spre cameră."
+        },
+        "review": {
+            "title": "Verificare",
+            "useTilt": "Folosește înclinarea și înălțimea măsurate ale camerei",
+            "hint": "Pașii săriți păstrează valorile pe care le aveai deja."
+        },
+        "fields": {
+            "camera": "Camera",
+            "vfov": "Câmp vizual",
+            "height": "Înălțimea ta",
+            "tilt": "Înclinarea camerei",
+            "cameraHeight": "Înălțimea camerei",
+            "distance": "Distanța",
+            "shoulder": "Lățimea umerilor",
+            "iris": "Iris",
+            "headHeight": "Înălțimea capului",
+            "desk": "Înălțimea biroului",
+            "wall": "Distanța până la perete"
+        },
+        "issues": {
+            "noBody": "Nu a fost găsit nimeni. Intră în cadru și încearcă din nou.",
+            "notFullBody": "Nu ți s-a văzut tot corpul: fă un pas înapoi.",
+            "headOut": "Capul a ieșit din cadru: coboară camera sau fă un pas înapoi.",
+            "smallIris": "Ochii sunt prea mici în imagine: apropie-te pentru acest pas.",
+            "unstable": "Prea multă mișcare: stai nemișcat cât timp se măsoară."
+        },
+        "sources": {
+            "preset": "presetare cameră",
+            "charuco": "calibrare ChArUco",
+            "moge": "analiza scenei",
+            "manual": "setat manual"
+        },
+        "presets": {
+            "sony-zv-e10": "Sony ZV-E10 (APS-C, setează obiectivul)",
+            "logitech-c920": "Logitech C920 / C922",
+            "logitech-brio-90": "Logitech Brio (90°)",
+            "logitech-brio-78": "Logitech Brio (78°)",
+            "logitech-brio-65": "Logitech Brio (65°)",
+            "laptop": "Webcam de laptop",
+            "custom": "Personalizat / calibrat"
+        }
     }
 }

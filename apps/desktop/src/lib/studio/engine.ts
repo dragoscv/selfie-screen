@@ -45,6 +45,10 @@ import { ClipRecorder, type ClipState, type SavedClip } from "./clips.js";
 import type {
     CalibrationSample,
     Debug3dState,
+    LensProgress,
+    LensResult,
+    SceneResult,
+    SpaceSample,
     DogBox,
     EnrolSample,
     FaceBox,
@@ -55,6 +59,7 @@ import type {
     VisionRuntime,
 } from "./controller.js";
 import { EffectLayer, effectOrigin } from "./effects.js";
+import { MetricDistance, type MetricConfig, type PoseForDistance } from "./metric-distance.js";
 import { DigitalFraming } from "./framing.js";
 import { PreviewPass } from "./monitor.js";
 import { VcamPump } from "./output.js";
@@ -320,6 +325,9 @@ export class StudioEngine implements StudioController {
     #poseHz = 0;
     #lastPoseAt = 0;
     #poseSeq = -1;
+    readonly #metric = new MetricDistance();
+    /** Space calibration capture in progress (raw early poses). */
+    #spaceCapture: PoseForDistance[] | null = null;
     #lastRender = 0;
     readonly #stats = new FrameStats();
     readonly #cb: EngineCallbacks;
@@ -766,6 +774,39 @@ export class StudioEngine implements StudioController {
         this.#effects.spawn(effect, p);
     }
 
+    /** Raw-camera vFOV + owner calibration for the metric distance. */
+    #metricConfig(): MetricConfig {
+        const s = this.#settings;
+        return { cameraVfovDeg: s.vfovDeg, worldScale: s.space.worldScale, irisM: s.space.irisM };
+    }
+
+    /**
+     * Space calibration sample: collect `ms` of early pose results and aggregate
+     * (medians) the owner's metric measures. Standing: camera pitch + height from the
+     * upright torso and the typed height. Seated: personal shoulder width, iris, head height.
+     */
+    async sampleSpace(kind: "standing" | "seated", ms: number): Promise<SpaceSample> {
+        this.#spaceCapture = [];
+        await new Promise((r) => window.setTimeout(r, ms));
+        const frames = this.#spaceCapture;
+        this.#spaceCapture = null;
+        const { aggregateSpace } = await import("./space-sample.js");
+        return aggregateSpace(kind, frames, this.#metricConfig(), this.#settings.space.heightM, this.#metric, {
+            tiltDeg: this.#settings.cameraTiltDeg,
+            heightM: this.#settings.cameraHeightM,
+        });
+    }
+
+    async calibrateLens(onProgress: (p: LensProgress) => void, signal: AbortSignal): Promise<LensResult> {
+        const { calibrateLensFromVideo } = await import("./calibration/charuco.js");
+        return calibrateLensFromVideo(this.#video, onProgress, signal);
+    }
+
+    async analyseScene(onProgress: (p: number) => void): Promise<SceneResult> {
+        const { analyseSceneFromVideo } = await import("./calibration/scene.js");
+        return analyseSceneFromVideo(this.#video, onProgress, { tiltDeg: this.#settings.cameraTiltDeg, cameraHeightM: this.#settings.cameraHeightM });
+    }
+
     /** Live 3D state for the preview-only debug overlay (F3). */
     debug3d(): Debug3dState | null {
         const stage = this.#stage;
@@ -846,7 +887,9 @@ export class StudioEngine implements StudioController {
         if (!backdrop) return;
         if (frame.mask) backdrop.setMask(frame.mask.data, frame.mask.width, frame.mask.height);
         else backdrop.setMask(null, 0, 0);
-        this.#ownerM = frame.ownerDistanceM;
+        // Metric distance comes from MetricDistance (whole-body solve + iris + Kalman) when
+        // the early pose carries world landmarks; the pipeline's body-scale value is the fallback.
+        this.#ownerM = this.#metric.reading?.distanceM ?? frame.ownerDistanceM;
         const face = ownerFace(frame.faces);
         if (frame.depth && face) {
             // Scale relative inverse depth so the owner's face pixel reads ownerDistanceM: m = k / inv.
@@ -948,6 +991,9 @@ export class StudioEngine implements StudioController {
         if (early && early.seq !== this.#poseSeq) {
             this.#poseSeq = early.seq;
             pose = early.pose;
+            const m = this.#metric.update(early, this.#metricConfig());
+            if (m) this.#ownerM = m.distanceM;
+            this.#spaceCapture?.push(early);
             this.#body.measure(
                 { tMs: early.tMs, landmarks: pose ? poseToOutput(pose, f, rotation) : null, distanceM: this.#ownerM },
                 early.arrivalMs,

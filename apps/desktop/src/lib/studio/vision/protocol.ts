@@ -7,6 +7,37 @@ export type OptionalModel = "identity" | "dogIdentity" | "depth";
 
 export type Rotation = 0 | 90 | 180 | 270;
 
+/**
+ * MediaPipe pose WORLD landmark, kept exactly as `PoseLandmarkerResult.worldLandmarks` returns it:
+ * metres, origin = centre between the hips, x/y in the RAW (unrotated, unmirrored) image orientation
+ * (x grows towards image-right, y grows DOWN), z = depth with the same scale (smaller = nearer the camera).
+ * https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
+ */
+export interface WorldLandmark {
+    x: number;
+    y: number;
+    z: number;
+    visibility: number;
+}
+
+/** Early pose-only result (sent right after the pose landmarker, before hands/face/objects). */
+export interface PoseEarly {
+    tMs: number;
+    /** Image landmarks per person, normalised to the full RAW frame (rawW x rawH). */
+    poses: RawLandmark[][];
+    /** World landmarks aligned index-for-index with `poses` (see WorldLandmark). */
+    worldPoses: WorldLandmark[][];
+    /** Index into `poses` of the owner tracked on the PREVIOUS frame, or -1. */
+    ownerIndex: number;
+    /** Raw camera frame size in px that the normalised landmarks refer to. */
+    rawW: number;
+    rawH: number;
+    /** Owner's iris diameter in RAW px (mean of both eyes) from the most recent face result, or null. */
+    irisPx: number | null;
+    /** Age of that face result relative to `tMs`, ms (Infinity when irisPx is null). */
+    irisAgeMs: number;
+}
+
 export interface PipelineConfig {
     settings: VisionSettings;
     rotation: Rotation;
@@ -32,7 +63,7 @@ export type FromWorker =
     | { id: number; type: "error"; message: string }
     | { id: number; type: "frame"; frame: VisionFrame }
     /** Early pose-only result for frame `id`, sent before hands/face/objects run (does not answer the request). */
-    | { id: number; type: "pose"; tMs: number; poses: RawLandmark[][]; ownerIndex: number }
+    | ({ id: number; type: "pose" } & PoseEarly)
     | { id: number; type: "calibration"; sample: CalibrationSample }
     | { id: number; type: "enrolment"; sample: EnrolSample | null }
     | { id: number; type: "progress"; progress: number };

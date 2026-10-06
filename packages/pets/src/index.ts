@@ -9,6 +9,8 @@ export * from "./space.js";
 export * from "./body.js";
 export * from "./roam.js";
 export * from "./occlusion.js";
+export * from "./metric.js";
+export * from "./jitter.js";
 export { PetActor } from "./pet-actor.js";
 export { Backdrop, type BackdropDof, type BackdropLook } from "./backdrop.js";
 export { PetStage, inlineAces, toNodeMaterials, type LoadedModel, type PetDebug, type StageOptions } from "./stage.js";

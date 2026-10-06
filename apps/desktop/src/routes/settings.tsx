@@ -54,6 +54,7 @@ import {
     Palette,
     Play,
     Plus,
+    Ruler,
     Shield,
     Sparkles,
     Target,
@@ -68,10 +69,20 @@ import { toast } from "sonner";
 
 import { CameraRemote } from "../components/camera-remote.js";
 import { CameraUsb } from "../components/camera-usb.js";
+import {
+    CAMERA_PRESET_IDS,
+    cameraFromStudio,
+    chooseLens,
+    choosePreset,
+    presetNeedsLens,
+    type CameraChoice,
+    type CameraPresetId,
+} from "../components/studio/space-calibration-model.js";
 import { useSettingsUpdate } from "../hooks/use-settings.js";
 import { isVoicemeeter, listAudioDevices, requestDeviceAccess, type AudioDeviceList } from "../lib/audio/devices.js";
 import { acceleratorKey, isValidAccelerator } from "../lib/hotkeys.js";
 import { sidecarClient } from "../lib/sidecar-client.js";
+import { useOpenStudio } from "../lib/vision/use-vision.js";
 import { useAppStore } from "../store/app-store.js";
 import { ChipToggleGroup, NumberField, SelectField } from "./settings-fields.js";
 
@@ -1205,10 +1216,11 @@ function DisplaySection() {
 /* ------------------------------------------------------------------ */
 
 function StudioSection() {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const update = useSettingsUpdate();
     const s = useAppStore((state) => state.settings.studio);
     const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+    const openStudio = useOpenStudio();
 
     useEffect(() => {
         void navigator.mediaDevices
@@ -1229,6 +1241,18 @@ function StudioSection() {
         );
     };
     const petOptions = PET_CHOICES.map((p) => ({ value: p, label: t(`settings.studio.pets.${p}`) }));
+    const camera = cameraFromStudio(s);
+    const applyCamera = (c: CameraChoice) =>
+        update("studio", { cameraPreset: c.preset, lensMm: c.lensMm, vfovDeg: c.vfovDeg, space: { ...s.space, fovSource: c.fovSource, k1: c.k1, k2: c.k2 } });
+    const calibrateSpace = async () => {
+        try {
+            await openStudio();
+            await emitTo("studio", "studio://space", {});
+            toast(t("settings.studio.space.sent"));
+        } catch {
+            toast.error(t("common.error"));
+        }
+    };
 
     return (
         <>
@@ -1280,17 +1304,47 @@ function StudioSection() {
                     display={(v) => (v === "0" ? t("settings.studio.previewFpsMonitor") : `${v} fps`)}
                     tint="var(--kind-gift)"
                 />
-                <SliderRow
-                    label={t("settings.studio.vfov")}
-                    value={s.vfovDeg}
-                    min={25}
-                    max={110}
-                    step={1}
-                    format={(v) => `${Math.round(v)}°`}
-                    onCommit={(vfovDeg) => update("studio", { vfovDeg: Math.round(vfovDeg) })}
-                    tint="var(--kind-gift)"
+                <SelectField
+                    label={t("settings.studio.space.preset")}
+                    value={s.cameraPreset}
+                    onChange={(preset) => applyCamera(choosePreset(camera, preset as CameraPresetId))}
+                    options={CAMERA_PRESET_IDS.map((p) => ({ value: p, label: t(`studio.space.presets.${p}`) }))}
                 />
+                {presetNeedsLens(s.cameraPreset) && (
+                    <NumberField label={t("settings.studio.space.lens")} value={s.lensMm} min={8} max={200} suffix="mm" onCommit={(mm) => applyCamera(chooseLens(camera, mm))} />
+                )}
+                {s.cameraPreset === "custom" ? (
+                    <SliderRow
+                        label={t("settings.studio.vfov")}
+                        value={s.vfovDeg}
+                        min={15}
+                        max={110}
+                        step={0.5}
+                        format={(v) => `${v.toFixed(1)}°`}
+                        onCommit={(vfovDeg) =>
+                            update("studio", { vfovDeg: Math.round(vfovDeg * 10) / 10, space: { ...s.space, fovSource: "manual", k1: 0, k2: 0 } })
+                        }
+                        tint="var(--kind-gift)"
+                    />
+                ) : (
+                    <p className="text-sm">
+                        {t("settings.studio.vfov")}: <span className="font-semibold tabular-nums">{s.vfovDeg.toFixed(1)}°</span>
+                    </p>
+                )}
                 <p className="text-xs text-fg-muted">{t("settings.studio.vfovHint")}</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-fg-muted" aria-live="polite">
+                        {s.space.calibratedAt > 0
+                            ? t("settings.studio.space.calibratedAt", {
+                                  date: new Date(s.space.calibratedAt).toLocaleString(i18n.language),
+                                  source: t(`studio.space.sources.${s.space.fovSource}`),
+                              })
+                            : t("settings.studio.space.never", { source: t(`studio.space.sources.${s.space.fovSource}`) })}
+                    </p>
+                    <Button size="sm" icon={<Ruler />} onClick={() => void calibrateSpace()}>
+                        {t("settings.studio.space.calibrate")}
+                    </Button>
+                </div>
                 <SwitchRow
                     label={t("settings.studio.tiltAuto")}
                     description={t("settings.studio.tiltAutoHint")}

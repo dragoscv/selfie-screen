@@ -87,6 +87,44 @@ export interface CalibrationSample {
     faceVisible: boolean;
 }
 
+/** Aggregated owner measurement over a sampling window (space calibration). */
+export interface SpaceSample {
+    kind: "standing" | "seated";
+    /** Frames used. 0 = nobody tracked (ask the user to step into view). */
+    frames: number;
+    /** Camera pitch (deg down) and lens height (m), only from a standing sample with a typed height. */
+    tiltDeg?: number;
+    heightM?: number;
+    /** Body-solve distance of the torso (m), median. */
+    distanceM?: number;
+    /** Personal metrics in metres (median), from world landmarks scaled by `worldScale`. */
+    shoulderM?: number;
+    irisM?: number;
+    /** Head (ear centre) height above the floor (m), needs a camera pose. */
+    headHeightM?: number;
+    /** MediaPipe world-landmark body height (heel/ankle to nose-top estimate), m — for worldScale. */
+    modelHeightM?: number;
+    /** Why a value is missing (i18n key suffix under studio.space.issues). */
+    issues: ("noBody" | "notFullBody" | "headOut" | "smallIris" | "unstable")[];
+}
+
+export type LensProgress = { views: number; needed: number; lastError?: string; coverage: number };
+export interface LensResult {
+    vfovDeg: number;
+    fPx: number;
+    k1: number;
+    k2: number;
+    rmsPx: number;
+    views: number;
+}
+export interface SceneResult {
+    vfovDeg: number;
+    /** Planes in the ROOM frame (metres): desk top height and back-wall distance, when found. */
+    deskHeightM?: number;
+    wallDistanceM?: number;
+    ms: number;
+}
+
 export interface EnrolSample {
     kind: "person" | "dog";
     /** Embedding of the subject nearest the frame centre (largest box). */
@@ -109,6 +147,15 @@ export interface Debug3dState {
 }
 
 export interface StudioController {
+    /**
+     * Space calibration (owner metric scale + camera pose). The wizard drives it step by
+     * step; each call samples `ms` of the owner's pose and returns the aggregated measure.
+     */
+    sampleSpace(kind: "standing" | "seated", ms: number): Promise<SpaceSample>;
+    /** Optional precise lens calibration from a ChArUco board (lazy-loaded opencv.js). */
+    calibrateLens?(onProgress: (p: LensProgress) => void, signal: AbortSignal): Promise<LensResult>;
+    /** Optional one-shot scene analysis (MoGe-2, lazy 141 MB): FOV estimate + desk/wall planes. */
+    analyseScene?(onProgress: (p: number) => void): Promise<SceneResult>;
     /** Subscribe to per-frame UI info (throttled to ~15 Hz). Returns an unsubscribe. */
     onFrame(cb: (info: StudioFrameInfo) => void): () => void;
     /** Debounced signal edges + arming changes, to forward to the sidecar (`visionSignals`, `visionArm`). */
@@ -185,7 +232,23 @@ export interface VisionRuntime {
     /** Newest completed result (the same object until a new one lands). */
     latest(): VisionFrame | null;
     /** Newest pose-only result (arrives before the full frame). */
-    latestPose(): { tMs: number; arrivalMs: number; seq: number; pose: RawLandmark[] | null } | null;
+    /**
+     * Newest pose-only result (arrives before the full frame). `pose` = owner image landmarks normalised
+     * to the raw rawW x rawH frame; `world` = owner MediaPipe world landmarks (metres, origin between the
+     * hips, raw image axes: x right, y DOWN, z depth, smaller = nearer camera); `irisPx` = owner iris
+     * diameter in raw px from the most recent face result, `irisAgeMs` old.
+     */
+    latestPose(): {
+        tMs: number;
+        arrivalMs: number;
+        seq: number;
+        pose: RawLandmark[] | null;
+        world: { x: number; y: number; z: number; visibility: number }[] | null;
+        rawW: number;
+        rawH: number;
+        irisPx: number | null;
+        irisAgeMs: number;
+    } | null;
     sampleCalibration(ms: number): Promise<CalibrationSample>;
     sampleEnrolment(kind: "person" | "dog"): Promise<EnrolSample | null>;
     ensureModels(which: ("identity" | "dogIdentity" | "depth")[], onProgress?: (p: number) => void): Promise<void>;
