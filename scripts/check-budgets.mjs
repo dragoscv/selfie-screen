@@ -25,6 +25,8 @@ const budgets = [
     // Main window: vision route (lazy) and the xyflow rule graph (lazy inside it); measured 17.8 / 61.2 KB.
     ["desktop vision route", /^vision-.*\.js$/, "apps/desktop/dist/assets", 25 * KB],
     ["desktop rule graph (lazy)", /^rule-graph-editor-.*\.js$/, "apps/desktop/dist/assets", 70 * KB],
+    // 0.4.0: MP4 muxer for studio clips (mediabunny, tree-shaken), loaded on the first save.
+    ["studio clip muxer (lazy)", /^clip-mux-.*\.js$/, "apps/desktop/dist/assets", 60 * KB],
     // 0.3.0 adds the rules engine, vision log and identities: 85.1 KB measured.
     ["sidecar bundle", /^index\.js$/, "apps/sidecar/dist", 95 * KB],
 ];

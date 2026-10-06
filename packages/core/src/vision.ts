@@ -287,6 +287,8 @@ export const STUDIO_ACTIONS = [
     "zebraToggle",
     "cleanFeedToggle",
     "loupeToggle",
+    /** Write the rolling clip buffer to an MP4 (WS28-07). */
+    "saveClip",
 ] as const;
 export const AR_EFFECTS = ["hearts", "confetti", "sparkle", "kiss", "fire", "stars", "question", "wow", "countdown"] as const;
 export const PET_REACTIONS = ["dance", "fly", "sleep", "look", "react"] as const;

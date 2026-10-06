@@ -145,7 +145,8 @@
         "peakingToggle": "Toggle focus peaking",
         "zebraToggle": "Toggle zebra",
         "cleanFeedToggle": "Toggle clean feed",
-        "loupeToggle": "Toggle loupe"
+        "loupeToggle": "Toggle loupe",
+        "saveClip": "Save the last seconds as a clip"
     },
     "effects": {
         "hearts": "Hearts",

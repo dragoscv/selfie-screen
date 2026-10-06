@@ -1,4 +1,5 @@
 mod camera;
+mod clips;
 mod secrets;
 mod sidecar;
 mod tiktok;
@@ -53,13 +54,14 @@ pub struct Hotkeys {
     pub hotkey_skip_reply: String,
     pub hotkey_effects_off: String,
     pub hotkey_highlight: String,
+    pub hotkey_save_clip: String,
 }
 
 impl Hotkeys {
     /// Accelerator → action string emitted as the `hotkey` event payload.
     /// Actions match the Live Control vocabulary in `@tiksee/core` live.ts;
     /// toggles (mute) are resolved by the renderer, which owns the state.
-    fn bindings(&self) -> [(&str, &'static str); 7] {
+    fn bindings(&self) -> [(&str, &'static str); 8] {
         [
             (self.hotkey_toggle_overlay.as_str(), "toggleOverlay"),
             (self.hotkey_mute_voice.as_str(), "muteAssistant"),
@@ -68,6 +70,7 @@ impl Hotkeys {
             (self.hotkey_skip_reply.as_str(), "skipCurrent"),
             (self.hotkey_effects_off.as_str(), "effectsOff"),
             (self.hotkey_highlight.as_str(), "highlight"),
+            (self.hotkey_save_clip.as_str(), "saveClip"),
         ]
     }
 }
@@ -378,6 +381,7 @@ pub fn run() {
             vcam::vcam_configure,
             vcam::vcam_register,
             vcam::vcam_endpoint,
+            clips::clip_save,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -536,7 +540,7 @@ mod tests {
     #[test]
     fn hotkeys_accept_the_settings_behaviour_object() {
         let hotkeys: Hotkeys = serde_json::from_str(
-            r#"{"closeToTray":true,"hotkeyMuteVoice":"Ctrl+M","hotkeyHighlight":"Ctrl+H"}"#,
+            r#"{"closeToTray":true,"hotkeyMuteVoice":"Ctrl+M","hotkeyHighlight":"Ctrl+H","hotkeySaveClip":"Ctrl+Shift+K"}"#,
         )
         .unwrap();
         let bound: Vec<_> = hotkeys
@@ -546,7 +550,11 @@ mod tests {
             .collect();
         assert_eq!(
             bound,
-            vec![("Ctrl+M", "muteAssistant"), ("Ctrl+H", "highlight")]
+            vec![
+                ("Ctrl+M", "muteAssistant"),
+                ("Ctrl+H", "highlight"),
+                ("Ctrl+Shift+K", "saveClip")
+            ]
         );
     }
 

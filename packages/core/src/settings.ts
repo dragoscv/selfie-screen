@@ -245,6 +245,8 @@ export const behaviourSchema = z.object({
     hotkeySkipReply: z.string().default("CommandOrControl+Shift+S"),
     hotkeyEffectsOff: z.string().default("CommandOrControl+Shift+E"),
     hotkeyHighlight: z.string().default("CommandOrControl+Shift+H"),
+    /** Save the last N seconds of the studio output as an MP4 (WS28-07). K = "klip"; Ctrl+Alt+C was already taken on the owner's PC, C/V/X are copy/paste. */
+    hotkeySaveClip: z.string().default("CommandOrControl+Shift+K"),
     /** Local HTTP trigger endpoints for Stream Deck / MIDI bridges. */
     triggerServerEnabled: z.boolean().default(false),
 });
@@ -457,6 +459,18 @@ export const arObjectSchema = z.object({
 });
 export type ArObject = z.infer<typeof arObjectSchema>;
 
+/** Rolling clip buffer of the studio OUTPUT (what viewers see), H.264 via WebCodecs (decision Q50). */
+export const clipsSchema = z.object({
+    enabled: z.boolean().default(true),
+    /** Seconds kept in the rolling buffer. */
+    seconds: z.union([z.literal(15), z.literal(30), z.literal(60)]).default(30),
+    /** Target H.264 bitrate; RAM ≈ bitrate × seconds (8 Mbps × 30 s ≈ 30 MB). */
+    bitrateMbps: z.union([z.literal(4), z.literal(8), z.literal(12)]).default(8),
+    /** Every highlight (hotkey, Live Control, rule) also saves a clip. */
+    saveOnHighlight: z.boolean().default(true),
+});
+export type ClipSettings = z.infer<typeof clipsSchema>;
+
 export const studioSchema = z.object({
     enabled: z.boolean().default(false),
     /** MediaDeviceInfo.deviceId; empty picks a device labelled "USB3.0 Video", else the first camera. */
@@ -488,6 +502,8 @@ export const studioSchema = z.object({
     framing: framingSchema.prefault({}),
     /** Placed AR objects (x/y in output 0..1, z in metres from the camera). */
     arObjects: z.array(arObjectSchema).max(32).default([]),
+    /** Rolling clip buffer (WS28-07). */
+    clips: clipsSchema.prefault({}),
 });
 export type StudioSettings = z.infer<typeof studioSchema>;
 

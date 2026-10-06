@@ -161,6 +161,7 @@ readable "port busy" error rather than failing silently.
 | Q47 | Depth / AR | Hybrid: body-scale distance (calibrated shoulder width / IPD) by default, optional Depth Anything V2 Small per-pixel map scaled to the owner's distance. Objects live at x/y/z; the person mask occludes an object when the person is nearer (±0.1 m hysteresis, 150 ms crossfade) — you walk through it by moving forward/back | 2026-10-05 |
 | Q48 | Rules | One Rule tree (triggers OR → `when` condition all/any/not/compare → actions with if/else, wait, repeat, parallel, set, stop; modes single/restart/queued/parallel; cooldown). Edited in a list editor AND an xyflow node graph (graph = projection, positions in `rule.ui.graph`). Sidecar evaluates; studio-only actions are relayed as `ruleAction`. Sensitive rules need an arm (open palm 1 s → 5 s window) | 2026-10-05 |
 | Q49 | Preview vs output | Two render targets: monitoring aids (peaking, zebra, false colour, clipping) only in the preview pass; guides, safe zones, AF boxes, HUD, scopes are DOM over the preview. Nothing preview-only reaches the virtual camera | 2026-10-05 |
+| Q50 | Clip buffer (0.4.0) | Rolling buffer of the OUTPUT target (what viewers see, never preview aids): GPU `copyTextureToTexture` into a WebGPU OffscreenCanvas → `VideoFrame` → WebCodecs H.264 High (`prefer-hardware`, 30 fps, keyframe every 1 s, 4/8/12 Mbps) → byte-capped ring of encoded access units (RAM ≈ bitrate × window, hard cap ×1.5). No pixel readback. Save = encoder flush → MP4 mux (mediabunny 1.61.1, MPL-2.0, lazy chunk) → raw IPC `clip_save` → `Videos\TikSee\TikSee-YYYYMMDD-HHMMSS.mp4` (never overwrites). Triggers: hotkey Ctrl+Shift+K, studio action `saveClip` in rules, and every highlight when `saveOnHighlight`. Captions deferred | 2026-10-06 |
 
 ---
 
@@ -311,6 +312,7 @@ Smart-home parts live in vmui's MCP catalogue.
 | P5 | done | "TikSee Camera" registered System-wide; ffmpeg dshow reads NV12 + YUY2 1080×1920 correctly; studio pump 60 fps, 0 dropped (loopback WebSocket, readback 4.6 ms); listed in TikTok LIVE Studio |
 | Vision (WS27) | done (identity beta) | Worker: pose 6 / hands 5 / face 3.5 / objects 24 ms, total ~18 ms; studio render 180 fps p95 5.7 ms; 109 vision tests, 34 rules tests |
 | Studio pro (WS28) | done | Owner confirmed: overlays fluid, BLE zoom from Studio, aspect lock, responsive controls, rounded main UI |
+| Clip buffer (WS28-07, 0.4.0) | done (unreleased) | Q50; live dev app 1080×1920, 90 log samples each: render **177.1 → 178.5 fps median, p95 5.70 → 5.70 ms**; clip encoder 30 fps, capture 0.1 ms CPU/frame, 30.7 s / 14 MB buffered. Highlight button saved `TikSee-20261006-044804.mp4`: h264 High 1080×1920 30 fps, 912 frames, 30.55 s, 12.4 MB, full ffmpeg decode clean. Default hotkey Ctrl+Shift+K (Ctrl+Alt+C was taken on this PC, RegisterHotKey 1409) |
 
 ---
 

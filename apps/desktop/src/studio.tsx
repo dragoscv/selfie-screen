@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { error as logError, info } from "@tauri-apps/plugin-log";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { load } from "@tauri-apps/plugin-store";
 import { parseSettings, type IdentityProfile, type SignalEvent, type StudioSettings, type VisionSettings } from "@tiksee/core";
 import { applyAppearance } from "@tiksee/ui";
@@ -14,7 +15,7 @@ import { SignalBatcher, type EnrolRequest } from "./components/studio/actions.js
 import { FrameStore } from "./components/studio/context.js";
 import { SettingsPersister } from "./components/studio/persist.js";
 import { StudioShell, type StudioModal } from "./components/studio/shell.js";
-import { setLocale } from "./i18n/index.js";
+import i18n, { setLocale } from "./i18n/index.js";
 import { StudioEngine, type VideoHealth } from "./lib/studio/engine.js";
 import { sidecarClient } from "./lib/sidecar-client.js";
 import "./styles.css";
@@ -161,6 +162,22 @@ function Studio() {
                     persistRef.current?.queue({ studio: patch });
                 },
                 onLoupe: setLoupe,
+                onClip: async (clip) => {
+                    if (!isTauri()) {
+                        (window as { __tikseeLastClip?: { name: string; bytes: number; seconds: number } }).__tikseeLastClip = {
+                            name: clip.name,
+                            bytes: clip.bytes.byteLength,
+                            seconds: clip.seconds,
+                        };
+                        return;
+                    }
+                    const path = await invoke<string>("clip_save", new Uint8Array(clip.bytes), { headers: { "x-name": clip.name } });
+                    void info(`[studio] clip ${path} ${clip.seconds.toFixed(1)} s ${(clip.bytes.byteLength / 1_048_576).toFixed(1)} MB`).catch(() => undefined);
+                    toast.success(i18n.t("studio.clips.saved", { seconds: Math.round(clip.seconds) }), {
+                        id: "clip-saved",
+                        action: { label: i18n.t("studio.clips.show"), onClick: () => void revealItemInDir(path).catch(() => undefined) },
+                    });
+                },
                 },
                 { synthetic: query.get("bench") === "synthetic", vision: settings.vision },
             );
@@ -194,6 +211,10 @@ function Studio() {
         });
         if (sidecarClient.connected) sidecarClient.send({ type: "identityList" });
 
+        const saveClip = () => {
+            void engineRef.current?.saveClip().catch((e: unknown) => toast.error(i18n.t("studio.clips.failed", { error: String(e) }), { id: "clip-saved" }));
+        };
+
         const offMessage = sidecarClient.onMessage((m) => {
             if (m.type === "identities") {
                 setProfiles(m.profiles);
@@ -207,7 +228,10 @@ function Studio() {
             else if (m.type === "liveControl") {
                 engine.setHidden(m.state.petsHidden);
                 setPetsHidden(m.state.petsHidden);
-            } else if (m.type === "ruleAction") void engine.run(m.action).catch((e: unknown) => setError(`rule: ${String(e)}`));
+            } else if (m.type === "ruleAction") {
+                if (m.action.type === "studio" && m.action.action === "saveClip") saveClip();
+                else void engine.run(m.action).catch((e: unknown) => setError(`rule: ${String(e)}`));
+            }
         });
         if (isTauri()) {
             void listen<StudioSettings>("studio://settings", (e) => {
@@ -226,6 +250,10 @@ function Studio() {
                 setModal({ kind: e.payload.mode === "calibrate" ? "calibrate" : "tutorial" }),
             ).then(keep);
             void listen<{ port: number }>("sidecar://ready", (e) => sidecarClient.connect(e.payload.port)).then(keep);
+            // Global hotkeys broadcast to every window; the studio owns the clip buffer.
+            void listen<string>("hotkey", (e) => {
+                if (e.payload === "saveClip") saveClip();
+            }).then(keep);
             void invoke<{ port: number }>("sidecar_status")
                 .then((s) => {
                     if (!disposed && s.port > 0) sidecarClient.connect(s.port);

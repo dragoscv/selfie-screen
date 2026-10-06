@@ -326,6 +326,7 @@
             "hotkeySkip": "Skip current reply",
             "hotkeyEffects": "Effects off",
             "hotkeyHighlight": "Highlight moment",
+            "hotkeySaveClip": "Save clip",
             "hotkeyPlaceholder": "e.g. CommandOrControl+Shift+M",
             "hotkeyInvalid": "Use modifiers plus one key, e.g. CommandOrControl+Shift+M",
             "hotkeyDuplicate": "This shortcut is already used by another action"
@@ -513,6 +514,17 @@
                 "repair": "Repair camera",
                 "repaired": "TikSee Camera registered again",
                 "repairFailed": "Repair failed: {{error}}"
+            },
+            "clips": {
+                "title": "Instant clips",
+                "hint": "Keeps the last seconds of what viewers see, encoded on the GPU; saved to Videos\\TikSee",
+                "enabled": "Keep a rolling clip buffer",
+                "enabledHint": "Uses about {{mb}} MB of memory; nothing is written until you save",
+                "seconds": "Clip length",
+                "bitrate": "Quality",
+                "saveOnHighlight": "Save a clip on every highlight",
+                "saveOnHighlightHint": "Highlight hotkey, Live Control, Stream Deck and rules",
+                "hotkey": "Save now: {{key}}, or the \"Save clip\" studio action in a rule"
             },
             "monitor": {
                 "title": "Monitoring aids",

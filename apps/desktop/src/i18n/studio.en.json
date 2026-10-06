@@ -9,6 +9,11 @@
     "shell": {
         "hiddenHint": "Controls hidden. Move the mouse or press H to show them."
     },
+    "clips": {
+        "saved": "Clip saved ({{seconds}} s)",
+        "show": "Show in folder",
+        "failed": "Clip not saved: {{error}}"
+    },
     "guides": {
         "horizon": "Tilted {{deg}}°",
         "guardian": {

@@ -87,6 +87,8 @@ catalog:
   onnxruntime-web: 1.30.0
   "@xyflow/react": 12.12.0
   "@dagrejs/dagre": 3.1.1
+  # --- studio clips (verified 2026-10-06; 1.61.2/.3 still inside the 24 h quarantine) ---
+  mediabunny: 1.61.1
 
   # --- tauri ---
   "@tauri-apps/api": 2.12.1

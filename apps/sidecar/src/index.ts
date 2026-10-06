@@ -644,6 +644,7 @@ class Sidecar {
             highlight: (label) => {
                 const note = this.#cohost.highlight();
                 log.info(`highlight marked by a rule${label ? ` (${label})` : ""} (${note.length} chars)`);
+                this.#clipOnHighlight();
             },
             notify: (text) => {
                 const at = Date.now();
@@ -721,10 +722,18 @@ class Sidecar {
             else if (effect === "highlight") {
                 const note = this.#cohost.highlight();
                 log.info(`highlight marked (${note.length} chars)`);
+                this.#clipOnHighlight();
             }
         }
         this.#cohost.controlChanged();
         this.#rules.onControl(action);
+    }
+
+    /** WS28-07: every highlight source (hotkey, Live Control, Stream Deck, rules) also saves a studio clip. */
+    #clipOnHighlight(): void {
+        const clips = this.#settings.studio.clips;
+        if (!this.#settings.studio.enabled || !clips.enabled || !clips.saveOnHighlight) return;
+        this.#broadcast({ type: "ruleAction", ruleId: "highlight", action: { type: "studio", action: "saveClip" } });
     }
 
     #applySettings(settings: Settings): void {

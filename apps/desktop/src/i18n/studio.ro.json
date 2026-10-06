@@ -9,6 +9,11 @@
     "shell": {
         "hiddenHint": "Comenzile sunt ascunse. Mișcă mouse-ul sau apasă H ca să le vezi."
     },
+    "clips": {
+        "saved": "Clip salvat ({{seconds}} s)",
+        "show": "Arată în folder",
+        "failed": "Clipul nu a fost salvat: {{error}}"
+    },
     "guides": {
         "horizon": "Înclinat {{deg}}°",
         "guardian": {

@@ -36,6 +36,8 @@ import { screenUV, texture } from "three/tsl";
 
 import { ArLayer, focalPx, type Anchors } from "./ar.js";
 import { CameraRemote, type HoldAction } from "./camera-ble.js";
+import { clipFileName } from "./clip-ring.js";
+import { ClipRecorder, type ClipState, type SavedClip } from "./clips.js";
 import type {
     CalibrationSample,
     DogBox,
@@ -172,7 +174,12 @@ export interface EngineCallbacks {
     onSettingsPatch?(patch: Partial<StudioSettings>): void;
     /** The loupe (DOM, in the studio UI) was toggled by an action. */
     onLoupe?(on: boolean): void;
+    /** A clip was muxed from the rolling buffer (`saveClip`); the caller writes it to disk. */
+    onClip?(clip: SavedClip): Promise<void>;
 }
+
+/** Two saves closer than this (a rule and a hotkey on the same moment) are one save. */
+const CLIP_COOLDOWN_MS = 2000;
 
 /** What the camera actually delivers, independent of the render loop. */
 export interface VideoHealth {
@@ -296,6 +303,9 @@ export class StudioEngine implements StudioController {
     #copy: THREE.Mesh | null = null;
     #preview: PreviewPass | null = null;
     #pump: VcamPump | null = null;
+    #clips: ClipRecorder | null = null;
+    #clipSaving: Promise<void> | null = null;
+    #clipSavedAt = 0;
     #scopes: ScopeSampler | null = null;
     #ar: ArLayer | null = null;
     #effects: EffectLayer | null = null;
@@ -379,6 +389,8 @@ export class StudioEngine implements StudioController {
         const benchVcam = this.#options.benchVcam ?? query?.get("bench") === "vcam";
         this.#pump = new VcamPump(stage.renderer, (m) => this.#cb.onError?.(m), { measureOnly: benchVcam });
         this.#pump.forceCpu = this.#options.vcamCpu ?? query?.get("vcam") === "cpu";
+        // ?clips=off: A/B the render budget without the clip encoder.
+        if (query?.get("clips") !== "off") this.#clips = new ClipRecorder(stage.renderer, (m) => this.#cb.onError?.(m));
         void this.#remote.listen().catch((e: unknown) => this.#cb.onError?.(`camera ble: ${String(e)}`));
         if (!this.#synthetic) {
             const vision = new StudioVision();
@@ -561,6 +573,7 @@ export class StudioEngine implements StudioController {
         const stage = this.#stage;
         if (!stage) return;
         this.#pump?.configure(settings.virtualCamera, settings.orientation === "portrait", settings.virtualCameraFps);
+        this.#clips?.configure(settings.clips);
         const size = this.#wantedSize(settings);
         this.#resize(size.width, size.height);
         if (prev.cameraId !== settings.cameraId && this.#stream) await this.#openCamera();
@@ -677,7 +690,34 @@ export class StudioEngine implements StudioController {
                 this.#loupe = !this.#loupe;
                 this.#cb.onLoupe?.(this.#loupe);
                 return;
+            case "saveClip":
+                return this.saveClip();
         }
+    }
+
+    /** Clip buffer state for the UI (`off` when disabled or not started). */
+    get clipState(): ClipState {
+        return this.#clips?.state ?? "off";
+    }
+
+    /**
+     * Mux the rolling buffer and hand it to `onClip`. A save already running, or
+     * one within CLIP_COOLDOWN_MS, is shared instead of writing a duplicate.
+     */
+    saveClip(): Promise<void> {
+        if (this.#clipSaving) return this.#clipSaving;
+        if (performance.now() - this.#clipSavedAt < CLIP_COOLDOWN_MS) return Promise.resolve();
+        const clips = this.#clips;
+        if (!clips) return Promise.reject(new Error("the clip buffer is off"));
+        this.#clipSavedAt = performance.now();
+        const run = (async () => {
+            const clip = await clips.save(clipFileName(new Date()));
+            await this.#cb.onClip?.(clip);
+        })().finally(() => {
+            this.#clipSaving = null;
+        });
+        this.#clipSaving = run;
+        return run;
     }
 
     #spawnEffect(effect: Extract<RuleAction, { type: "effect" }>["effect"], zM?: number): void {
@@ -824,6 +864,7 @@ export class StudioEngine implements StudioController {
         this.#preview?.render(r, W, H, now / 1000);
         this.#timings["render"] = ema(this.#timings["render"] ?? 0, performance.now() - t0);
         this.#pump?.frame(outRT, now);
+        this.#clips?.frame(outRT, now);
         if (this.#wantScopes) {
             this.#scopes?.sample(r, W, H, now, fo);
             this.#timings["scopes"] = this.#scopes?.cpuMs ?? 0;
@@ -849,7 +890,7 @@ export class StudioEngine implements StudioController {
                 backend: stage.backend,
                 tracking: anchors !== null,
                 video: { fps: this.#videoFps, luma: this.#luma, state: this.#videoState },
-                timings: { ...this.#timings, ...this.#pump?.timings, ...(frame?.timings ?? {}) },
+                timings: { ...this.#timings, ...this.#pump?.timings, ...this.#clips?.timings, ...(frame?.timings ?? {}) },
             });
         }
         if (this.#frameSubs.size > 0 && now - this.#lastInfo > 1000 / INFO_HZ) {
@@ -903,6 +944,8 @@ export class StudioEngine implements StudioController {
         this.#remote.dispose();
         this.#pump?.dispose();
         this.#pump = null;
+        this.#clips?.dispose();
+        this.#clips = null;
         this.#scopes?.dispose();
         this.#scopes = null;
         this.#preview?.dispose();

@@ -327,6 +327,7 @@
             "hotkeySkip": "Sari peste răspunsul curent",
             "hotkeyEffects": "Fără efecte",
             "hotkeyHighlight": "Marchează momentul",
+            "hotkeySaveClip": "Salvează clipul",
             "hotkeyPlaceholder": "ex. CommandOrControl+Shift+M",
             "hotkeyInvalid": "Folosește modificatori plus o tastă, ex. CommandOrControl+Shift+M",
             "hotkeyDuplicate": "Scurtătura este deja folosită de altă acțiune"
@@ -514,6 +515,17 @@
                 "repair": "Repară camera",
                 "repaired": "TikSee Camera a fost reînregistrată",
                 "repairFailed": "Repararea a eșuat: {{error}}"
+            },
+            "clips": {
+                "title": "Clipuri instant",
+                "hint": "Păstrează ultimele secunde din ce văd spectatorii, codate pe GPU; salvate în Videos\\TikSee",
+                "enabled": "Păstrează un buffer de clip",
+                "enabledHint": "Folosește aproximativ {{mb}} MB de memorie; nu se scrie nimic până nu salvezi",
+                "seconds": "Durata clipului",
+                "bitrate": "Calitate",
+                "saveOnHighlight": "Salvează un clip la fiecare moment marcat",
+                "saveOnHighlightHint": "Tasta pentru moment, Live Control, Stream Deck și reguli",
+                "hotkey": "Salvează acum: {{key}} sau acțiunea de studio „Salvează clipul” într-o regulă"
             },
             "monitor": {
                 "title": "Ajutoare de monitorizare",

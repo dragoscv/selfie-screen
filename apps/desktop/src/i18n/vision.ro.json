@@ -145,7 +145,8 @@
         "peakingToggle": "Comută focus peaking",
         "zebraToggle": "Comută zebra",
         "cleanFeedToggle": "Comută imaginea curată",
-        "loupeToggle": "Comută lupa"
+        "loupeToggle": "Comută lupa",
+        "saveClip": "Salvează ultimele secunde ca clip"
     },
     "effects": {
         "hearts": "Inimioare",

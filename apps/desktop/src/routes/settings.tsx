@@ -39,6 +39,7 @@ import {
     Bell,
     Cable,
     Camera,
+    Clapperboard,
     Copy,
     Dices,
     Eye,
@@ -1273,6 +1274,7 @@ function StudioSection() {
                 />
             </Card>
             <VirtualCameraCard />
+            <ClipsCard />
             <MonitorCard />
             <FramingCard />
             <CameraRemote />
@@ -1425,6 +1427,51 @@ function VirtualCameraCard() {
                     {t("settings.studio.vcam.repair")}
                 </Button>
             </div>
+        </Card>
+    );
+}
+
+function ClipsCard() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const c = useAppStore((state) => state.settings.studio.clips);
+    const hotkey = useAppStore((state) => state.settings.behaviour.hotkeySaveClip);
+    const set = (patch: Partial<Settings["studio"]["clips"]>) => update("studio", { clips: { ...c, ...patch } });
+    const mb = Math.round((c.bitrateMbps * c.seconds) / 8);
+
+    return (
+        <Card title={t("settings.studio.clips.title")} subtitle={t("settings.studio.clips.hint")} icon={<Clapperboard />} tint="var(--kind-like)">
+            <SwitchRow
+                label={t("settings.studio.clips.enabled")}
+                description={t("settings.studio.clips.enabledHint", { mb })}
+                checked={c.enabled}
+                onChange={(enabled) => set({ enabled })}
+                tint="var(--kind-like)"
+            />
+            <ChipSelector
+                label={t("settings.studio.clips.seconds")}
+                options={["15", "30", "60"] as const}
+                value={String(c.seconds) as "15" | "30" | "60"}
+                onSelect={(v) => set({ seconds: Number(v) as 15 | 30 | 60 })}
+                display={(v) => `${v} s`}
+                tint="var(--kind-like)"
+            />
+            <ChipSelector
+                label={t("settings.studio.clips.bitrate")}
+                options={["4", "8", "12"] as const}
+                value={String(c.bitrateMbps) as "4" | "8" | "12"}
+                onSelect={(v) => set({ bitrateMbps: Number(v) as 4 | 8 | 12 })}
+                display={(v) => `${v} Mbps`}
+                tint="var(--kind-like)"
+            />
+            <SwitchRow
+                label={t("settings.studio.clips.saveOnHighlight")}
+                description={t("settings.studio.clips.saveOnHighlightHint")}
+                checked={c.saveOnHighlight}
+                onChange={(saveOnHighlight) => set({ saveOnHighlight })}
+                tint="var(--kind-like)"
+            />
+            <p className="text-xs text-fg-muted">{t("settings.studio.clips.hotkey", { key: hotkey || "—" })}</p>
         </Card>
     );
 }
@@ -1910,6 +1957,7 @@ function BehaviourSection() {
         ["hotkeySkipReply", "hotkeySkip"],
         ["hotkeyEffectsOff", "hotkeyEffects"],
         ["hotkeyHighlight", "hotkeyHighlight"],
+        ["hotkeySaveClip", "hotkeySaveClip"],
     ] as const;
     const counts = new Map<string, number>();
     for (const [field] of hotkeys) {

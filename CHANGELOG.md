@@ -2,6 +2,11 @@
 
 All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow SemVer.
 
+## [Unreleased]
+
+### Added
+- **Instant clips**: the Studio keeps the last 15/30/60 seconds of what viewers see, encoded on the GPU (about 30 MB of memory at 8 Mbps × 30 s). Press Ctrl+Shift+K, add the "Save clip" studio action to a rule, or press Highlight to save an MP4 to Videos\TikSee. Settings → Studio → Instant clips.
+
 ## [0.3.0] — 2026-10-06
 
 ### Added

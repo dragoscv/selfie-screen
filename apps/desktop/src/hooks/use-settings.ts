@@ -162,6 +162,7 @@ export function useSettingsSync(): void {
         hotkeySkipReply,
         hotkeyEffectsOff,
         hotkeyHighlight,
+        hotkeySaveClip,
     } = settings.behaviour;
     useEffect(() => {
         if (!loaded) return;
@@ -179,6 +180,7 @@ export function useSettingsSync(): void {
                     hotkeySkipReply,
                     hotkeyEffectsOff,
                     hotkeyHighlight,
+                    hotkeySaveClip,
                 },
             }).catch((error: unknown) => {
                 console.error("[settings] hotkeys failed", error);
@@ -194,6 +196,7 @@ export function useSettingsSync(): void {
         hotkeySkipReply,
         hotkeyEffectsOff,
         hotkeyHighlight,
+        hotkeySaveClip,
     ]);
 }
 
