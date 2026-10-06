@@ -1,0 +1,18 @@
+# TikSee Camera: the Windows virtual camera, built separately from the app.
+#
+#   shared/  ring layout, NV12 helpers, offline frame (also used by the app)
+#   source/  tiksee_vcam.dll, the Frame Server custom media source
+#   setup/   tiksee-vcam-setup.exe, elevated install / uninstall / status
+#
+# Build: node apps/desktop/scripts/build-vcam.mjs (copies both binaries to bin/).
+[workspace]
+resolver = "3"
+members = ["shared", "source", "setup"]
+
+# Same size profile as the app, but the DLL keeps the default panic=unwind:
+# the exports catch panics instead of aborting the Frame Server process.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

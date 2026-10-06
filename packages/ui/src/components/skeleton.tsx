@@ -14,7 +14,7 @@ export function Skeleton({ className, ...props }: ComponentPropsWithoutRef<"div"
         <div
             aria-hidden
             className={cn(
-                "relative overflow-hidden rounded-[--radius-chip] bg-panel-alt",
+                "relative overflow-hidden rounded-chip bg-panel-alt",
                 "after:absolute after:inset-0 after:-translate-x-full",
                 "after:bg-gradient-to-r after:from-transparent after:via-fg/[0.07] after:to-transparent",
                 "after:animate-[shimmer_1.6s_infinite]",
@@ -34,7 +34,7 @@ export function ChatSkeleton({ rows = 6 }: { rows?: number }) {
     return (
         <div className="flex flex-col gap-2" aria-label="Loading messages" aria-busy="true">
             {Array.from({ length: rows }, (_, index) => (
-                <div key={index} className="flex items-start gap-3 rounded-[--radius-panel] px-3 py-2.5">
+                <div key={index} className="flex items-start gap-3 rounded-panel px-3 py-2.5">
                     <Skeleton className="size-8 shrink-0 rounded-full" />
                     <div className="flex-1 space-y-1.5">
                         <Skeleton className="h-2.5 w-24" />
@@ -50,7 +50,7 @@ export function StatSkeleton({ count = 4 }: { count?: number }) {
     return (
         <div className="grid grid-cols-2 gap-3 @md:grid-cols-4" aria-busy="true">
             {Array.from({ length: count }, (_, index) => (
-                <div key={index} className="surface space-y-2 rounded-[--radius-panel] p-4">
+                <div key={index} className="surface space-y-2 rounded-panel p-4">
                     <Skeleton className="h-2.5 w-14" />
                     <Skeleton className="h-6 w-20" />
                 </div>

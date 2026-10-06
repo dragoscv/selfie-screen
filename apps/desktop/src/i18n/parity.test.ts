@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import en from "./en.json";
-import ro from "./ro.json";
+import baseEn from "./en.json";
+import baseRo from "./ro.json";
+import studioEn from "./studio.en.json";
+import studioRo from "./studio.ro.json";
+import visionEn from "./vision.en.json";
+import visionRo from "./vision.ro.json";
 
 type Tree = { [key: string]: string | Tree };
+
+const en: Tree = { ...baseEn, studio: studioEn, vision: visionEn };
+const ro: Tree = { ...baseRo, studio: studioRo, vision: visionRo };
+
+describe("area bundles", () => {
+    it("never collide with a base top-level key", () => {
+        expect(Object.keys(baseEn)).not.toContain("studio");
+        expect(Object.keys(baseEn)).not.toContain("vision");
+    });
+});
 
 function flatten(tree: Tree, prefix = ""): string[] {
     return Object.entries(tree).flatMap(([key, value]) => {

@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import { PETS, PET_IDS, petPixelHeight } from "./catalogue.js";
 import {
     coverFraming,
+    cropFraming,
+    evenSize,
+    framingCentre,
     outputSize,
     outputToVideo,
+    rawToOutput,
     rawToUpright,
     uprightSize,
     uprightToRawAffine,
@@ -142,6 +146,23 @@ describe("framing", () => {
     it("letterboxes nothing when aspect ratios match", () => {
         const f = coverFraming(1920, 1080, 1920, 1080, false);
         expect(f).toMatchObject({ scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 });
+    });
+
+    it("digital crop zooms around a centre and never leaves the image", () => {
+        const base = coverFraming(1920, 1080, 1080, 1920, false);
+        const z = cropFraming(base, 2, 0.5, 0.5);
+        expect(z.scaleX).toBeCloseTo(base.scaleX / 2);
+        expect(framingCentre(z)[0]).toBeCloseTo(0.5);
+        const edge = cropFraming(base, 2.5, 1, 0);
+        expect(edge.offsetX + edge.scaleX).toBeCloseTo(1);
+        expect(edge.offsetY).toBe(0);
+        expect(cropFraming(base, 0.5, 0.5, 0.5).scaleX).toBeCloseTo(base.scaleX);
+    });
+
+    it("maps raw points through rotation + framing, and rounds sizes for NV12", () => {
+        const f = coverFraming(1080, 1920, 1080, 1920, false);
+        expect(rawToOutput(f, 90, 0.5, 0.5)).toEqual([0.5, 0.5]);
+        expect(evenSize(1281, 721)).toEqual({ width: 1280, height: 720 });
     });
 });
 

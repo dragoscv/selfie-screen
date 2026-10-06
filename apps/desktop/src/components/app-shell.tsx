@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Button, cn, pageVariants } from "@tiksee/ui";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, BarChart3, Radio, Settings as SettingsIcon, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, Radio, ScanEye, Settings as SettingsIcon, Users } from "lucide-react";
 import { Suspense, lazy, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,6 +11,7 @@ import { ConnectionBar } from "./connection-bar.js";
 import { ErrorBoundary } from "./error-boundary.js";
 import { LiveControlBar } from "./live/live-control-bar.js";
 import { SummaryDialog } from "./live/summary-dialog.js";
+import { StudioButton } from "./studio-button.js";
 import { Titlebar } from "./titlebar.js";
 
 const LiveRoute = lazy(() =>
@@ -25,13 +26,17 @@ const AnalyticsRoute = lazy(() =>
 const SettingsRoute = lazy(() =>
     import("../routes/settings.js").then((m) => ({ default: m.SettingsRoute })),
 );
+const VisionRoute = lazy(() =>
+    import("../routes/vision.js").then((m) => ({ default: m.VisionRoute })),
+);
 
-export type RouteId = "live" | "people" | "analytics" | "settings";
+export type RouteId = "live" | "people" | "analytics" | "vision" | "settings";
 
 const ROUTES = [
     { id: "live", icon: Radio },
     { id: "people", icon: Users },
     { id: "analytics", icon: BarChart3 },
+    { id: "vision", icon: ScanEye },
     { id: "settings", icon: SettingsIcon },
 ] as const;
 
@@ -57,8 +62,8 @@ export function AppShell() {
                             aria-current={route === id ? "page" : undefined}
                             title={t(`nav.${id}`)}
                             className={cn(
-                                "relative flex items-center gap-1.5 rounded-[--radius-chip] px-2.5 py-1.5",
-                                "text-xs outline-none transition-colors duration-[--dur-fast]",
+                                "relative flex items-center gap-1.5 rounded-chip px-2.5 py-1.5",
+                                "text-xs outline-none transition-colors duration-(--dur-fast)",
                                 "focus-visible:ring-2 focus-visible:ring-ring",
                                 route === id ? "text-accent" : "text-fg-muted hover:text-fg",
                             )}
@@ -70,7 +75,7 @@ export function AppShell() {
                             {route === id && (
                                 <motion.span
                                     layoutId="nav-active"
-                                    className="absolute inset-0 -z-10 rounded-[--radius-chip] bg-accent-subtle"
+                                    className="absolute inset-0 -z-10 rounded-chip bg-accent-subtle"
                                     transition={{ type: "spring", stiffness: 480, damping: 38 }}
                                 />
                             )}
@@ -78,7 +83,8 @@ export function AppShell() {
                     ))}
                 </nav>
 
-                <div className="no-drag ml-auto pr-2">
+                <div className="no-drag ml-auto flex items-center gap-2 pr-2">
+                    <StudioButton />
                     <ConnectionBar status={status} />
                 </div>
             </Titlebar>
@@ -103,6 +109,7 @@ export function AppShell() {
                                 {route === "live" && <LiveRoute />}
                                 {route === "people" && <PeopleRoute />}
                                 {route === "analytics" && <AnalyticsRoute />}
+                                {route === "vision" && <VisionRoute />}
                                 {route === "settings" && <SettingsRoute />}
                             </Suspense>
                         </ErrorBoundary>
@@ -141,8 +148,8 @@ function SidecarBanner() {
 function RouteFallback() {
     return (
         <div className="flex h-full flex-col gap-3 p-5" aria-busy="true">
-            <div className="h-8 w-48 animate-pulse rounded-[--radius-chip] bg-panel-alt" />
-            <div className="flex-1 animate-pulse rounded-[--radius-card] bg-panel-alt" />
+            <div className="h-8 w-48 animate-pulse rounded-chip bg-panel-alt" />
+            <div className="flex-1 animate-pulse rounded-card bg-panel-alt" />
         </div>
     );
 }

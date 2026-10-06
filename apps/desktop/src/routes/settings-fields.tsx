@@ -2,8 +2,8 @@ import { cn } from "@tiksee/ui";
 import { useId, useState, type ReactNode } from "react";
 
 const FIELD = cn(
-    "no-drag w-full rounded-[--radius-control] border border-border bg-panel-alt px-3 py-2 text-sm text-fg",
-    "outline-none transition-[border-color,box-shadow] duration-[--dur-fast]",
+    "no-drag w-full rounded-control border border-border bg-panel-alt px-3 py-2 text-sm text-fg",
+    "outline-none transition-[border-color,box-shadow] duration-(--dur-fast)",
     "focus:border-accent focus:ring-2 focus:ring-ring/40",
 );
 
@@ -140,7 +140,7 @@ export function ChipToggleGroup<T extends string>({
                             onClick={() => onChange(options.filter((o) => (o === option ? !on : set.has(o))))}
                             className={cn(
                                 "no-drag inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs outline-none",
-                                "transition-colors duration-[--dur-fast] focus-visible:ring-2 focus-visible:ring-ring",
+                                "transition-colors duration-(--dur-fast) focus-visible:ring-2 focus-visible:ring-ring",
                                 on ? "bg-accent-subtle font-semibold text-accent" : "bg-panel-alt text-fg-muted hover:text-fg",
                             )}
                         >

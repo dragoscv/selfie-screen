@@ -35,21 +35,21 @@ export function Card({
 
     return (
         <section
-            className={cn("surface rounded-[--radius-card]", flush ? "p-0" : "p-[--space-card]", className)}
+            className={cn("surface rounded-card", flush ? "p-0" : "p-(--space-card)", className)}
             style={style}
             {...props}
         >
             {hasHeader && (
                 <header
                     className={cn(
-                        "flex items-start gap-3",
-                        flush && "p-[--space-card] pb-3",
-                        !flush && children !== undefined && "mb-3.5",
+                        "flex items-center gap-3",
+                        flush && "p-(--space-card) pb-3",
+                        !flush && children !== undefined && "mb-4",
                     )}
                 >
                     {icon && (
                         <span
-                            className="grid size-8 shrink-0 place-items-center rounded-[0.625rem] [&_svg]:size-[1.0625rem]"
+                            className="grid size-9 shrink-0 place-items-center rounded-control [&_svg]:size-[1.0625rem]"
                             style={{
                                 background: "color-mix(in oklab, var(--tint, var(--accent)) 14%, transparent)",
                                 color: "var(--tint, var(--accent))",
@@ -73,7 +73,7 @@ export function Card({
                 </header>
             )}
             {children !== undefined && (
-                <div className={cn("flex flex-col gap-3", flush && "px-[--space-card] pb-[--space-card]")}>
+                <div className={cn("flex flex-col gap-3.5", flush && "px-(--space-card) pb-(--space-card)")}>
                     {children}
                 </div>
             )}

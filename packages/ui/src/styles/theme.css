@@ -30,16 +30,9 @@
     --accent-h: 200;
     --accent-c: 0.14;
 
-    --radius-card: 1.25rem;
-    --radius-panel: 1rem;
-    --radius-control: 0.75rem;
-    --radius-chip: 0.625rem;
-
-    --space-card: 1.125rem;
+    --space-card: 1.25rem;
 
     /* Motion tokens. Compose these; never hardcode a duration in a component. */
-    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
     --dur-instant: 110ms;
     --dur-fast: 180ms;
     --dur-normal: 240ms;
@@ -233,17 +226,27 @@
     --color-kind-like: var(--kind-like);
     --color-kind-share: var(--kind-share);
 
-    --radius-card: var(--radius-card);
-    --radius-panel: var(--radius-panel);
-    --radius-control: var(--radius-control);
-    --radius-chip: var(--radius-chip);
-
-    --ease-out: var(--ease-out);
-    --ease-standard: var(--ease-standard);
-
     --font-sans:
         "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
     --font-mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+}
+
+/*
+ * Radii and easings are REAL theme values (non-inline): Tailwind emits them on
+ * :root and generates `rounded-card`, `ease-out`, ... that read the variable,
+ * so the compact-density override below still applies. They used to be
+ * `--radius-card: var(--radius-card)` inside `@theme inline`, a self-reference
+ * that made every radius invalid (0) — the square cards/buttons reported on
+ * 2026-10-06.
+ */
+@theme {
+    --radius-card: 1.25rem;
+    --radius-panel: 1rem;
+    --radius-control: 0.75rem;
+    --radius-chip: 0.625rem;
+
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ------------------------------------------------------------------ *

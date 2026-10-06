@@ -77,7 +77,7 @@ export function PeopleRoute() {
     }
 
     return (
-        <div className="@container h-full overflow-y-auto p-5">
+        <div className="@container h-full overflow-y-auto px-6 py-6">
             <div className="mx-auto grid max-w-[110rem] gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">
                 <Card title={t("people.mostActive")} icon={<MessageSquare />} className="@3xl:row-span-2">
                     <ul className="space-y-1">
@@ -108,7 +108,7 @@ export function PeopleRoute() {
 function PersonRow({ person, rank }: { person: Person; rank?: number }) {
     const { t } = useTranslation();
     return (
-        <li className="flex items-center gap-2.5 rounded-[--radius-chip] px-2 py-1.5 transition-colors hover:bg-panel-alt">
+        <li className="flex items-center gap-2.5 rounded-chip px-2 py-1.5 transition-colors hover:bg-panel-alt">
             {rank !== undefined && (
                 <span
                     className={cn(
@@ -191,7 +191,7 @@ function GiveawayCard({ people }: { people: Person[] }) {
         >
             <p className="text-xs text-fg-muted">{t("people.eligible", { count: eligible.length })}</p>
 
-            <div className="grid min-h-24 place-items-center rounded-[--radius-panel] bg-panel-alt p-4">
+            <div className="grid min-h-24 place-items-center rounded-panel bg-panel-alt p-4">
                 <AnimatePresence mode="wait">
                     {winner ? (
                         <motion.div

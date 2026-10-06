@@ -52,7 +52,7 @@ export function LiveControlBar() {
                         title={t(`liveControl.${id}Hint`)}
                         className={cn(
                             "no-drag inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.6875rem] font-medium",
-                            "outline-none transition-colors duration-[--dur-fast]",
+                            "outline-none transition-colors duration-(--dur-fast)",
                             "focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
                             active
                                 ? "text-[var(--tone)] [background:color-mix(in_oklab,var(--tone)_18%,transparent)] [box-shadow:inset_0_0_0_1px_color-mix(in_oklab,var(--tone)_55%,transparent)]"

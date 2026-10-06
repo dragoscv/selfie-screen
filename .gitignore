@@ -20,6 +20,10 @@ apps/desktop/src-tauri/gen/
 apps/desktop/public/mediapipe/
 apps/desktop/public/basis/
 apps/desktop/public/pets/
+apps/desktop/public/ort/
+# Virtual camera DLL + setup exe built by apps/desktop/scripts/build-vcam.mjs
+apps/desktop/src-tauri/vcam/bin/
+__pycache__/
 # Pets pipeline intermediates (raw TRELLIS meshes); dist/ is the shipped output
 assets/pets/raw/
 

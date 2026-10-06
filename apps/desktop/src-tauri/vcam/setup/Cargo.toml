@@ -1,0 +1,29 @@
+[package]
+name = "tiksee-vcam-setup"
+version = "0.3.0"
+description = "TikSee Camera: elevated install / uninstall / status helper"
+authors = ["Dragos Catalin Vladulescu"]
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[[bin]]
+name = "tiksee-vcam-setup"
+path = "src/main.rs"
+
+[dependencies]
+tiksee-vcam-shared = { path = "../shared" }
+windows-core = "0.62"
+
+[dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_Variant",
+    "Win32_UI_Shell",
+]

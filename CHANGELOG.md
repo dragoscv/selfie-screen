@@ -2,6 +2,30 @@
 
 All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow SemVer.
 
+## [0.3.0] — 2026-10-06
+
+### Added
+- **TikSee Camera** — a native Windows virtual camera (no OBS). TikTok LIVE Studio, Zoom or any app can select it; it carries the studio picture at 1080×1920 or 1920×1080, 30/60 fps, and shows an "offline" frame when TikSee is closed. Installed by the setup; "Repair camera" in Settings → Studio.
+- **Vision**: hand and finger gestures (thumbs, victory, 🤟, OK, rock, pinch, finger counts, heart, frame, T-timeout, prayer, clap, two-hand zoom, swipes, circle, wave), facial expressions and winks with per-eye calibration, head nod/shake/tilt, posture, talking/laughing/drinking/phone states, energy meter, people and dogs entering/leaving. Everything runs locally.
+- **Rules with if/else chains**: triggers (gestures, chat, gifts, follows, controls, timers) → conditions → actions (camera, studio, AR effects, pets, voice, smart-home, highlights) with wait, repeat, parallel and variables; list editor and node-graph editor over the same rule; sensitive rules require "arming" with an open palm.
+- **Vision log**: every state change with its duration, stats per signal, CSV export, retention.
+- **People and pets (beta)**: enrol yourself, guests and your dogs; recognition stays on this PC and unknown people are never stored.
+- **Tutorial and calibration** for gestures, winks, expressions and body distance.
+- **Pro Studio controls** over the preview: zoom and focus over Bluetooth (hold buttons, speeds, AF), digital zoom, auto-reframe, synthetic depth of field, focus loupe; focus peaking, zebras, false colour, clipping, histogram/waveform/vectorscope, guides, TikTok LIVE safe zones with a guardian, horizon level, exposure assistant, coaching nudges. None of it reaches the stream.
+- **AR objects in depth**: emoji, text, images and pet models placed in 3D; walk in front of or behind them. Gift-triggered effects.
+- **Studio button** in the main window title bar.
+- USB PC Remote panel for ISO/WB/shutter (opt-in; it blanks HDMI while connected).
+
+### Changed
+- The Studio window keeps its 9:16 / 16:9 ratio while resizing; its controls adapt to any window size.
+- Rounded, evenly spaced cards and controls across the main window (theme radius tokens were broken).
+- Vision runs in a background worker: studio render 180 fps, vision ~18 ms per frame.
+
+### Fixed
+- Overlays no longer flicker when a gesture or face drops out for a frame.
+- Studio camera buttons work when the Studio opens after the remote connected.
+- Dev server port moved to 15373 (Windows reserved the old one).
+
 ## [0.2.0] — 2026-10-05
 
 ### Added

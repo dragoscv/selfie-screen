@@ -2,6 +2,7 @@ mod camera;
 mod secrets;
 mod sidecar;
 mod tiktok;
+mod vcam;
 mod windows_ext;
 
 use std::sync::Mutex;
@@ -153,6 +154,14 @@ fn set_overlay_click_through(app: AppHandle, enabled: bool) -> Result<(), String
 async fn toggle_studio(app: AppHandle, show: bool, portrait: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("studio") {
         if show {
+            let (num, den) = if portrait { (9, 16) } else { (16, 9) };
+            lock_studio_aspect(&window, num, den);
+            // Snap the current size to the (possibly new) ratio, keeping the height.
+            if let (Ok(size), Ok(scale)) = (window.inner_size(), window.scale_factor()) {
+                let h = f64::from(size.height) / scale;
+                let w = h * f64::from(num) / f64::from(den);
+                let _ = window.set_size(tauri::LogicalSize::new(w, h));
+            }
             window.show().map_err(|e| e.to_string())?;
             window.set_focus().map_err(|e| e.to_string())?;
         } else {
@@ -172,14 +181,30 @@ fn open_studio(app: &AppHandle, portrait: bool, page: &str) -> Result<(), String
     } else {
         (960.0, 540.0)
     };
-    WebviewWindowBuilder::new(app, "studio", WebviewUrl::App(page.into()))
+    let window = WebviewWindowBuilder::new(app, "studio", WebviewUrl::App(page.into()))
         .title("TikSee Studio")
         .inner_size(w, h)
         .min_inner_size(270.0, 270.0)
         .background_color(tauri::window::Color(0, 0, 0, 255))
         .build()
         .map_err(|e| e.to_string())?;
+    // The preview is object-fit: contain; a free aspect ratio letterboxes it.
+    let (num, den) = if portrait { (9, 16) } else { (16, 9) };
+    lock_studio_aspect(&window, num, den);
     Ok(())
+}
+
+/// SetWindowSubclass only works from the thread that owns the window; Tauri
+/// commands run on a worker thread (the first version silently did nothing).
+fn lock_studio_aspect(window: &tauri::WebviewWindow, num: u32, den: u32) {
+    let w = window.clone();
+    let result = window.run_on_main_thread(move || match windows_ext::lock_aspect(&w, num, den) {
+        Ok(()) => log::info!("studio aspect locked {num}:{den}"),
+        Err(error) => log::warn!("studio aspect lock: {error}"),
+    });
+    if let Err(error) = result {
+        log::warn!("studio aspect lock dispatch: {error}");
+    }
 }
 
 /// Push the window-behaviour preferences the shell has to enforce natively.
@@ -337,6 +362,7 @@ pub fn run() {
             camera::camera_set,
             camera::camera_refresh,
             camera::camera_ble,
+            camera::camera_ble_state,
             set_behaviour,
             set_autostart,
             set_hotkeys,
@@ -347,9 +373,15 @@ pub fn run() {
             secrets::secret_get,
             secrets::secret_delete,
             secrets::secret_has,
+            vcam::vcam_frame,
+            vcam::vcam_status,
+            vcam::vcam_configure,
+            vcam::vcam_register,
+            vcam::vcam_endpoint,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            vcam::init(app.handle());
 
             if let Some(window) = app.get_webview_window("main") {
                 // Default to mica; the renderer re-applies the real preference
@@ -395,6 +427,14 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == "studio" {
+                // The persisted `studio.enabled` flag must follow the real window,
+                // or the settings switch shows "on" for a closed studio.
+                if let WindowEvent::Destroyed = event {
+                    let _ = window.app_handle().emit_to("main", "studio://closed", ());
+                }
+                return;
+            }
             if window.label() != "main" {
                 return;
             }

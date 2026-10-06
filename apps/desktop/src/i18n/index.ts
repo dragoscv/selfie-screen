@@ -4,6 +4,16 @@ import { initReactI18next } from "react-i18next";
 
 import en from "./en.json";
 import ro from "./ro.json";
+import studioEn from "./studio.en.json";
+import studioRo from "./studio.ro.json";
+import visionEn from "./vision.en.json";
+import visionRo from "./vision.ro.json";
+
+/** Per-area string files (one owner each), merged under their own top-level key. */
+export const AREA_BUNDLES = {
+    en: { studio: studioEn, vision: visionEn },
+    ro: { studio: studioRo, vision: visionRo },
+} as const;
 
 export const SUPPORTED_LOCALES = ["en", "ro"] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
@@ -17,8 +27,8 @@ export function resolveLocale(locale: Locale): SupportedLocale {
 
 void i18n.use(initReactI18next).init({
     resources: {
-        en: { translation: en },
-        ro: { translation: ro },
+        en: { translation: { ...en, ...AREA_BUNDLES.en } },
+        ro: { translation: { ...ro, ...AREA_BUNDLES.ro } },
     },
     lng: "en",
     fallbackLng: "en",

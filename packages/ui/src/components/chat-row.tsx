@@ -49,10 +49,10 @@ function ChatRowImpl({
             transition={transitions.normal}
             style={{ "--tint": tint } as React.CSSProperties}
             className={cn(
-                "group relative grid items-start gap-2.5 rounded-[--radius-panel]",
+                "group relative grid items-start gap-2.5 rounded-panel",
                 compact ? "px-2.5 py-1.5" : "px-3 py-2",
                 showAvatar ? "grid-cols-[3px_auto_1fr_auto]" : "grid-cols-[3px_1fr_auto]",
-                "transition-colors duration-[--dur-normal]",
+                "transition-colors duration-(--dur-normal)",
                 speaking
                     ? "bg-[color-mix(in_oklab,var(--tint)_22%,transparent)]"
                     : "bg-fg/[0.035] hover:bg-fg/[0.06]",
@@ -63,7 +63,7 @@ function ChatRowImpl({
             {/* Kind rail — the primary at-a-glance signal. */}
             <span
                 className={cn(
-                    "self-stretch rounded-full transition-all duration-[--dur-normal]",
+                    "self-stretch rounded-full transition-all duration-(--dur-normal)",
                     speaking ? "min-h-8" : "min-h-5",
                 )}
                 style={{ background: tint }}
@@ -202,7 +202,7 @@ export function TickerRow({ kind, label }: { kind: ChatKind; label: string }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={transitions.fast}
-            className="mx-3 flex items-center gap-2 rounded-[--radius-chip] px-2.5 py-1.5"
+            className="mx-3 flex items-center gap-2 rounded-chip px-2.5 py-1.5"
             style={{ background: `color-mix(in oklab, ${tint} 14%, transparent)` }}
         >
             <span className="size-1.5 shrink-0 rounded-full" style={{ background: tint }} aria-hidden />

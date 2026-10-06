@@ -71,7 +71,7 @@ function App() {
                 toastOptions={{
                     // Inherit the live theme rather than sonner's own palette.
                     classNames: {
-                        toast: "surface !rounded-[--radius-panel] !text-fg",
+                        toast: "surface !rounded-panel !text-fg",
                         description: "!text-fg-muted",
                     },
                 }}

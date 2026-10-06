@@ -81,7 +81,7 @@ function Overlay() {
 
     return (
         <div
-            className="flex h-screen flex-col overflow-hidden rounded-[--radius-card] border border-fg/10"
+            className="flex h-screen flex-col overflow-hidden rounded-card border border-fg/10"
             style={{
                 // Opacity and blur trade off: with real blur the scrim must get
                 // lighter or the frost is hidden behind an opaque panel.

@@ -39,7 +39,7 @@ export function Stat({
 }: StatProps) {
     return (
         <div
-            className={cn("surface rounded-[--radius-panel] p-3.5", className)}
+            className={cn("surface rounded-panel p-3.5", className)}
             style={tint ? ({ "--tint": tint } as React.CSSProperties) : undefined}
         >
             <div className="flex items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-fg-muted">

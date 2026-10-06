@@ -3,6 +3,7 @@ import { z } from "zod";
 import { chatEventSchema, connectionStatusSchema, sessionStatsSchema } from "./events.js";
 import { liveClientMessages, liveServerMessages } from "./live.js";
 import { settingsSchema } from "./settings.js";
+import { visionClientMessages, visionServerMessages } from "./vision.js";
 
 /**
  * The wire contract between the Tauri renderer and the Node sidecar.
@@ -69,6 +70,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     z.object({ type: z.literal("simulate"), event: chatEventSchema }),
 
     ...liveClientMessages,
+    ...visionClientMessages,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -142,6 +144,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
     z.object({ type: z.literal("error"), message: z.string(), fatal: z.boolean().default(false) }),
 
     ...liveServerMessages,
+    ...visionServerMessages,
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 

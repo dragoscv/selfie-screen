@@ -23,7 +23,7 @@ commas inside fields). Update both in the same change as the code.
 
 ## Gotchas
 - Fresh clone: build `@tiksee/core` + `@tiksee/sidecar` before `tauri dev`.
-- Vite dev port 5373 (5094-5293 is a Windows reserved range).
+- Vite dev port 15373: WinNAT reserves shifting 100-port blocks below 10000 (5373 hit EACCES on 2026-10-06); check `netsh interface ipv4 show excludedportrange protocol=tcp`.
 - zustand selectors must return stable references.
 - Webview entry files: disposed-flag for `listen()`; cache `createRoot` on `window`.
 - pnpm `minimumReleaseAge: 1440`: a version published < 24 h ago fails install; pin the previous one.

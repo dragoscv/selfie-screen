@@ -6,12 +6,15 @@ import { join } from "node:path";
 
 import {
     defaultSettings,
+    eventDiamonds,
     parseClientMessage,
     type ChatEvent,
     type ClientMessage,
     type ControlAction,
+    type RuleVar,
     type ServerMessage,
     type Settings,
+    type VisionSnapshot,
 } from "@tiksee/core";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -35,6 +38,9 @@ import { SecretStore } from "./secrets.js";
 import { StreamManager } from "./streams.js";
 import { SummaryService } from "./summary/service.js";
 import { Translator } from "./translate/translator.js";
+import { IdentityStore } from "./vision/identities.js";
+import { VisionLog } from "./vision/log.js";
+import { RulesEngine, type ActionSink } from "./vision/rules.js";
 
 declare const __TIKSEE_VERSION__: string | undefined;
 /** Injected by tsdown from package.json; `dev` (tsx) has no define. */
@@ -68,6 +74,25 @@ type LiveClientMessage = Extract<
     }
 >;
 
+type VisionClientMessage = Extract<
+    ClientMessage,
+    {
+        type:
+            | "visionSignals"
+            | "visionSnapshot"
+            | "visionArm"
+            | "identityList"
+            | "identityUpsert"
+            | "identityDelete"
+            | "visionLogQuery"
+            | "visionLogClear"
+            | "ruleTest";
+    }
+>;
+
+/** The studio pushes ~2 Hz; never rebroadcast faster than this. */
+const SNAPSHOT_MIN_INTERVAL_MS = 500;
+
 /**
  * The sidecar process.
  *
@@ -100,6 +125,13 @@ class Sidecar {
     #games: GameManager;
     #translator: Translator;
     #summaries: SummaryService;
+    #rules: RulesEngine;
+    #visionLog: VisionLog | null = null;
+    #identities: IdentityStore | null = null;
+    #snapshot: VisionSnapshot | null = null;
+    #snapshotSentAt = 0;
+    #snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+    #lastGift: { diamonds: number; at: number } | null = null;
     /** Per-launch Stream Deck token; written to `trigger-token.txt`. */
     #triggerToken = randomBytes(24).toString("base64url");
 
@@ -183,6 +215,18 @@ class Sidecar {
             onPreview: (dataUrl) => this.#broadcast({ type: "panelPreview", dataUrl }),
         });
 
+        if (this.#memory) {
+            const memory = this.#memory;
+            this.#visionLog = new VisionLog({ db: memory.raw, sessionId: () => memory.activeSessionId() });
+            this.#identities = new IdentityStore(memory.raw);
+        }
+        this.#rules = new RulesEngine({
+            sink: this.#ruleSink(),
+            vars: (name) => this.#resolveVar(name),
+            onFired: (fired) => this.#broadcast({ type: "ruleFired", fired }),
+        });
+        this.#applyVisionSettings(null);
+
         this.#streams = new StreamManager(this.#settings, {
             onEvents: (events) => this.#broadcast({ type: "events", events }),
             onStatus: (status, stats) => {
@@ -209,6 +253,8 @@ class Sidecar {
             this.#cohost.onEvent(event);
             this.#goals.onEvent(event);
             this.#games.onEvent(event);
+            if (event.kind === "gift") this.#lastGift = { diamonds: eventDiamonds(event), at: event.at };
+            this.#rules.onChat(event);
             if (event.kind === "chat") this.#translator.offer({ eventId: event.id, text: event.text });
         });
 
@@ -218,6 +264,12 @@ class Sidecar {
     async start(port: number): Promise<number> {
         await mkdir(replayDir, { recursive: true });
         this.#applyRetention();
+        try {
+            const seeded = this.#identities?.seedDogs() ?? 0;
+            if (seeded > 0) log.info(`seeded ${seeded} dog profiles`);
+        } catch (error) {
+            log.warn(`identity seed failed: ${describeError(error)}`);
+        }
         this.#cohost.start();
         await this.#configureTrigger();
 
@@ -271,6 +323,9 @@ class Sidecar {
         this.#send(socket, { type: "obsStatus", connected: this.#obs.connected });
         this.#send(socket, { type: "goals", state: this.#goals.state });
         this.#send(socket, { type: "game", state: this.#games.state });
+        // Embeddings go to the local renderer only (loopback socket), never to logs.
+        if (this.#identities) this.#send(socket, { type: "identities", profiles: this.#identities.list() });
+        if (this.#snapshot) this.#send(socket, { type: "visionSnapshot", snapshot: this.#snapshot });
 
         socket.on("message", (raw) => {
             void this.#handle(socket, String(raw));
@@ -392,6 +447,18 @@ class Sidecar {
                     this.#streams.ingest(message.event);
                     break;
 
+                case "visionSignals":
+                case "visionSnapshot":
+                case "visionArm":
+                case "identityList":
+                case "identityUpsert":
+                case "identityDelete":
+                case "visionLogQuery":
+                case "visionLogClear":
+                case "ruleTest":
+                    await this.#handleVision(socket, message);
+                    break;
+
                 default:
                     await this.#handleLive(socket, message);
                     break;
@@ -480,6 +547,168 @@ class Sidecar {
         }
     }
 
+    async #handleVision(socket: WebSocket, message: VisionClientMessage): Promise<void> {
+        switch (message.type) {
+            case "visionSignals":
+                this.#rules.onSignals(message.events);
+                this.#visionLog?.record(message.events);
+                break;
+            case "visionSnapshot":
+                this.#snapshot = message.snapshot;
+                this.#pushSnapshot();
+                break;
+            case "visionArm":
+                this.#rules.onArm(message.armed);
+                break;
+            case "identityList":
+                this.#send(socket, { type: "identities", profiles: this.#requireIdentities().list() });
+                break;
+            case "identityUpsert":
+                this.#requireIdentities().upsert(message.profile);
+                log.info(`identity saved (${message.profile.kind}, ${message.profile.embeddings.length} samples)`);
+                this.#broadcastIdentities();
+                break;
+            case "identityDelete":
+                this.#requireIdentities().delete(message.id);
+                log.info("identity erased");
+                this.#broadcastIdentities();
+                break;
+            case "visionLogQuery": {
+                const result = this.#requireVisionLog().query({
+                    ...(message.sinceMs !== undefined ? { sinceMs: message.sinceMs } : {}),
+                    ...(message.signal ? { signal: message.signal } : {}),
+                    limit: message.limit,
+                });
+                this.#send(socket, { type: "visionLog", entries: result.entries, stats: result.stats });
+                break;
+            }
+            case "visionLogClear": {
+                const removed = this.#requireVisionLog().clear();
+                log.info(`vision log cleared (${removed} rows)`);
+                this.#send(socket, { type: "visionLog", entries: [], stats: [] });
+                break;
+            }
+            case "ruleTest": {
+                const run = this.#rules.test(message.ruleId);
+                if (!run) this.#send(socket, { type: "error", message: "Regula nu există", fatal: false });
+                else await run;
+                break;
+            }
+        }
+    }
+
+    #requireIdentities(): IdentityStore {
+        if (!this.#identities) throw new Error("Memoria locală nu este disponibilă");
+        return this.#identities;
+    }
+
+    #requireVisionLog(): VisionLog {
+        if (!this.#visionLog) throw new Error("Memoria locală nu este disponibilă");
+        return this.#visionLog;
+    }
+
+    #broadcastIdentities(): void {
+        if (this.#identities) this.#broadcast({ type: "identities", profiles: this.#identities.list() });
+    }
+
+    /** Rebroadcast the latest snapshot at most every 500 ms, trailing edge included. */
+    #pushSnapshot(): void {
+        if (this.#snapshotTimer) return;
+        const wait = this.#snapshotSentAt + SNAPSHOT_MIN_INTERVAL_MS - Date.now();
+        const send = (): void => {
+            this.#snapshotTimer = null;
+            if (!this.#snapshot) return;
+            this.#snapshotSentAt = Date.now();
+            this.#broadcast({ type: "visionSnapshot", snapshot: this.#snapshot });
+        };
+        if (wait <= 0) send();
+        else {
+            this.#snapshotTimer = setTimeout(send, wait);
+            this.#snapshotTimer.unref?.();
+        }
+    }
+
+    #ruleSink(): ActionSink {
+        return {
+            control: (action) => this.#applyControl(action),
+            // Same path as the UI `speak`: the speaking gate still refuses while muted or in Shop LIVE.
+            speak: (text) => this.#cohost.speak(text),
+            vmuiFlash: async (color) => {
+                if (!this.#settings.effects.enabled) return;
+                await this.#effects.test("flash", color);
+            },
+            vmuiScene: async (scene) => {
+                if (!this.#settings.effects.enabled) return;
+                await this.#effects.test("scene", scene);
+            },
+            highlight: (label) => {
+                const note = this.#cohost.highlight();
+                log.info(`highlight marked by a rule${label ? ` (${label})` : ""} (${note.length} chars)`);
+            },
+            notify: (text) => {
+                const at = Date.now();
+                this.#broadcast({ type: "suggestion", suggestion: { id: `rule-${at.toString(36)}`, kind: "topic", text, at } });
+            },
+            studio: (action, ruleId) => this.#broadcast({ type: "ruleAction", ruleId, action }),
+        };
+    }
+
+    #resolveVar(name: RuleVar): number | boolean | undefined {
+        const control = this.#control.state;
+        const subjects = this.#snapshot?.subjects ?? [];
+        const owner = subjects.find((s) => s.owner);
+        switch (name) {
+            case "live.connected":
+                return this.#streams.statuses().some((s) => s.state === "live");
+            case "live.viewers":
+                return this.#streams.statuses().reduce((sum, s) => sum + (s.viewerCount ?? 0), 0);
+            case "control.muted":
+                return control.muted;
+            case "control.repliesPaused":
+                return control.repliesPaused;
+            case "control.effectsOff":
+                return control.effectsOff;
+            case "control.shopMode":
+                return control.shopMode;
+            case "control.petsHidden":
+                return control.petsHidden;
+            case "vision.people":
+                return subjects.filter((s) => s.kind === "person").length;
+            case "vision.dogs":
+                return subjects.filter((s) => s.kind === "dog").length;
+            case "vision.ownerPresent":
+                return owner !== undefined;
+            case "vision.energy":
+                return (owner ?? subjects.find((s) => s.kind === "person"))?.energy;
+            case "vision.distanceM":
+                return (owner ?? subjects.find((s) => s.kind === "person"))?.distanceM;
+            case "lastGift.diamonds":
+                return this.#lastGift?.diamonds;
+            case "lastGift.ageMs":
+                return this.#lastGift ? Date.now() - this.#lastGift.at : undefined;
+            case "time.hour":
+                return new Date().getHours();
+            default:
+                // trigger.*, rule.firedCount, var.* and vision.armed are resolved by the engine.
+                return undefined;
+        }
+    }
+
+    #applyVisionSettings(previous: Settings | null): void {
+        const vision = this.#settings.vision;
+        this.#rules.setRules(vision.rules, { enabled: vision.enabled && vision.rulesEnabled, armWindowMs: vision.armWindowMs });
+        if (this.#visionLog) {
+            this.#visionLog.enabled = vision.enabled && vision.logEnabled;
+            if (!previous || previous.vision.logRetentionDays !== vision.logRetentionDays) {
+                try {
+                    this.#visionLog.setRetention(vision.logRetentionDays);
+                } catch (error) {
+                    log.warn(`vision log retention failed: ${describeError(error)}`);
+                }
+            }
+        }
+    }
+
     #applyTranslationSettings(): void {
         this.#translator.enabled = this.#settings.translation.enabled;
         this.#translator.minLetters = this.#settings.translation.minLetters;
@@ -495,6 +724,7 @@ class Sidecar {
             }
         }
         this.#cohost.controlChanged();
+        this.#rules.onControl(action);
     }
 
     #applySettings(settings: Settings): void {
@@ -513,6 +743,7 @@ class Sidecar {
         this.#goals.settingsChanged();
         this.#overlay.pushGame(this.#games.state);
         this.#applyTranslationSettings();
+        this.#applyVisionSettings(previous);
         if (settings.data.retentionDays !== previous.data.retentionDays) this.#applyRetention();
         if (settings.behaviour.triggerServerEnabled !== previous.behaviour.triggerServerEnabled) {
             void this.#configureTrigger();
@@ -621,6 +852,13 @@ class Sidecar {
         this.#goals.dispose();
         this.#games.dispose();
         this.#translator.dispose();
+        this.#rules.dispose();
+        if (this.#snapshotTimer) clearTimeout(this.#snapshotTimer);
+        try {
+            this.#visionLog?.close();
+        } catch (error) {
+            log.warn(`vision log flush failed: ${describeError(error)}`);
+        }
         this.#memory?.close();
     }
 }

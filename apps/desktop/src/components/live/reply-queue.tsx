@@ -99,7 +99,7 @@ function ReplyCard({ item }: { item: ReplyItem }) {
             }}
             aria-label={t("replies.itemLabel", { name: item.nickname, message: item.message })}
             className={cn(
-                "surface rounded-[--radius-card] p-3 outline-none",
+                "surface rounded-card p-3 outline-none",
                 "focus-visible:ring-2 focus-visible:ring-ring",
                 item.status === "speaking" && "[box-shadow:inset_0_0_0_1px_var(--success)]",
                 !actionable && item.status !== "speaking" && "opacity-60",
@@ -143,13 +143,13 @@ function ReplyCard({ item }: { item: ReplyItem }) {
                             maxLength={500}
                             aria-label={t("replies.draft")}
                             className={cn(
-                                "no-drag w-full resize-y rounded-[--radius-control] border border-border bg-panel-alt px-3 py-2",
+                                "no-drag w-full resize-y rounded-control border border-border bg-panel-alt px-3 py-2",
                                 "text-[0.8125rem] leading-snug text-fg outline-none",
                                 "focus:border-accent focus:ring-2 focus:ring-ring/40",
                             )}
                         />
                     ) : (
-                        <p className="rounded-[--radius-control] bg-panel-alt px-3 py-2 text-[0.8125rem] italic leading-snug text-fg-muted">
+                        <p className="rounded-control bg-panel-alt px-3 py-2 text-[0.8125rem] italic leading-snug text-fg-muted">
                             {draft}
                         </p>
                     )}

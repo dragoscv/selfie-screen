@@ -1,0 +1,417 @@
+{
+    "common": {
+        "close": "Close",
+        "dismiss": "Dismiss",
+        "off": "Off",
+        "yes": "Yes",
+        "no": "No"
+    },
+    "shell": {
+        "hiddenHint": "Controls hidden. Move the mouse or press H to show them."
+    },
+    "guides": {
+        "horizon": "Tilted {{deg}}°",
+        "guardian": {
+            "comments": "Your face is under the comments area",
+            "bottom": "Your face is under the bottom bar"
+        }
+    },
+    "af": {
+        "unknown": "?",
+        "dog": "Dog"
+    },
+    "hud": {
+        "armed": "ARMED · {{s}} s",
+        "rules": "Rules that just ran",
+        "blocked": "blocked: {{reason}}"
+    },
+    "scopes": {
+        "title": "Scopes",
+        "kind": {
+            "none": "None",
+            "histogram": "Histogram",
+            "waveform": "Waveform",
+            "parade": "Parade",
+            "vectorscope": "Vectorscope"
+        },
+        "short": {
+            "histogram": "Histo",
+            "waveform": "Wave",
+            "parade": "Parade",
+            "vectorscope": "Vector"
+        },
+        "clipHigh": "Highlights clipped {{pct}}%",
+        "clipLow": "Shadows crushed {{pct}}%",
+        "noFace": "No face for the exposure assistant",
+        "faceIre": "Face {{ire}} IRE",
+        "advice": {
+            "under": "Brighten about {{stops}} stops",
+            "over": "Darken about {{stops}} stops",
+            "good": "Skin exposure is right"
+        }
+    },
+    "loupe": {
+        "label": "Focus loupe at {{zoom}}× on your eyes"
+    },
+    "coach": {
+        "eyeContact": "Look into the lens, viewers feel seen",
+        "posture": "Sit up straight",
+        "hydration": "Time for a sip of water",
+        "energy": "Energy"
+    },
+    "status": {
+        "label": "Studio status",
+        "rec": "REC",
+        "standby": "STBY",
+        "vcam": {
+            "off": "Virtual camera off",
+            "waiting": "Virtual camera waiting",
+            "streaming": "Virtual camera {{fps}} fps{{size}}",
+            "unregistered": "Virtual camera not installed",
+            "error": "Virtual camera error"
+        },
+        "vcamRegister": "Install virtual camera",
+        "vcamRegistered": "Virtual camera installed",
+        "vcamRegisterFailed": "Could not install the virtual camera: {{error}}",
+        "bleOn": "Camera remote connected",
+        "bleOff": "Camera remote not connected",
+        "perf": "{{render}} fps · cam {{cam}} · vision {{ms}} ms",
+        "perfTitle": "Render fps, camera fps, vision latency"
+    },
+    "controls": {
+        "label": "Camera controls",
+        "speed": "Speed",
+        "bleOffline": "Connect the Bluetooth camera remote in Settings to use optical zoom and focus.",
+        "zoom": {
+            "name": "Zoom",
+            "optical": "Optical zoom (hold)",
+            "wide": "Wide",
+            "tele": "Tele",
+            "digital": "Digital zoom",
+            "digitalLabel": "Crop"
+        },
+        "focus": {
+            "name": "Focus",
+            "auto": "Autofocus",
+            "af": "Focus now",
+            "interval": "Refocus while you move",
+            "everyS": "every {{s}} s",
+            "manual": "Manual focus (hold)",
+            "near": "Near",
+            "far": "Far",
+            "loupe": "Hold for {{zoom}}× loupe",
+            "locked": "Locked"
+        },
+        "look": {
+            "name": "Look",
+            "title": "Image",
+            "exposure": "Exposure",
+            "warmth": "Warmth",
+            "smoothing": "Skin smoothing",
+            "blur": "Background blur"
+        },
+        "framing": {
+            "name": "Framing",
+            "reframe": "Auto framing",
+            "auto": "Follow my face",
+            "autoHint": "A smooth digital crop keeps you centred.",
+            "autoShort": "Auto",
+            "smartWide": "Widen when I stand or someone joins",
+            "deadZone": "Dead zone",
+            "dof": "Depth of field",
+            "dofOn": "Blur by distance",
+            "dofStrength": "Strength"
+        },
+        "monitor": {
+            "name": "Monitor",
+            "focusAids": "Focus aids",
+            "peaking": "Focus peaking",
+            "peakingColor": "Peaking colour",
+            "peakingThreshold": "Peaking sensitivity",
+            "colors": {
+                "red": "Red",
+                "yellow": "Yellow",
+                "white": "White",
+                "blue": "Blue"
+            },
+            "afBox": "Face and pet boxes",
+            "loupeZoom": "Loupe zoom",
+            "exposureAids": "Exposure aids",
+            "zebra": "Zebra",
+            "zebraLevel": "Zebra level",
+            "falseColor": "False colour",
+            "clipping": "Clipping warning",
+            "scope": "Scope",
+            "composition": "Composition",
+            "guides": "Guides",
+            "guideKinds": {
+                "none": "None",
+                "thirds": "Thirds",
+                "golden": "Golden",
+                "grid": "Grid",
+                "center": "Centre"
+            },
+            "safeZones": "TikTok LIVE safe zones",
+            "horizon": "Horizon level",
+            "cleanFeed": "Clean feed",
+            "cleanFeedHint": "Hide every aid and see exactly what viewers see.",
+            "clean": "Clean",
+            "aids_one": "{{count}} aid",
+            "aids_other": "{{count}} aids"
+        },
+        "camera": {
+            "name": "Camera",
+            "title": "Capture",
+            "photo": "Photo in 3 s",
+            "counting": "3… 2… 1…",
+            "record": "Record",
+            "stop": "Stop",
+            "ready": "Ready",
+            "hint": "Photo and recording are taken by the camera itself over Bluetooth."
+        },
+        "pets": {
+            "name": "Pets",
+            "title": "Shoulder pets",
+            "left": "Left shoulder",
+            "right": "Right shoulder",
+            "hide": "Hide pets",
+            "hidden": "Hidden"
+        },
+        "ar": {
+            "name": "AR"
+        }
+    },
+    "pets": {
+        "none": "None",
+        "parrot": "Parrot",
+        "cat": "Cat",
+        "dragon": "Dragon",
+        "drone": "Drone",
+        "fox": "Fox",
+        "owl": "Owl",
+        "redpanda": "Red panda"
+    },
+    "radial": {
+        "label": "Quick actions",
+        "af": "Focus now",
+        "photo": "Photo in 3 s",
+        "hearts": "Hearts",
+        "confetti": "Confetti",
+        "zoomIn": "Zoom in",
+        "zoomOut": "Zoom out",
+        "cleanFeed": "Toggle clean feed",
+        "arAdd": "Add AR object"
+    },
+    "ar": {
+        "title": "AR objects",
+        "canvasLabel": "AR placement area",
+        "help": "Click an object to select it. Drag to move, Shift+drag to rotate, wheel to change depth, Alt+wheel to resize. Keyboard: arrows move, Page Up/Down change depth, + and − resize, Esc closes.",
+        "full": "You can place up to 32 objects.",
+        "imageFailed": "Could not use this image: {{error}}",
+        "kinds": {
+            "emoji": "Emoji",
+            "text": "Text",
+            "image": "Image",
+            "model": "3D pet"
+        },
+        "textLabel": "Text",
+        "textPlaceholder": "Type and press Enter",
+        "emojiPicker": "Emoji",
+        "list": "In the scene",
+        "empty": "Nothing placed yet. Add an emoji, text, image or 3D pet.",
+        "hide": "Hide {{name}}",
+        "show": "Show {{name}}",
+        "delete": "Delete {{name}}",
+        "properties": "Properties",
+        "name": "Name",
+        "model": "Model",
+        "visible": "Visible",
+        "depth": "Depth",
+        "size": "Size",
+        "rotation": "Rotation",
+        "animate": "Animation",
+        "anchor": "Attached to",
+        "animations": {
+            "none": "None",
+            "spin": "Spin",
+            "bob": "Float",
+            "pulse": "Pulse"
+        },
+        "anchors": {
+            "world": "The room",
+            "head": "My head",
+            "leftShoulder": "Left shoulder",
+            "rightShoulder": "Right shoulder",
+            "leftHand": "Left hand",
+            "rightHand": "Right hand"
+        },
+        "ruler": {
+            "label": "Depth ruler",
+            "far": "{{m}} m",
+            "near": "{{m}} m",
+            "you": "You are {{m}} m from the camera",
+            "chip": "{{name}} at {{m}} m. Drag or use the arrow keys to change depth.",
+            "walk": "Step in front of the dashed line to pass in front of it."
+        }
+    },
+    "tutorial": {
+        "progress": "Step {{n}} of {{total}}",
+        "waiting": "Waiting for you…",
+        "great": "Nailed it!",
+        "skip": "Skip",
+        "next": "Next",
+        "finish": "Finish",
+        "steps": {
+            "welcome": {
+                "title": "Welcome to TikSee Studio",
+                "body": "A quick tour of the gestures the studio understands. Sit where you normally stream."
+            },
+            "arm": {
+                "title": "Arm gestures",
+                "body": "Hold an open palm towards the camera for one second. Sensitive actions only run while armed."
+            },
+            "thumb": {
+                "title": "Thumbs up",
+                "body": "Give the camera a thumbs up."
+            },
+            "victory": {
+                "title": "Victory",
+                "body": "Show a V sign. By default this starts a 3-2-1 photo."
+            },
+            "heart": {
+                "title": "Heart",
+                "body": "Make a heart with both hands."
+            },
+            "winkLeft": {
+                "title": "Wink left",
+                "body": "Close only your left eye for a moment."
+            },
+            "winkRight": {
+                "title": "Wink right",
+                "body": "Now close only your right eye."
+            },
+            "smile": {
+                "title": "Smile",
+                "body": "A big, natural smile."
+            },
+            "swipe": {
+                "title": "Swipe",
+                "body": "Swipe one hand left or right in front of you."
+            },
+            "timeout": {
+                "title": "Time out",
+                "body": "Make a T with your hands. By default this mutes the co-host (when armed)."
+            },
+            "depth": {
+                "title": "Depth",
+                "body": "Lean or step forward and back. Objects behind your line hide behind you; step past them to be in front."
+            },
+            "done": {
+                "title": "You're ready",
+                "body": "Change what each gesture does in Settings → Vision → Rules."
+            }
+        }
+    },
+    "calibration": {
+        "title": "Calibration",
+        "progress": "Step {{n}} of {{total}}",
+        "start": "Start",
+        "capturing": "Capturing…",
+        "countdown": "Starting in {{n}}…",
+        "hold": "Hold still…",
+        "review": "Review",
+        "redo": "Start over",
+        "save": "Save calibration",
+        "saved": "Calibration saved",
+        "failed": "Calibration failed: {{error}}",
+        "noFace": "I could not see your face. Face the camera and try again.",
+        "distanceLabel": "How far are you from the camera?",
+        "distanceInvalid": "Enter a distance between 0.3 and 4 metres.",
+        "steps": {
+            "baseline": {
+                "title": "Relax",
+                "body": "Eyes open, neutral face, look at the lens."
+            },
+            "leftClosed": {
+                "title": "Close your LEFT eye",
+                "body": "Keep the right one open."
+            },
+            "rightClosed": {
+                "title": "Close your RIGHT eye",
+                "body": "Keep the left one open."
+            },
+            "smile": {
+                "title": "Big smile",
+                "body": "Smile as widely as you comfortably can."
+            },
+            "mouthOpen": {
+                "title": "Open your mouth",
+                "body": "As if saying a long \"ah\"."
+            },
+            "browsUp": {
+                "title": "Raise your eyebrows",
+                "body": "Look surprised."
+            },
+            "posture": {
+                "title": "Sit upright",
+                "body": "At your normal streaming distance, shoulders relaxed."
+            }
+        },
+        "fields": {
+            "blinkLeft": "Left blink",
+            "blinkRight": "Right blink",
+            "smile": "Smile",
+            "mouthOpen": "Mouth open",
+            "browsUp": "Brows up",
+            "shoulderPx": "Shoulders (px)",
+            "ipdPx": "Eye distance (px)",
+            "neckRatio": "Posture ratio",
+            "referenceM": "Distance (m)",
+            "swapEyes": "Mirrored eyes"
+        }
+    },
+    "enrol": {
+        "title": "Teach TikSee to recognise {{name}}",
+        "missing": "This profile no longer exists. Create it again in Settings → Vision → People & pets.",
+        "identityOff": "Recognition is off. Turning it on downloads the recognition model once (about 10–25 MB) and runs it on this PC.",
+        "enable": "Turn on recognition",
+        "downloading": "Downloading model {{pct}}%",
+        "modelsFailed": "Could not load the recognition model: {{error}}",
+        "intro": {
+            "person": "I'll take 8 quick samples. Follow the prompts and keep your face in the frame.",
+            "dog": "I'll take 8 quick samples. Get the dog in the middle of the frame from different angles."
+        },
+        "poses": {
+            "person": {
+                "straight": "Look straight at the lens",
+                "left": "Turn your head slightly left",
+                "right": "Turn your head slightly right",
+                "up": "Look slightly up",
+                "down": "Look slightly down",
+                "smile": "Smile",
+                "tilt": "Tilt your head a little"
+            },
+            "dog": {
+                "front": "Dog facing the camera",
+                "left": "Dog turned to the left",
+                "right": "Dog turned to the right",
+                "side": "Dog seen from the side",
+                "up": "Dog looking up",
+                "down": "Dog looking down"
+            }
+        },
+        "samples_one": "{{count}} sample",
+        "samples_other": "{{count}} samples",
+        "sampleAlt": "Sample {{n}}, quality {{q}}%",
+        "counts": "{{got}} of {{total}} captured, {{skipped}} skipped for low quality",
+        "partial_one": "Only {{count}} good sample captured. Try better light.",
+        "partial_other": "Only {{count}} good samples captured. Try better light.",
+        "failed": "Enrolment failed: {{error}}",
+        "start": "Start capture",
+        "again": "Capture again",
+        "capturing": "Capturing…",
+        "save": "Save",
+        "saved": "{{name}} saved",
+        "privacy": "Recognition data stays on this PC and is never uploaded."
+    }
+}

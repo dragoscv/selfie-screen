@@ -5,5 +5,5 @@ export * from "./shoulders.js";
 export * from "./state-machine.js";
 export * from "./stats.js";
 export * from "./visemes.js";
-export { Backdrop, type BackdropLook } from "./backdrop.js";
-export { PetStage, type StageOptions } from "./stage.js";
+export { Backdrop, type BackdropDof, type BackdropLook } from "./backdrop.js";
+export { PetStage, inlineAces, toNodeMaterials, type LoadedModel, type StageOptions } from "./stage.js";

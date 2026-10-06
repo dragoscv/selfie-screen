@@ -1,0 +1,420 @@
+{
+    "common": {
+        "close": "Închide",
+        "dismiss": "Ascunde",
+        "off": "Oprit",
+        "yes": "Da",
+        "no": "Nu"
+    },
+    "shell": {
+        "hiddenHint": "Comenzile sunt ascunse. Mișcă mouse-ul sau apasă H ca să le vezi."
+    },
+    "guides": {
+        "horizon": "Înclinat {{deg}}°",
+        "guardian": {
+            "comments": "Fața ta e sub zona de comentarii",
+            "bottom": "Fața ta e sub bara de jos"
+        }
+    },
+    "af": {
+        "unknown": "?",
+        "dog": "Câine"
+    },
+    "hud": {
+        "armed": "ARMAT · {{s}} s",
+        "rules": "Reguli rulate acum",
+        "blocked": "blocată: {{reason}}"
+    },
+    "scopes": {
+        "title": "Scopuri",
+        "kind": {
+            "none": "Niciunul",
+            "histogram": "Histogramă",
+            "waveform": "Formă de undă",
+            "parade": "Paradă RGB",
+            "vectorscope": "Vectorscop"
+        },
+        "short": {
+            "histogram": "Histo",
+            "waveform": "Undă",
+            "parade": "Paradă",
+            "vectorscope": "Vector"
+        },
+        "clipHigh": "Lumini arse {{pct}}%",
+        "clipLow": "Umbre blocate {{pct}}%",
+        "noFace": "Nicio față pentru asistentul de expunere",
+        "faceIre": "Față {{ire}} IRE",
+        "advice": {
+            "under": "Luminează cu circa {{stops}} trepte",
+            "over": "Întunecă cu circa {{stops}} trepte",
+            "good": "Expunerea pielii e corectă"
+        }
+    },
+    "loupe": {
+        "label": "Lupă de focalizare {{zoom}}× pe ochi"
+    },
+    "coach": {
+        "eyeContact": "Privește în obiectiv, spectatorii se simt văzuți",
+        "posture": "Stai drept",
+        "hydration": "E timpul pentru o gură de apă",
+        "energy": "Energie"
+    },
+    "status": {
+        "label": "Starea studioului",
+        "rec": "REC",
+        "standby": "STBY",
+        "vcam": {
+            "off": "Camera virtuală oprită",
+            "waiting": "Camera virtuală așteaptă",
+            "streaming": "Camera virtuală {{fps}} fps{{size}}",
+            "unregistered": "Camera virtuală nu e instalată",
+            "error": "Eroare la camera virtuală"
+        },
+        "vcamRegister": "Instalează camera virtuală",
+        "vcamRegistered": "Camera virtuală a fost instalată",
+        "vcamRegisterFailed": "Nu am putut instala camera virtuală: {{error}}",
+        "bleOn": "Telecomanda camerei e conectată",
+        "bleOff": "Telecomanda camerei nu e conectată",
+        "perf": "{{render}} fps · cam {{cam}} · viziune {{ms}} ms",
+        "perfTitle": "Fps randare, fps cameră, latența viziunii"
+    },
+    "controls": {
+        "label": "Comenzile camerei",
+        "speed": "Viteză",
+        "bleOffline": "Conectează telecomanda Bluetooth a camerei din Setări ca să folosești zoomul și focalizarea optică.",
+        "zoom": {
+            "name": "Zoom",
+            "optical": "Zoom optic (ține apăsat)",
+            "wide": "Larg",
+            "tele": "Tele",
+            "digital": "Zoom digital",
+            "digitalLabel": "Decupaj"
+        },
+        "focus": {
+            "name": "Focus",
+            "auto": "Focalizare automată",
+            "af": "Focalizează acum",
+            "interval": "Refocalizează cât te miști",
+            "everyS": "la fiecare {{s}} s",
+            "manual": "Focalizare manuală (ține apăsat)",
+            "near": "Aproape",
+            "far": "Departe",
+            "loupe": "Ține apăsat pentru lupa {{zoom}}×",
+            "locked": "Blocat"
+        },
+        "look": {
+            "name": "Aspect",
+            "title": "Imagine",
+            "exposure": "Expunere",
+            "warmth": "Căldură",
+            "smoothing": "Netezirea pielii",
+            "blur": "Fundal estompat"
+        },
+        "framing": {
+            "name": "Încadrare",
+            "reframe": "Încadrare automată",
+            "auto": "Urmărește-mi fața",
+            "autoHint": "Un decupaj digital lin te ține în centru.",
+            "autoShort": "Auto",
+            "smartWide": "Lărgește când mă ridic sau apare cineva",
+            "deadZone": "Zonă moartă",
+            "dof": "Profunzime de câmp",
+            "dofOn": "Estompare după distanță",
+            "dofStrength": "Intensitate"
+        },
+        "monitor": {
+            "name": "Monitor",
+            "focusAids": "Ajutoare de focalizare",
+            "peaking": "Focus peaking",
+            "peakingColor": "Culoare peaking",
+            "peakingThreshold": "Sensibilitate peaking",
+            "colors": {
+                "red": "Roșu",
+                "yellow": "Galben",
+                "white": "Alb",
+                "blue": "Albastru"
+            },
+            "afBox": "Chenare pentru fețe și animale",
+            "loupeZoom": "Mărire lupă",
+            "exposureAids": "Ajutoare de expunere",
+            "zebra": "Zebra",
+            "zebraLevel": "Nivel zebra",
+            "falseColor": "Culori false",
+            "clipping": "Avertizare de saturare",
+            "scope": "Scop",
+            "composition": "Compoziție",
+            "guides": "Ghidaje",
+            "guideKinds": {
+                "none": "Niciunul",
+                "thirds": "Treimi",
+                "golden": "Secțiunea de aur",
+                "grid": "Grilă",
+                "center": "Centru"
+            },
+            "safeZones": "Zone sigure TikTok LIVE",
+            "horizon": "Nivel orizont",
+            "cleanFeed": "Imagine curată",
+            "cleanFeedHint": "Ascunde toate ajutoarele și vezi exact ce văd spectatorii.",
+            "clean": "Curat",
+            "aids_one": "{{count}} ajutor",
+            "aids_few": "{{count}} ajutoare",
+            "aids_other": "{{count}} de ajutoare"
+        },
+        "camera": {
+            "name": "Cameră",
+            "title": "Captură",
+            "photo": "Fotografie în 3 s",
+            "counting": "3… 2… 1…",
+            "record": "Înregistrează",
+            "stop": "Oprește",
+            "ready": "Gata",
+            "hint": "Fotografia și înregistrarea le face camera, prin Bluetooth."
+        },
+        "pets": {
+            "name": "Animăluțe",
+            "title": "Animăluțe pe umeri",
+            "left": "Umărul stâng",
+            "right": "Umărul drept",
+            "hide": "Ascunde animăluțele",
+            "hidden": "Ascunse"
+        },
+        "ar": {
+            "name": "AR"
+        }
+    },
+    "pets": {
+        "none": "Niciunul",
+        "parrot": "Papagal",
+        "cat": "Pisică",
+        "dragon": "Dragon",
+        "drone": "Dronă",
+        "fox": "Vulpe",
+        "owl": "Bufniță",
+        "redpanda": "Panda roșu"
+    },
+    "radial": {
+        "label": "Acțiuni rapide",
+        "af": "Focalizează acum",
+        "photo": "Fotografie în 3 s",
+        "hearts": "Inimioare",
+        "confetti": "Confetti",
+        "zoomIn": "Mărește",
+        "zoomOut": "Micșorează",
+        "cleanFeed": "Comută imaginea curată",
+        "arAdd": "Adaugă obiect AR"
+    },
+    "ar": {
+        "title": "Obiecte AR",
+        "canvasLabel": "Zona de plasare AR",
+        "help": "Dă clic pe un obiect ca să-l selectezi. Trage ca să-l muți, Shift+tragere îl rotește, rotița schimbă adâncimea, Alt+rotiță schimbă mărimea. Tastatură: săgețile mută, Page Up/Down schimbă adâncimea, + și − schimbă mărimea, Esc închide.",
+        "full": "Poți plasa cel mult 32 de obiecte.",
+        "imageFailed": "Nu pot folosi această imagine: {{error}}",
+        "kinds": {
+            "emoji": "Emoji",
+            "text": "Text",
+            "image": "Imagine",
+            "model": "Animăluț 3D"
+        },
+        "textLabel": "Text",
+        "textPlaceholder": "Scrie și apasă Enter",
+        "emojiPicker": "Emoji",
+        "list": "În scenă",
+        "empty": "Nimic plasat încă. Adaugă un emoji, un text, o imagine sau un animăluț 3D.",
+        "hide": "Ascunde {{name}}",
+        "show": "Arată {{name}}",
+        "delete": "Șterge {{name}}",
+        "properties": "Proprietăți",
+        "name": "Nume",
+        "model": "Model",
+        "visible": "Vizibil",
+        "depth": "Adâncime",
+        "size": "Mărime",
+        "rotation": "Rotație",
+        "animate": "Animație",
+        "anchor": "Atașat de",
+        "animations": {
+            "none": "Niciuna",
+            "spin": "Rotire",
+            "bob": "Plutire",
+            "pulse": "Puls"
+        },
+        "anchors": {
+            "world": "Cameră (fix)",
+            "head": "Capul meu",
+            "leftShoulder": "Umărul stâng",
+            "rightShoulder": "Umărul drept",
+            "leftHand": "Mâna stângă",
+            "rightHand": "Mâna dreaptă"
+        },
+        "ruler": {
+            "label": "Riglă de adâncime",
+            "far": "{{m}} m",
+            "near": "{{m}} m",
+            "you": "Ești la {{m}} m de cameră",
+            "chip": "{{name}} la {{m}} m. Trage sau folosește săgețile ca să schimbi adâncimea.",
+            "walk": "Treci în fața liniei punctate ca să ajungi în fața obiectului."
+        }
+    },
+    "tutorial": {
+        "progress": "Pasul {{n}} din {{total}}",
+        "waiting": "Te aștept…",
+        "great": "Perfect!",
+        "skip": "Sari peste",
+        "next": "Înainte",
+        "finish": "Gata",
+        "steps": {
+            "welcome": {
+                "title": "Bun venit în TikSee Studio",
+                "body": "Un tur scurt al gesturilor pe care le înțelege studioul. Stai unde stai de obicei când transmiți."
+            },
+            "arm": {
+                "title": "Armarea gesturilor",
+                "body": "Ține palma deschisă spre cameră o secundă. Acțiunile sensibile rulează doar cât ești armat."
+            },
+            "thumb": {
+                "title": "Like",
+                "body": "Arată degetul mare în sus spre cameră."
+            },
+            "victory": {
+                "title": "Victorie",
+                "body": "Fă semnul V. Implicit pornește o fotografie cu 3-2-1."
+            },
+            "heart": {
+                "title": "Inimă",
+                "body": "Fă o inimă cu ambele mâini."
+            },
+            "winkLeft": {
+                "title": "Clipește cu stângul",
+                "body": "Închide doar ochiul stâng pentru o clipă."
+            },
+            "winkRight": {
+                "title": "Clipește cu dreptul",
+                "body": "Acum închide doar ochiul drept."
+            },
+            "smile": {
+                "title": "Zâmbește",
+                "body": "Un zâmbet mare și natural."
+            },
+            "swipe": {
+                "title": "Glisare",
+                "body": "Glisează o mână spre stânga sau spre dreapta prin fața ta."
+            },
+            "timeout": {
+                "title": "Pauză",
+                "body": "Fă un T cu mâinile. Implicit oprește sunetul co-hostului (când ești armat)."
+            },
+            "depth": {
+                "title": "Adâncime",
+                "body": "Apleacă-te sau fă un pas în față și înapoi. Obiectele din spatele tău se ascund după tine; treci de ele ca să fii în față."
+            },
+            "done": {
+                "title": "Ești pregătit",
+                "body": "Schimbă ce face fiecare gest în Setări → Viziune → Reguli."
+            }
+        }
+    },
+    "calibration": {
+        "title": "Calibrare",
+        "progress": "Pasul {{n}} din {{total}}",
+        "start": "Începe",
+        "capturing": "Se capturează…",
+        "countdown": "Începem în {{n}}…",
+        "hold": "Nu te mișca…",
+        "review": "Verifică",
+        "redo": "Ia-o de la capăt",
+        "save": "Salvează calibrarea",
+        "saved": "Calibrarea a fost salvată",
+        "failed": "Calibrarea a eșuat: {{error}}",
+        "noFace": "Nu ți-am văzut fața. Privește spre cameră și încearcă din nou.",
+        "distanceLabel": "La ce distanță ești de cameră?",
+        "distanceInvalid": "Introdu o distanță între 0,3 și 4 metri.",
+        "steps": {
+            "baseline": {
+                "title": "Relaxează-te",
+                "body": "Ochii deschiși, fața neutră, privește în obiectiv."
+            },
+            "leftClosed": {
+                "title": "Închide ochiul STÂNG",
+                "body": "Ține-l deschis pe cel drept."
+            },
+            "rightClosed": {
+                "title": "Închide ochiul DREPT",
+                "body": "Ține-l deschis pe cel stâng."
+            },
+            "smile": {
+                "title": "Zâmbet larg",
+                "body": "Zâmbește cât de larg poți fără efort."
+            },
+            "mouthOpen": {
+                "title": "Deschide gura",
+                "body": "Ca și cum ai spune un „a” lung."
+            },
+            "browsUp": {
+                "title": "Ridică sprâncenele",
+                "body": "Fă o față surprinsă."
+            },
+            "posture": {
+                "title": "Stai drept",
+                "body": "La distanța obișnuită de transmisie, cu umerii relaxați."
+            }
+        },
+        "fields": {
+            "blinkLeft": "Clipit stâng",
+            "blinkRight": "Clipit drept",
+            "smile": "Zâmbet",
+            "mouthOpen": "Gură deschisă",
+            "browsUp": "Sprâncene ridicate",
+            "shoulderPx": "Umeri (px)",
+            "ipdPx": "Distanța dintre ochi (px)",
+            "neckRatio": "Raport postură",
+            "referenceM": "Distanță (m)",
+            "swapEyes": "Ochi în oglindă"
+        }
+    },
+    "enrol": {
+        "title": "Învață TikSee să-l recunoască pe {{name}}",
+        "missing": "Profilul nu mai există. Creează-l din nou în Setări → Viziune → Oameni și animale.",
+        "identityOff": "Recunoașterea e oprită. Dacă o pornești, modelul de recunoaștere se descarcă o singură dată (circa 10–25 MB) și rulează pe acest PC.",
+        "enable": "Pornește recunoașterea",
+        "downloading": "Se descarcă modelul {{pct}}%",
+        "modelsFailed": "Nu am putut încărca modelul de recunoaștere: {{error}}",
+        "intro": {
+            "person": "Fac 8 capturi rapide. Urmează indicațiile și ține-ți fața în cadru.",
+            "dog": "Fac 8 capturi rapide. Adu câinele în mijlocul cadrului, din unghiuri diferite."
+        },
+        "poses": {
+            "person": {
+                "straight": "Privește drept în obiectiv",
+                "left": "Întoarce puțin capul spre stânga",
+                "right": "Întoarce puțin capul spre dreapta",
+                "up": "Privește puțin în sus",
+                "down": "Privește puțin în jos",
+                "smile": "Zâmbește",
+                "tilt": "Înclină puțin capul"
+            },
+            "dog": {
+                "front": "Câinele cu fața spre cameră",
+                "left": "Câinele întors spre stânga",
+                "right": "Câinele întors spre dreapta",
+                "side": "Câinele din profil",
+                "up": "Câinele privind în sus",
+                "down": "Câinele privind în jos"
+            }
+        },
+        "samples_one": "{{count}} captură",
+        "samples_few": "{{count}} capturi",
+        "samples_other": "{{count}} de capturi",
+        "sampleAlt": "Captura {{n}}, calitate {{q}}%",
+        "counts": "{{got}} din {{total}} capturate, {{skipped}} sărite din cauza calității slabe",
+        "partial_one": "Am capturat doar {{count}} imagine bună. Încearcă o lumină mai bună.",
+        "partial_few": "Am capturat doar {{count}} imagini bune. Încearcă o lumină mai bună.",
+        "partial_other": "Am capturat doar {{count}} de imagini bune. Încearcă o lumină mai bună.",
+        "failed": "Înregistrarea a eșuat: {{error}}",
+        "start": "Începe captura",
+        "again": "Capturează din nou",
+        "capturing": "Se capturează…",
+        "save": "Salvează",
+        "saved": "{{name}} a fost salvat",
+        "privacy": "Datele de recunoaștere rămân pe acest PC și nu sunt încărcate nicăieri."
+    }
+}

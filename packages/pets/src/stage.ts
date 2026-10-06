@@ -1,9 +1,9 @@
 import * as THREE from "three/webgpu";
+import { acesFilmicToneMapping, float, output, vec4 } from "three/tsl";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 
-import type { Backdrop } from "./backdrop.js";
 import { petPixelHeight, petUrl, type PetId } from "./catalogue.js";
 import type { ShoulderAnchor, Side } from "./shoulders.js";
 import { PetStateMachine, type PetClip, type PetEvent } from "./state-machine.js";
@@ -19,6 +19,14 @@ export interface StageOptions {
     transcoderPath: string;
     /** Force the WebGL2 backend (the overlay fallback path, Q33). */
     forceWebGL?: boolean;
+    /** MSAA on the canvas. Off when the stage renders into its own multisampled targets. */
+    antialias?: boolean;
+    /**
+     * Compositor mode: the renderer does no output transform (no tone mapping,
+     * linear output) and pet materials apply ACES themselves, so a later
+     * composite pass can put them over an untouched camera image.
+     */
+    inlineToneMapping?: boolean;
 }
 
 interface Slot {
@@ -34,8 +42,59 @@ interface Slot {
 }
 
 /**
+ * Replace classic materials under `root` with node materials (the same copy
+ * three's NodeLibrary does) and let `edit` add nodes to each. Shared materials
+ * are converted once.
+ */
+export function toNodeMaterials(root: THREE.Object3D, edit: (m: THREE.NodeMaterial) => void): void {
+    const done = new Map<THREE.Material, THREE.NodeMaterial>();
+    const convert = (m: THREE.Material): THREE.NodeMaterial => {
+        const hit = done.get(m);
+        if (hit) return hit;
+        let nm: THREE.NodeMaterial;
+        if ((m as THREE.NodeMaterial).isNodeMaterial) nm = m as THREE.NodeMaterial;
+        else {
+            nm =
+                m.type === "MeshPhysicalMaterial"
+                    ? new THREE.MeshPhysicalNodeMaterial()
+                    : m.type === "MeshBasicMaterial"
+                      ? new THREE.MeshBasicNodeMaterial()
+                      : new THREE.MeshStandardNodeMaterial();
+            const src = m as unknown as Record<string, unknown>;
+            const dst = nm as unknown as Record<string, unknown>;
+            for (const key in src) if (key !== "type" && key !== "uuid") dst[key] = src[key];
+        }
+        edit(nm);
+        nm.needsUpdate = true;
+        done.set(m, nm);
+        return nm;
+    };
+    root.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.material = Array.isArray(mesh.material) ? mesh.material.map(convert) : convert(mesh.material);
+    });
+}
+
+/** ACES filmic on the material's own output (what the renderer would do on screen). */
+export function inlineAces(m: THREE.NodeMaterial): void {
+    // The tone-mapping helpers are declared as returning an untyped Node; they return the input's vec3.
+    const mapped = acesFilmicToneMapping(output.rgb, float(1)) as THREE.Node<"vec3">;
+    m.outputNode = vec4(mapped, output.a);
+}
+
+/** A pet model loaded for use outside the shoulder slots (AR "model" objects). */
+export interface LoadedModel {
+    /** y-flipped holder for the pixel-space camera; scale it by `pixels / height`. */
+    root: THREE.Object3D;
+    height: number;
+    mixer: THREE.AnimationMixer;
+}
+
+/**
  * Renders pets in output pixel space: an orthographic camera with y down maps
- * shoulder anchors straight onto the scene. One stage per output surface.
+ * shoulder anchors straight onto the scene. One stage per output surface; AR
+ * meshes may share `scene` so pets and objects land in one pass.
  */
 export class PetStage {
     readonly renderer: THREE.WebGPURenderer;
@@ -46,19 +105,23 @@ export class PetStage {
     #loader: GLTFLoader | null = null;
     #speech: { visemes: readonly VisemeEvent[]; startMs: number } | null = null;
     #hidden = false;
-    #backdrop: Backdrop | null = null;
 
     constructor(options: StageOptions) {
         this.#o = options;
         this.renderer = new THREE.WebGPURenderer({
             canvas: options.canvas,
             alpha: true,
-            antialias: true,
+            antialias: options.antialias ?? true,
             forceWebGL: options.forceWebGL ?? false,
         });
         this.renderer.setClearColor(0x000000, 0);
         this.renderer.setSize(options.width, options.height, false);
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        if (options.inlineToneMapping) {
+            this.renderer.toneMapping = THREE.NoToneMapping;
+            this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+        } else {
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        }
         // Pixel space, y down: top=0, bottom=height. Depth range covers pet bodies.
         this.camera = new THREE.OrthographicCamera(0, options.width, 0, options.height, -2000, 2000);
         this.camera.position.z = 1000;
@@ -75,6 +138,27 @@ export class PetStage {
         this.#loader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
     }
 
+    /**
+     * True when a WebGPU adapter answers within `timeoutMs`. Some Chromium
+     * embeddings expose `navigator.gpu` but never settle `requestAdapter()`
+     * (measured: VS Code's Electron 43 browser), which would hang
+     * `renderer.init()` forever; callers then pass `forceWebGL`.
+     */
+    static async webgpuAvailable(timeoutMs = 2500): Promise<boolean> {
+        const gpu = (globalThis.navigator as { gpu?: { requestAdapter(): Promise<unknown> } } | undefined)?.gpu;
+        if (!gpu) return false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<null>((resolve) => {
+            timer = setTimeout(() => resolve(null), timeoutMs);
+        });
+        try {
+            const adapter = await Promise.race([gpu.requestAdapter().catch(() => null), timeout]);
+            return adapter != null;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
     get backend(): "webgpu" | "webgl" {
         const b = (this.renderer as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend;
         return b?.isWebGPUBackend ? "webgpu" : "webgl";
@@ -88,13 +172,6 @@ export class PetStage {
         return this.#o.height;
     }
 
-    /** Draw a camera backdrop under the pets in the same frame (null removes it). */
-    setBackdrop(backdrop: Backdrop | null): void {
-        if (this.#backdrop) this.scene.remove(this.#backdrop.mesh);
-        this.#backdrop = backdrop;
-        if (backdrop) this.scene.add(backdrop.mesh);
-    }
-
     resize(width: number, height: number): void {
         this.#o.width = width;
         this.#o.height = height;
@@ -102,6 +179,31 @@ export class PetStage {
         this.camera.right = width;
         this.camera.bottom = height;
         this.camera.updateProjectionMatrix();
+    }
+
+    async #load(pet: PetId): Promise<{ holder: THREE.Group; root: THREE.Object3D; gltf: { animations: THREE.AnimationClip[] }; height: number }> {
+        if (!this.#loader) throw new Error("PetStage.init() not awaited");
+        const gltf = await this.#loader.loadAsync(petUrl(this.#o.assetBase, pet));
+        const root = gltf.scene;
+        const box = new THREE.Box3().setFromObject(root);
+        // glTF is y-up and faces +z; flip y for the y-down pixel camera.
+        const holder = new THREE.Group();
+        root.scale.y = -1;
+        holder.add(root);
+        root.traverse((o) => {
+            if ((o as THREE.Mesh).isMesh) o.frustumCulled = false;
+        });
+        if (this.#o.inlineToneMapping) toNodeMaterials(root, inlineAces);
+        return { holder, root, gltf, height: Math.max(box.max.y - box.min.y, 1e-3) };
+    }
+
+    /** Load a pet glb as a free-standing model (idle clip playing). The caller adds it to a scene. */
+    async loadModel(pet: PetId): Promise<LoadedModel> {
+        const { holder, root, gltf, height } = await this.#load(pet);
+        const mixer = new THREE.AnimationMixer(root);
+        const idle = gltf.animations.find((c) => c.name === "idle") ?? gltf.animations[0];
+        if (idle) mixer.clipAction(idle).play();
+        return { root: holder, height, mixer };
     }
 
     /** Put `pet` on a shoulder (null removes it). */
@@ -113,14 +215,7 @@ export class PetStage {
             this.#slots.delete(side);
         }
         if (!pet) return;
-        if (!this.#loader) throw new Error("PetStage.init() not awaited");
-        const gltf = await this.#loader.loadAsync(petUrl(this.#o.assetBase, pet));
-        const root = gltf.scene;
-        const box = new THREE.Box3().setFromObject(root);
-        // glTF is y-up and faces +z; flip y for the y-down pixel camera.
-        const holder = new THREE.Group();
-        root.scale.y = -1;
-        holder.add(root);
+        const { holder, root, gltf, height } = await this.#load(pet);
         const mixer = new THREE.AnimationMixer(root);
         const actions = new Map(gltf.animations.map((c) => [c.name, mixer.clipAction(c)]));
         const morphs: Slot["morphs"] = [];
@@ -130,7 +225,6 @@ export class PetStage {
                 const dict = mesh.morphTargetDictionary;
                 morphs.push({ mesh, index: MOUTH_SHAPES.map((s) => dict[`mouth_${s}`] ?? -1) });
             }
-            if (mesh.isMesh) mesh.frustumCulled = false;
         });
         const slot: Slot = {
             pet,
@@ -140,7 +234,7 @@ export class PetStage {
             current: null,
             morphs,
             brain: new PetStateMachine(performance.now()),
-            modelHeight: Math.max(box.max.y - box.min.y, 1e-3),
+            modelHeight: height,
         };
         holder.visible = false;
         this.scene.add(holder);
@@ -176,8 +270,21 @@ export class PetStage {
         this.#hidden = hidden;
     }
 
-    /** Advance animation and draw one frame. `anchors` null hides the pets. */
-    render(anchors: Record<Side, ShoulderAnchor> | null, dtSec: number): void {
+    /**
+     * Advance animation and draw one frame into `target` (null = the canvas),
+     * cleared transparent. `anchors` null hides the pets. Pets sit on the
+     * owner's shoulders, so their depth is the owner's distance: the shoulder
+     * span already scales them for it, and they stay at z = 0 in the scene.
+     */
+    render(anchors: Record<Side, ShoulderAnchor> | null, dtSec: number, target: THREE.RenderTarget | null = null): void {
+        this.update(anchors, dtSec);
+        this.renderer.setRenderTarget(target);
+        this.renderer.render(this.scene, this.camera);
+        this.renderer.setRenderTarget(null);
+    }
+
+    /** Advance animation and place the pets without drawing. */
+    update(anchors: Record<Side, ShoulderAnchor> | null, dtSec: number): void {
         const now = performance.now();
         const mouth = this.#mouth(now);
         for (const [side, slot] of this.#slots) {
@@ -199,7 +306,6 @@ export class PetStage {
                 });
             }
         }
-        this.renderer.render(this.scene, this.camera);
     }
 
     #mouth(now: number): ReturnType<typeof mouthWeights> | null {

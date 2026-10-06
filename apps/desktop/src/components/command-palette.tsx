@@ -8,6 +8,7 @@ import {
     Palette,
     Play,
     Radio,
+    ScanEye,
     Settings as SettingsIcon,
     Square,
     Sun,
@@ -59,7 +60,7 @@ export function CommandPalette({
             label={t("nav.commandPalette")}
             className={cn(
                 "fixed left-1/2 top-[18%] z-50 w-[min(34rem,90vw)] -translate-x-1/2",
-                "surface overflow-hidden rounded-[--radius-card] p-0 shadow-2xl",
+                "surface overflow-hidden rounded-card p-0 shadow-2xl",
                 "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
             )}
             overlayClassName="fixed inset-0 z-40 bg-[var(--overlay-scrim)] backdrop-blur-sm"
@@ -85,6 +86,9 @@ export function CommandPalette({
                     </Item>
                     <Item icon={<BarChart3 />} onSelect={() => run(() => onNavigate("analytics"))}>
                         {t("nav.analytics")}
+                    </Item>
+                    <Item icon={<ScanEye />} onSelect={() => run(() => onNavigate("vision"))}>
+                        {t("nav.vision")}
                     </Item>
                     <Item icon={<SettingsIcon />} onSelect={() => run(() => onNavigate("settings"))}>
                         {t("nav.settings")}
@@ -182,7 +186,7 @@ function Item({
         <Command.Item
             onSelect={onSelect}
             className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-[--radius-chip] px-2.5 py-2 text-sm text-fg",
+                "flex cursor-pointer items-center gap-2.5 rounded-chip px-2.5 py-2 text-sm text-fg",
                 "outline-none transition-colors duration-100",
                 "data-[selected=true]:bg-accent-subtle data-[selected=true]:text-accent",
                 "[&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-fg-subtle",

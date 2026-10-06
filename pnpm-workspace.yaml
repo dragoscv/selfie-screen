@@ -19,6 +19,8 @@ allowBuilds:
   "@napi-rs/canvas": true
   serialport: true
   "@serialport/bindings-cpp": true
+  # onnxruntime-web -> onnx-proto -> protobufjs: its postinstall only prints a version notice.
+  protobufjs: false
 
 catalog:
   # --- core runtime ---
@@ -81,6 +83,10 @@ catalog:
   "@types/three": 0.186.0
   "@mediapipe/tasks-vision": 1.0.1
   "@gltf-transform/cli": 4.5.1
+  # --- vision / rules editor (verified 2026-10-05) ---
+  onnxruntime-web: 1.30.0
+  "@xyflow/react": 12.12.0
+  "@dagrejs/dagre": 3.1.1
 
   # --- tauri ---
   "@tauri-apps/api": 2.12.1

@@ -36,7 +36,7 @@ export function AnalyticsRoute() {
     }
 
     return (
-        <div className="@container h-full overflow-y-auto p-5">
+        <div className="@container h-full overflow-y-auto px-6 py-6">
             <div className="mx-auto grid max-w-[110rem] gap-3 @4xl:grid-cols-2">
                 <Card
                     title={t("analytics.activity")}
@@ -45,7 +45,7 @@ export function AnalyticsRoute() {
                     className="@4xl:col-span-2"
                 >
                     <ErrorBoundary area="activity chart">
-                        <Suspense fallback={<div className="h-56 animate-pulse rounded-[--radius-panel] bg-panel-alt" />}>
+                        <Suspense fallback={<div className="h-56 animate-pulse rounded-panel bg-panel-alt" />}>
                             <ActivityChart data={timeline} />
                         </Suspense>
                     </ErrorBoundary>
@@ -53,7 +53,7 @@ export function AnalyticsRoute() {
 
                 <Card title={t("analytics.breakdown")} icon={<PieIcon />} tint="var(--kind-join)">
                     <ErrorBoundary area="breakdown chart">
-                        <Suspense fallback={<div className="h-56 animate-pulse rounded-[--radius-panel] bg-panel-alt" />}>
+                        <Suspense fallback={<div className="h-56 animate-pulse rounded-panel bg-panel-alt" />}>
                             <BreakdownChart data={breakdown} />
                         </Suspense>
                     </ErrorBoundary>
@@ -64,7 +64,7 @@ export function AnalyticsRoute() {
                         <p className="text-xs text-fg-subtle">{t("analytics.noGifts")}</p>
                     ) : (
                         <ErrorBoundary area="gifters chart">
-                            <Suspense fallback={<div className="h-56 animate-pulse rounded-[--radius-panel] bg-panel-alt" />}>
+                            <Suspense fallback={<div className="h-56 animate-pulse rounded-panel bg-panel-alt" />}>
                                 <GiftersChart data={gifters} />
                             </Suspense>
                         </ErrorBoundary>

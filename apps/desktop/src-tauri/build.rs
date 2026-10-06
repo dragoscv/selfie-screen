@@ -13,7 +13,14 @@ fn ensure_sidecar_placeholders() {
         ""
     };
     let runtime = format!("binaries/tiksee-sidecar-{target}{exe}");
-    for placeholder in [runtime.as_str(), "resources/sidecar/dist/index.js"] {
+    // TikSee Camera binaries from `scripts/build-vcam.mjs`; the app never
+    // runs a zero-byte setup helper (see `vcam::setup_exe`).
+    for placeholder in [
+        runtime.as_str(),
+        "resources/sidecar/dist/index.js",
+        "vcam/bin/tiksee_vcam.dll",
+        "vcam/bin/tiksee-vcam-setup.exe",
+    ] {
         let path = Path::new(placeholder);
         if !path.exists() {
             if let Some(parent) = path.parent() {

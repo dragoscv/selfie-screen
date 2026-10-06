@@ -155,6 +155,12 @@ readable "port busy" error rather than failing silently.
 | Q34 | Texture compression | KTX-Software 4.4.2 (KTX2/Basis) installed per-user | 2026-10-05 |
 | Q42 | Camera control | Sony ZV-E10 controlled from Studio; USB PTP was the intended default, BLE remote in parallel for zoom/focus | 2026-10-05 |
 | Q43 | Camera control while live | **Bluetooth remote is the live transport.** Measured: Sony SDIO `GetExtDeviceInfo` (0x9202) over USB blanks the camera's HDMI output for as long as the session is open (luma 40 → 7, reproduced 3×; plain PTP session does not). USB PC Remote stays opt-in (`TIKSEE_CAMERA_CTL=usb`) for setting ISO/WB/shutter before going live | 2026-10-05 |
+| Q44 | Native virtual camera | `MFCreateVirtualCamera` **System lifetime, AllUsers**: the installer (elevated, perMachine) registers `tiksee_vcam.dll` (Rust media source, Frame Server) + creates "TikSee Camera"; the camera shows an offline frame when TikSee is closed. App → DLL over the `Global\TikSeeVcam` NV12 ring; frames converted RGBA→NV12 by a WebGPU compute pass and sent as raw IPC (`vcam_frame`). In-app "Repair camera" re-runs `tiksee-vcam-setup.exe install` with UAC | 2026-10-05 |
+| Q45 | Vision stack | All local: MediaPipe Tasks 1.0.1 (pose + masks, GestureRecognizer, FaceLandmarker with 52 blendshapes, EfficientDet-Lite0 objects) in a module worker; onnxruntime-web 1.30 (WebGPU) for optional models. Optional models (SFace int8 face 10 MB, DINOv2-S q8 dog 24 MB, Depth Anything V2 Small fp16 50 MB, all Apache-2.0) download on first enable from `tiksee-releases/models/`, sha256-pinned, cached in Cache Storage. InsightFace / DA-V2 Base+ / DepthPro rejected on licence | 2026-10-05 |
+| Q46 | Identity & privacy | Only explicitly enrolled profiles (owner, named people, dogs Koro/Kara/Kiri) store embeddings, locally in SQLite; unknown people are "unknown" and never stored; delete is a hard delete. Beta in 0.3.0 | 2026-10-05 |
+| Q47 | Depth / AR | Hybrid: body-scale distance (calibrated shoulder width / IPD) by default, optional Depth Anything V2 Small per-pixel map scaled to the owner's distance. Objects live at x/y/z; the person mask occludes an object when the person is nearer (±0.1 m hysteresis, 150 ms crossfade) — you walk through it by moving forward/back | 2026-10-05 |
+| Q48 | Rules | One Rule tree (triggers OR → `when` condition all/any/not/compare → actions with if/else, wait, repeat, parallel, set, stop; modes single/restart/queued/parallel; cooldown). Edited in a list editor AND an xyflow node graph (graph = projection, positions in `rule.ui.graph`). Sidecar evaluates; studio-only actions are relayed as `ruleAction`. Sensitive rules need an arm (open palm 1 s → 5 s window) | 2026-10-05 |
+| Q49 | Preview vs output | Two render targets: monitoring aids (peaking, zebra, false colour, clipping) only in the preview pass; guides, safe zones, AF boxes, HUD, scopes are DOM over the preview. Nothing preview-only reaches the virtual camera | 2026-10-05 |
 
 ---
 
@@ -292,17 +298,19 @@ Smart-home parts live in vmui's MCP catalogue.
 | P4 | Capture + beauty filters + composite | WS24 |
 | P5 | Native virtual camera | WS25 |
 
-### 10.4 Status (2026-10-05)
+### 10.4 Status (2026-10-06)
 
 | Phase | State | Evidence |
 | --- | --- | --- |
 | P0 | done | 0.2.0 published (`latest.json` 0.2.0, signed); installer bundles Node; release exe smoke: sidecar ready and exits with the app |
-| P1 | done except WS19-06, WS20-08/10/13/14 | Test voice → codai usage `codai-tts-ro` HTTP 200; reply queue + Live Control round-trip in the app |
+| P1 | done | WS20-08/10/13/14 shipped in e04c976; WS19-06 codai-live-agent in codai 5b32d8c + public mirror v0.1.0 (npm first publish pending owner login) |
 | P2 | done | Test flash from TikSee → vmui audit `mcp.flash_color cyan ok` |
 | P3 | pipeline + runtime done, real meshes blocked | Blender pipeline verified on proxy rigs; TRELLIS.2 waits on Meta DINOv3 access (VM `tiksee-trellis` stopped) |
 | P4 | composite running | Studio window 1080×1920 WebGPU: camera 59–60 fps, render 130–180 fps; camera rotation; auto-reopen after 3 s without frames |
 | Camera remote | BLE done | Paired PC ↔ ZV-E10 over WinRT; zoom tele/wide confirmed by owner with HDMI picture intact; Studio settings card (hold-to-zoom/focus, AF, photo, record) |
-| P5 | not started | `vcam/shared` crate exists, unwired |
+| P5 | done | "TikSee Camera" registered System-wide; ffmpeg dshow reads NV12 + YUY2 1080×1920 correctly; studio pump 60 fps, 0 dropped (loopback WebSocket, readback 4.6 ms); listed in TikTok LIVE Studio |
+| Vision (WS27) | done (identity beta) | Worker: pose 6 / hands 5 / face 3.5 / objects 24 ms, total ~18 ms; studio render 180 fps p95 5.7 ms; 109 vision tests, 34 rules tests |
+| Studio pro (WS28) | done | Owner confirmed: overlays fluid, BLE zoom from Studio, aspect lock, responsive controls, rounded main UI |
 
 ---
 

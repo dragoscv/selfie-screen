@@ -66,9 +66,9 @@ export function ConnectionBar({ status }: { status: ConnectionStatus }) {
                     spellCheck={false}
                     autoCapitalize="none"
                     className={cn(
-                        "no-drag h-9 w-44 rounded-[--radius-control] bg-panel-alt pl-7 pr-3 text-sm text-fg",
+                        "no-drag h-9 w-44 rounded-control bg-panel-alt pl-7 pr-3 text-sm text-fg",
                         "border border-border outline-none placeholder:text-fg-subtle",
-                        "transition-[border-color,box-shadow] duration-[--dur-fast]",
+                        "transition-[border-color,box-shadow] duration-(--dur-fast)",
                         "focus:border-accent focus:ring-2 focus:ring-ring/40",
                         "disabled:opacity-60",
                     )}

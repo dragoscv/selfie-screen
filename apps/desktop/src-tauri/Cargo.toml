@@ -1,6 +1,6 @@
 [package]
 name = "tiksee"
-version = "0.2.0"
+version = "0.3.0"
 description = "TikSee — TikTok LIVE streamer companion"
 authors = ["Dragos Catalin Vladulescu"]
 edition = "2024"
@@ -37,6 +37,9 @@ tauri-plugin-updater = "2"
 window-vibrancy = "0.6"
 keyring = { version = "3", features = ["windows-native"] }
 libloading = "0.8"
+# Loopback binary WebSocket for virtual-camera frames (raw IPC measured ~200 ms/frame).
+tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
+tiksee-vcam-shared = { path = "vcam/shared" }
 windows = { version = "0.62", features = [
 	"Devices_Bluetooth",
 	"Devices_Bluetooth_Advertisement",
@@ -49,6 +52,10 @@ windows = { version = "0.62", features = [
 	"Win32_Foundation",
 	"Win32_Storage_FileSystem",
 	"Win32_Security",
+	"Win32_System_Registry",
+	"Win32_System_Threading",
+	"Win32_UI_Shell",
+	"Win32_UI_WindowsAndMessaging",
 ] }
 windows-future = "0.3"
 

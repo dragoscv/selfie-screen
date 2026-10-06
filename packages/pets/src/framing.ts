@@ -84,3 +84,39 @@ export function uprightSize(r: Rotation, w: number, h: number): [number, number]
 export function outputSize(orientation: "portrait" | "landscape"): OutputSize {
     return orientation === "portrait" ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
 }
+
+const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), hi);
+
+/**
+ * Digital crop on top of a cover framing: `zoom` (>= 1) shrinks the sampled
+ * window and (cx, cy) — upright camera coords — is where it is centred. The
+ * window is clamped so it never leaves the camera image.
+ */
+export function cropFraming(base: Framing, zoom: number, cx: number, cy: number): Framing {
+    const z = Math.max(1, zoom);
+    const scaleX = base.scaleX / z;
+    const scaleY = base.scaleY / z;
+    return {
+        scaleX,
+        scaleY,
+        offsetX: clamp(cx - scaleX / 2, 0, 1 - scaleX),
+        offsetY: clamp(cy - scaleY / 2, 0, 1 - scaleY),
+        mirror: base.mirror,
+    };
+}
+
+/** Centre of the sampled window, upright camera coords. */
+export function framingCentre(f: Framing): [number, number] {
+    return [f.offsetX + f.scaleX / 2, f.offsetY + f.scaleY / 2];
+}
+
+/** Raw camera point -> output-normalised point through rotation and framing. */
+export function rawToOutput(f: Framing, r: Rotation, x: number, y: number): [number, number] {
+    const [ux, uy] = rawToUpright(r, x, y);
+    return videoToOutput(f, ux, uy);
+}
+
+/** Make a size NV12-friendly: width a multiple of 4, height a multiple of 2. */
+export function evenSize(width: number, height: number): OutputSize {
+    return { width: Math.max(4, Math.floor(width / 4) * 4), height: Math.max(2, Math.floor(height / 2) * 2) };
+}

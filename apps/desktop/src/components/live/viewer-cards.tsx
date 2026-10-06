@@ -50,7 +50,7 @@ function ViewerCardView({ entry }: { entry: QueuedViewerCard }) {
             role="status"
             aria-label={t("viewerCard.label", { name: card.nickname })}
             className={cn(
-                "surface pointer-events-auto relative overflow-hidden rounded-[--radius-card] p-3 shadow-xl",
+                "surface pointer-events-auto relative overflow-hidden rounded-card p-3 shadow-xl",
                 "[box-shadow:inset_0_0_0_1px_color-mix(in_oklab,var(--kind-follow)_45%,transparent)]",
             )}
         >
@@ -95,7 +95,7 @@ function ViewerCardView({ entry }: { entry: QueuedViewerCard }) {
                 </ul>
             )}
             {card.greeting !== undefined && card.greeting !== "" && (
-                <p className="mt-2 rounded-[--radius-chip] bg-accent-subtle px-2.5 py-1.5 text-xs text-accent">
+                <p className="mt-2 rounded-chip bg-accent-subtle px-2.5 py-1.5 text-xs text-accent">
                     {t("viewerCard.greeting", { text: card.greeting })}
                 </p>
             )}

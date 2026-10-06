@@ -26,7 +26,7 @@ export function Suggestions() {
                                 initial="initial"
                                 animate="animate"
                                 exit="exit"
-                                className="flex items-start gap-2 rounded-[--radius-chip] bg-panel-alt px-3 py-2"
+                                className="flex items-start gap-2 rounded-chip bg-panel-alt px-3 py-2"
                             >
                                 <span
                                     className={cn(

@@ -113,7 +113,7 @@ export function LiveRoute() {
                             placeholder={t("feed.searchPlaceholder")}
                             aria-label={t("feed.search")}
                             className={cn(
-                                "no-drag h-8 w-52 rounded-[--radius-chip] bg-panel-alt pl-8 pr-7 text-xs text-fg",
+                                "no-drag h-8 w-52 rounded-chip bg-panel-alt pl-8 pr-7 text-xs text-fg",
                                 "border border-border outline-none placeholder:text-fg-subtle",
                                 "focus:border-accent focus:ring-2 focus:ring-ring/40",
                             )}
@@ -162,7 +162,7 @@ export function LiveRoute() {
                                 aria-pressed={active}
                                 className={cn(
                                     "no-drag inline-flex items-center gap-1.5 rounded-full px-2.5 py-1",
-                                    "text-[0.6875rem] font-medium outline-none transition-all duration-[--dur-fast]",
+                                    "text-[0.6875rem] font-medium outline-none transition-all duration-(--dur-fast)",
                                     "focus-visible:ring-2 focus-visible:ring-ring",
                                     active
                                         ? "text-[var(--k)] [background:color-mix(in_oklab,var(--k)_18%,transparent)]"
@@ -199,14 +199,14 @@ export function LiveRoute() {
             <Separator className={SEPARATOR_CLASS} />
 
             <Panel id="side" defaultSize="26%" minSize="18%" className="min-h-0">
-                <div className="@container h-full overflow-y-auto px-4 py-3">
-                    <div className="flex flex-col gap-3">
+                <div className="@container h-full overflow-y-auto px-4 py-4">
+                    <div className="flex flex-col gap-4">
                         <ErrorBoundary area="goals">
                             <GoalsCard />
                         </ErrorBoundary>
 
                         <Card title={t("analytics.title")} icon={<Eye />} flush>
-                            <div className="grid grid-cols-2 gap-2 @sm:grid-cols-3">
+                            <div className="grid grid-cols-2 gap-3 @sm:grid-cols-3">
                                 <InlineStat
                                     label={t("stats.viewers")}
                                     value={status.viewerCount ?? 0}
@@ -229,7 +229,7 @@ export function LiveRoute() {
                             </p>
                         </Card>
 
-                        <div className="grid grid-cols-2 gap-2 @lg:grid-cols-2 @2xl:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-3 @2xl:grid-cols-4">
                             <Stat
                                 label={t("stats.messages")}
                                 value={stats.messages}
@@ -265,7 +265,7 @@ export function LiveRoute() {
                         </div>
 
                         {trackEarnings && (
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-3">
                                 <Stat
                                     label={t("stats.diamonds")}
                                     value={stats.diamonds}

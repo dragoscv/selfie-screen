@@ -59,6 +59,39 @@ const MIGRATIONS: readonly string[] = [
         note TEXT NOT NULL
     );
     CREATE INDEX highlights_at ON highlights(at);`,
+    // 3 — vision log + enrolled identities (0.3.0). `vision_meta` remembers
+    // one-shot work such as the dog seed, so a GDPR erasure is never undone.
+    `CREATE TABLE vision_events (
+        id INTEGER PRIMARY KEY,
+        signal TEXT NOT NULL,
+        subject_kind TEXT NOT NULL,
+        subject_name TEXT,
+        owner INTEGER NOT NULL,
+        started_at INTEGER NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        confidence REAL NOT NULL,
+        session_id INTEGER
+    );
+    CREATE INDEX vision_events_started ON vision_events(started_at);
+    CREATE INDEX vision_events_signal ON vision_events(signal, started_at);
+    CREATE TABLE identity_profiles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE identity_embeddings (
+        profile_id TEXT NOT NULL REFERENCES identity_profiles(id) ON DELETE CASCADE,
+        idx INTEGER NOT NULL,
+        vec BLOB NOT NULL,
+        PRIMARY KEY (profile_id, idx)
+    );
+    CREATE TABLE vision_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
@@ -141,6 +174,19 @@ export class ViewerMemory {
 
     get version(): number {
         return num((this.#db.prepare("PRAGMA user_version").get() as Row | undefined)?.user_version);
+    }
+
+    /** Shared handle for the vision log and identity store (same file, same pragmas). */
+    get raw(): Db {
+        return this.#db;
+    }
+
+    /** Newest session still running (no `ended_at`), if any. */
+    activeSessionId(): number | undefined {
+        const row = this.#db.prepare("SELECT id FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC, id DESC LIMIT 1").get() as
+            | Row
+            | undefined;
+        return row ? num(row.id) : undefined;
     }
 
     #migrate(): void {

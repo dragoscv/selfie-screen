@@ -30,7 +30,7 @@ export function SwitchRow({
     return (
         <div
             className={cn(
-                "flex items-center gap-4 rounded-[--radius-chip] py-1",
+                "flex items-center gap-4 rounded-chip py-1",
                 disabled && "opacity-55",
             )}
         >
@@ -54,7 +54,7 @@ export function SwitchRow({
                 className={cn(
                     "no-drag peer relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center",
                     "rounded-full border-2 border-transparent outline-none",
-                    "transition-colors duration-[--dur-fast] ease-[--ease-out]",
+                    "transition-colors duration-(--dur-fast) ease-out",
                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
                     "disabled:cursor-not-allowed",
                     "data-[state=unchecked]:bg-panel-alt",
@@ -62,7 +62,7 @@ export function SwitchRow({
                 data-tinted={tint ? "" : undefined}
             >
                 <span
-                    className="absolute inset-0 rounded-full opacity-0 transition-opacity duration-[--dur-fast] data-[on=true]:opacity-100"
+                    className="absolute inset-0 rounded-full opacity-0 transition-opacity duration-(--dur-fast) data-[on=true]:opacity-100"
                     data-on={checked}
                     style={{ background: tint ?? "var(--accent)" }}
                     aria-hidden
@@ -70,7 +70,7 @@ export function SwitchRow({
                 <SwitchPrimitive.Thumb
                     className={cn(
                         "pointer-events-none relative z-10 block size-5 rounded-full bg-white shadow-sm",
-                        "transition-transform duration-[--dur-fast] ease-[--ease-out]",
+                        "transition-transform duration-(--dur-fast) ease-out",
                         "data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
                         "data-[state=unchecked]:bg-fg-subtle",
                     )}
@@ -133,7 +133,7 @@ export function SliderRow({
                 </label>
                 <output
                     htmlFor={id}
-                    className="rounded-[0.5rem] px-2.5 py-1 text-xs font-bold tabular-nums transition-colors duration-[--dur-normal]"
+                    className="rounded-[0.5rem] px-2.5 py-1 text-xs font-bold tabular-nums transition-colors duration-(--dur-normal)"
                     style={{
                         color: tint ?? "var(--accent)",
                         background: "color-mix(in oklab, var(--tint, var(--accent)) 14%, transparent)",
@@ -168,7 +168,7 @@ export function SliderRow({
                     aria-label={typeof label === "string" ? label : undefined}
                     className={cn(
                         "block size-4 rounded-full border-2 border-bg shadow-md outline-none",
-                        "transition-[transform,box-shadow] duration-[--dur-fast] ease-[--ease-out]",
+                        "transition-[transform,box-shadow] duration-(--dur-fast) ease-out",
                         "hover:scale-110 active:scale-95",
                         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
                     )}
@@ -220,8 +220,8 @@ export function ChipSelector<T extends string>({
                             disabled={disabled}
                             onClick={() => onSelect(option)}
                             className={cn(
-                                "no-drag rounded-[--radius-chip] px-3.5 py-2 text-xs outline-none",
-                                "transition-all duration-[--dur-fast] ease-[--ease-out]",
+                                "no-drag rounded-chip px-3.5 py-2 text-xs outline-none",
+                                "transition-all duration-(--dur-fast) ease-out",
                                 "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
                                 "disabled:cursor-not-allowed",
                                 selected
@@ -280,9 +280,9 @@ export function TextInput({
     const id = useId();
     const hintId = `${id}-hint`;
     const shared = cn(
-        "no-drag w-full rounded-[--radius-control] bg-panel-alt px-3.5 py-2.5 text-sm text-fg",
+        "no-drag w-full rounded-control bg-panel-alt px-3.5 py-2.5 text-sm text-fg",
         "border border-border outline-none placeholder:text-fg-subtle",
-        "transition-[border-color,box-shadow] duration-[--dur-fast]",
+        "transition-[border-color,box-shadow] duration-(--dur-fast)",
         "focus:border-accent focus:ring-2 focus:ring-ring/40",
         "disabled:cursor-not-allowed disabled:opacity-55",
         invalid && "border-danger focus:border-danger focus:ring-danger/30",

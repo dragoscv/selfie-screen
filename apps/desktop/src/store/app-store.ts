@@ -8,10 +8,12 @@ import {
     type EffectFired,
     type GameState,
     type GoalsState,
+    type IdentityProfile,
     type LiveControlState,
     type PanelStatus,
     type ReplayInfo,
     type ReplyItem,
+    type RuleFired,
     type SerialPortInfo,
     type ServerMessage,
     type SessionInfo,
@@ -20,6 +22,9 @@ import {
     type Settings,
     type Suggestion,
     type ViewerCard,
+    type VisionLogEntry,
+    type VisionLogStat,
+    type VisionSnapshot,
 } from "@tiksee/core";
 import { create } from "zustand";
 
@@ -70,6 +75,11 @@ export interface QueuedViewerCard {
 export interface Translation {
     lang: string;
     text: string;
+}
+
+export interface VisionLogState {
+    entries: VisionLogEntry[];
+    stats: VisionLogStat[];
 }
 
 export interface SummaryState {
@@ -130,6 +140,13 @@ interface AppState {
     translations: Record<string, Translation>;
     summary: SummaryState;
 
+    /* vision (0.3.0) */
+    identities: IdentityProfile[];
+    visionSnapshot: VisionSnapshot | null;
+    /** Newest first, capped at MAX_RULE_FIRED. */
+    ruleFired: RuleFired[];
+    visionLog: VisionLogState | null;
+
     /* diagnostics */
     logs: LogLine[];
 
@@ -158,6 +175,7 @@ const MAX_FINALS = 5;
 const MAX_CARDS = 6;
 /** Translations are keyed by event id; keep roughly one feed's worth. */
 const MAX_TRANSLATIONS = 600;
+const MAX_RULE_FIRED = 50;
 
 const INITIAL_SUMMARY: SummaryState = { sessions: [], current: null, loading: false, error: null, open: false };
 
@@ -213,6 +231,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     translations: {},
     summary: INITIAL_SUMMARY,
 
+    identities: [],
+    visionSnapshot: null,
+    ruleFired: [],
+    visionLog: null,
+
     logs: [],
 
     handleMessage: (message) => {
@@ -225,6 +248,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 });
                 // The sidecar starts with defaults; push ours so it agrees with the UI.
                 sidecarClient.send({ type: "settings", settings: get().settings });
+                sidecarClient.send({ type: "identityList" });
                 break;
 
             case "events": {
@@ -361,6 +385,26 @@ export const useAppStore = create<AppState>((set, get) => ({
                         open: state.summary.open || (message.auto && message.summary !== undefined),
                     },
                 }));
+                break;
+
+            case "identities":
+                set({ identities: message.profiles });
+                break;
+
+            case "visionSnapshot":
+                set({ visionSnapshot: message.snapshot });
+                break;
+
+            case "ruleFired":
+                set((state) => ({ ruleFired: [message.fired, ...state.ruleFired].slice(0, MAX_RULE_FIRED) }));
+                break;
+
+            case "visionLog":
+                set({ visionLog: { entries: message.entries, stats: message.stats } });
+                break;
+
+            case "ruleAction":
+                // Executed by the studio window; nothing to do here.
                 break;
 
             default:

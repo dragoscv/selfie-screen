@@ -113,6 +113,15 @@ pub struct BleCtl {
     tx: Mutex<Option<Sender<Req>>>,
 }
 
+/// Last state emitted on `camera://ble`. Events only fire on change, so a
+/// window opened later (the studio) asks for this instead of waiting forever
+/// with every camera button disabled (owner report 2026-10-06).
+static LAST: Mutex<Option<BleState>> = Mutex::new(None);
+
+pub fn last_state() -> Option<BleState> {
+    LAST.lock().ok().and_then(|g| g.clone())
+}
+
 impl BleCtl {
     pub fn start(&self, app: &AppHandle) {
         let Ok(mut guard) = self.tx.lock() else {
@@ -148,6 +157,9 @@ impl BleCtl {
 }
 
 fn emit(app: &AppHandle, s: &BleState) {
+    if let Ok(mut g) = LAST.lock() {
+        *g = Some(s.clone());
+    }
     let _ = app.emit("camera://ble", s);
 }
 

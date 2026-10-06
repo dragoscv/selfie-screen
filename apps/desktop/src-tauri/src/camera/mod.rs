@@ -484,6 +484,12 @@ pub fn camera_ble(
     state.send(action, value)
 }
 
+/// Current Bluetooth remote state (the `camera://ble` event only fires on change).
+#[tauri::command]
+pub fn camera_ble_state() -> Option<ble::BleState> {
+    ble::last_state()
+}
+
 pub fn shutdown(app: &AppHandle) {
     if let Some(c) = app.try_state::<CameraCtl>() {
         c.stop();

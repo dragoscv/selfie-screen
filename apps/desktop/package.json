@@ -1,6 +1,6 @@
 {
     "name": "@tiksee/desktop",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "private": true,
     "type": "module",
     "scripts": {
@@ -14,7 +14,8 @@
         "typecheck": "tsc --noEmit -p tsconfig.json",
         "lint": "eslint src",
         "test": "vitest run",
-        "clean": "rimraf dist .turbo"
+        "clean": "rimraf dist .turbo",
+        "vcam:build": "node scripts/build-vcam.mjs"
     },
     "dependencies": {
         "@mediapipe/tasks-vision": "catalog:",
@@ -33,10 +34,14 @@
         "@tiksee/core": "workspace:*",
         "@tiksee/pets": "workspace:*",
         "@tiksee/ui": "workspace:*",
+        "@tiksee/vision": "workspace:*",
+        "@xyflow/react": "catalog:",
+        "@dagrejs/dagre": "catalog:",
         "cmdk": "catalog:",
         "i18next": "catalog:",
         "lucide-react": "catalog:",
         "motion": "catalog:",
+        "onnxruntime-web": "catalog:",
         "react": "catalog:",
         "react-dom": "catalog:",
         "react-i18next": "catalog:",

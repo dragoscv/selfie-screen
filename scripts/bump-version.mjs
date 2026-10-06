@@ -16,6 +16,8 @@ const jsonFiles = [
     "packages/core/package.json",
     "packages/ui/package.json",
     "packages/config/package.json",
+    "packages/pets/package.json",
+    "packages/vision/package.json",
     "apps/desktop/src-tauri/tauri.conf.json",
 ];
 for (const rel of jsonFiles) {
@@ -26,8 +28,16 @@ for (const rel of jsonFiles) {
     writeFileSync(url, next);
 }
 
-const cargo = new URL("apps/desktop/src-tauri/Cargo.toml", root);
-const toml = readFileSync(cargo, "utf8");
-writeFileSync(cargo, toml.replace(/^version = "\d+\.\d+\.\d+"/m, `version = "${version}"`));
+const cargoFiles = [
+    "apps/desktop/src-tauri/Cargo.toml",
+    "apps/desktop/src-tauri/vcam/shared/Cargo.toml",
+    "apps/desktop/src-tauri/vcam/source/Cargo.toml",
+    "apps/desktop/src-tauri/vcam/setup/Cargo.toml",
+];
+for (const rel of cargoFiles) {
+    const cargo = new URL(rel, root);
+    const toml = readFileSync(cargo, "utf8");
+    writeFileSync(cargo, toml.replace(/^version = "\d+\.\d+\.\d+"/m, `version = "${version}"`));
+}
 
-console.log(`version ${version} written to ${jsonFiles.length + 1} files`);
+console.log(`version ${version} written to ${jsonFiles.length + cargoFiles.length} files`);

@@ -3,10 +3,13 @@ import {
     CAMERA_ROTATIONS,
     DENSITIES,
     FLASH_COLORS,
+    GUIDE_KINDS,
     LOCALES,
     OVERLAY_LAYOUTS,
+    PEAKING_COLORS,
     PET_CHOICES,
     PET_STYLES,
+    SCOPE_KINDS,
     SPEECH_ENGINES,
     SPEECH_LANGUAGES,
     STUDIO_ORIENTATIONS,
@@ -63,6 +66,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { CameraRemote } from "../components/camera-remote.js";
+import { CameraUsb } from "../components/camera-usb.js";
 import { useSettingsUpdate } from "../hooks/use-settings.js";
 import { isVoicemeeter, listAudioDevices, requestDeviceAccess, type AudioDeviceList } from "../lib/audio/devices.js";
 import { acceleratorKey, isValidAccelerator } from "../lib/hotkeys.js";
@@ -109,8 +113,8 @@ export function SettingsRoute() {
                         onClick={() => setSection(id)}
                         aria-current={section === id ? "page" : undefined}
                         className={cn(
-                            "no-drag mb-0.5 flex w-full items-center gap-2.5 rounded-[--radius-chip] px-3 py-2",
-                            "text-left text-[0.8125rem] outline-none transition-colors duration-[--dur-fast]",
+                            "no-drag mb-0.5 flex w-full items-center gap-2.5 rounded-chip px-3 py-2",
+                            "text-left text-[0.8125rem] outline-none transition-colors duration-(--dur-fast)",
                             "focus-visible:ring-2 focus-visible:ring-ring",
                             section === id
                                 ? "bg-accent-subtle font-semibold text-accent"
@@ -124,7 +128,7 @@ export function SettingsRoute() {
             </nav>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="measure-wide mx-auto flex flex-col gap-3 p-5">
+                <div className="measure-wide mx-auto flex flex-col gap-5 px-6 py-6">
                     {section === "appearance" && <AppearanceSection />}
                     {section === "voice" && <VoiceSection />}
                     {section === "audio" && <AudioSection />}
@@ -191,7 +195,7 @@ function AppearanceSection() {
                                 title={ACCENT_LABELS[preset]}
                                 className={cn(
                                     "no-drag grid size-9 place-items-center rounded-full outline-none",
-                                    "transition-transform duration-[--dur-fast] hover:scale-110",
+                                    "transition-transform duration-(--dur-fast) hover:scale-110",
                                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
                                 )}
                                 style={{
@@ -216,7 +220,7 @@ function AppearanceSection() {
                         className={cn(
                             "no-drag grid size-9 place-items-center rounded-full text-xs font-bold outline-none",
                             "bg-[conic-gradient(from_0deg,oklch(0.7_0.18_0),oklch(0.7_0.18_120),oklch(0.7_0.18_240),oklch(0.7_0.18_360))]",
-                            "transition-transform duration-[--dur-fast] hover:scale-110",
+                            "transition-transform duration-(--dur-fast) hover:scale-110",
                             "focus-visible:ring-2 focus-visible:ring-ring",
                         )}
                         style={custom ? { boxShadow: "0 0 0 2px var(--bg), 0 0 0 4px var(--accent)" } : undefined}
@@ -348,7 +352,7 @@ function VoiceSection() {
                     />
                     <p className="text-[0.6875rem] text-fg-muted">{t("settings.voice.engineHint")}</p>
                     {shopMode && (
-                        <p className="rounded-[--radius-chip] bg-warning/12 px-3 py-2 text-xs text-warning" role="note">
+                        <p className="rounded-chip bg-warning/12 px-3 py-2 text-xs text-warning" role="note">
                             {t("settings.voice.shopModeNote")}
                         </p>
                     )}
@@ -481,7 +485,7 @@ function AudioSection() {
                 }
             >
                 {devices !== null && !devices.labelled && (
-                    <div className="flex items-center gap-3 rounded-[--radius-chip] bg-panel-alt px-3 py-2.5">
+                    <div className="flex items-center gap-3 rounded-chip bg-panel-alt px-3 py-2.5">
                         <p className="min-w-0 flex-1 text-xs text-fg-muted">
                             {denied ? t("settings.audio.denied") : t("settings.audio.permission")}
                         </p>
@@ -920,7 +924,7 @@ function EffectsSection() {
                                 <li
                                     // Tiers have no id; position is the identity while editing.
                                     key={index}
-                                    className="grid grid-cols-[1fr_1.4fr_1fr_auto] items-end gap-2 rounded-[--radius-chip] bg-panel-alt/60 p-2"
+                                    className="grid grid-cols-[1fr_1.4fr_1fr_auto] items-end gap-2 rounded-chip bg-panel-alt/60 p-2"
                                 >
                                     <NumberField
                                         label={t("settings.effects.minDiamonds")}
@@ -991,7 +995,7 @@ function InteractiveSection() {
                     {(["gifts", "likes"] as const).map((kind) => {
                         const goal = goals[kind];
                         return (
-                            <div key={kind} className="flex flex-col gap-2 rounded-[--radius-chip] bg-panel-alt/60 p-3">
+                            <div key={kind} className="flex flex-col gap-2 rounded-chip bg-panel-alt/60 p-3">
                                 <SwitchRow
                                     label={t(`settings.goals.${kind}`)}
                                     checked={goal.enabled}
@@ -1268,7 +1272,11 @@ function StudioSection() {
                     onChange={(showStats) => update("studio", { showStats })}
                 />
             </Card>
+            <VirtualCameraCard />
+            <MonitorCard />
+            <FramingCard />
             <CameraRemote />
+            <CameraUsb />
             <Card title={t("settings.studio.petsTitle")} subtitle={t("settings.studio.petsHint")} icon={<Sparkles />} tint="var(--kind-like)">
                 <SelectField
                     label={t("settings.studio.leftPet")}
@@ -1330,6 +1338,228 @@ function StudioSection() {
                 />
             </Card>
         </>
+    );
+}
+
+/** Shape of `vcam_status` (WS25-01); every field optional so an older shell still renders. */
+interface VcamStatus {
+    state?: string;
+    registered?: boolean;
+    consumer?: [number, number, number] | null;
+    fps?: number;
+    error?: string | null;
+}
+
+function VirtualCameraCard() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const s = useAppStore((state) => state.settings.studio);
+    const [status, setStatus] = useState<VcamStatus | null>(null);
+    const [statusError, setStatusError] = useState<string | null>(null);
+    const [repairing, setRepairing] = useState(false);
+
+    // Polled only while this section is mounted (i.e. visible).
+    useEffect(() => {
+        let disposed = false;
+        const poll = () =>
+            void invoke<VcamStatus>("vcam_status")
+                .then((next) => {
+                    if (disposed) return;
+                    setStatus(next);
+                    setStatusError(null);
+                })
+                .catch((error: unknown) => {
+                    if (!disposed) setStatusError(String(error));
+                });
+        poll();
+        const id = window.setInterval(poll, 2000);
+        return () => {
+            disposed = true;
+            window.clearInterval(id);
+        };
+    }, []);
+
+    const repair = () => {
+        setRepairing(true);
+        void invoke("vcam_register")
+            .then(() => toast.success(t("settings.studio.vcam.repaired")))
+            .catch((error: unknown) => toast.error(t("settings.studio.vcam.repairFailed", { error: String(error) })))
+            .finally(() => setRepairing(false));
+    };
+
+    const consumer = status?.consumer;
+    const tone = statusError ? "danger" : status?.state === "streaming" ? "success" : status?.registered === false ? "warning" : "neutral";
+
+    return (
+        <Card title={t("settings.studio.vcam.title")} subtitle={t("settings.studio.vcam.hint")} icon={<Video />} tint="var(--kind-gift)">
+            <SwitchRow
+                label={t("settings.studio.vcam.enabled")}
+                description={t("settings.studio.vcam.enabledHint")}
+                checked={s.virtualCamera}
+                onChange={(virtualCamera) => update("studio", { virtualCamera })}
+                tint="var(--kind-gift)"
+            />
+            <ChipSelector
+                label={t("settings.studio.vcam.fps")}
+                options={["30", "60"] as const}
+                value={String(s.virtualCameraFps) as "30" | "60"}
+                onSelect={(v) => update("studio", { virtualCameraFps: v === "30" ? 30 : 60 })}
+                display={(v) => `${v} fps`}
+                tint="var(--kind-gift)"
+            />
+            <div className="flex flex-wrap items-center gap-2" aria-live="polite">
+                <StatusPill tone={tone} pulse={status?.state === "streaming"}>
+                    {statusError ? t("settings.studio.vcam.unavailable") : (status?.state ?? t("common.loading"))}
+                </StatusPill>
+                {status && (
+                    <span className="text-xs text-fg-muted">
+                        {status.registered ? t("settings.studio.vcam.registered") : t("settings.studio.vcam.notRegistered")}
+                        {consumer ? ` · ${t("settings.studio.vcam.consumer", { w: consumer[0], h: consumer[1], fps: consumer[2] })}` : ` · ${t("settings.studio.vcam.noConsumer")}`}
+                        {status.fps !== undefined ? ` · ${Math.round(status.fps)} fps` : ""}
+                    </span>
+                )}
+                {(status?.error ?? statusError) && <span className="text-xs text-danger">{status?.error ?? statusError}</span>}
+            </div>
+            <div>
+                <Button size="sm" variant="soft" loading={repairing} onClick={repair}>
+                    {t("settings.studio.vcam.repair")}
+                </Button>
+            </div>
+        </Card>
+    );
+}
+
+function MonitorCard() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const studio = useAppStore((state) => state.settings.studio);
+    const m = studio.monitor;
+    const set = (patch: Partial<Settings["studio"]["monitor"]>) => update("studio", { monitor: { ...m, ...patch } });
+
+    return (
+        <Card title={t("settings.studio.monitor.title")} subtitle={t("settings.studio.monitor.hint")} icon={<Eye />} tint="var(--kind-chat)">
+            <SwitchRow label={t("settings.studio.monitor.cleanFeed")} description={t("settings.studio.monitor.cleanFeedHint")} checked={m.cleanFeed} onChange={(cleanFeed) => set({ cleanFeed })} tint="var(--kind-chat)" />
+            <SwitchRow label={t("settings.studio.monitor.peaking")} checked={m.peaking} onChange={(peaking) => set({ peaking })} tint="var(--kind-chat)" />
+            <Reveal show={m.peaking}>
+                <ChipSelector
+                    label={t("settings.studio.monitor.peakingColor")}
+                    options={PEAKING_COLORS}
+                    value={m.peakingColor}
+                    onSelect={(peakingColor) => set({ peakingColor })}
+                    display={(c) => t(`settings.studio.monitor.colors.${c}`)}
+                    tint="var(--kind-chat)"
+                />
+                <SliderRow
+                    label={t("settings.studio.monitor.peakingThreshold")}
+                    value={m.peakingThreshold}
+                    min={0.03}
+                    max={0.5}
+                    step={0.01}
+                    format={(v) => v.toFixed(2)}
+                    onCommit={(peakingThreshold) => set({ peakingThreshold })}
+                    tint="var(--kind-chat)"
+                />
+            </Reveal>
+            <SwitchRow label={t("settings.studio.monitor.zebra")} checked={m.zebra} onChange={(zebra) => set({ zebra })} tint="var(--kind-chat)" />
+            <Reveal show={m.zebra}>
+                <SliderRow
+                    label={t("settings.studio.monitor.zebraLevel")}
+                    value={m.zebraLevel}
+                    min={50}
+                    max={100}
+                    step={1}
+                    format={(v) => `${Math.round(v)} IRE`}
+                    onCommit={(v) => set({ zebraLevel: Math.round(v) })}
+                    tint="var(--kind-chat)"
+                />
+            </Reveal>
+            <SwitchRow label={t("settings.studio.monitor.falseColor")} checked={m.falseColor} onChange={(falseColor) => set({ falseColor })} tint="var(--kind-chat)" />
+            <SwitchRow label={t("settings.studio.monitor.clipping")} checked={m.clipping} onChange={(clipping) => set({ clipping })} tint="var(--kind-chat)" />
+            <SelectField
+                label={t("settings.studio.monitor.guides")}
+                value={m.guides}
+                options={GUIDE_KINDS.map((g) => ({ value: g, label: t(`settings.studio.monitor.guideKinds.${g}`) }))}
+                onChange={(v) => set({ guides: v as typeof m.guides })}
+            />
+            <SelectField
+                label={t("settings.studio.monitor.scope")}
+                value={m.scope}
+                options={SCOPE_KINDS.map((k) => ({ value: k, label: t(`settings.studio.monitor.scopeKinds.${k}`) }))}
+                onChange={(v) => set({ scope: v as typeof m.scope })}
+            />
+            <SwitchRow label={t("settings.studio.monitor.safeZones")} checked={m.safeZones} onChange={(safeZones) => set({ safeZones })} tint="var(--kind-chat)" />
+            <SwitchRow label={t("settings.studio.monitor.afBox")} checked={m.afBox} onChange={(afBox) => set({ afBox })} tint="var(--kind-chat)" />
+            <SwitchRow label={t("settings.studio.monitor.horizon")} checked={m.horizon} onChange={(horizon) => set({ horizon })} tint="var(--kind-chat)" />
+            <ChipSelector
+                label={t("settings.studio.monitor.loupeZoom")}
+                options={["2", "4"] as const}
+                value={String(m.loupeZoom) as "2" | "4"}
+                onSelect={(v) => set({ loupeZoom: v === "4" ? 4 : 2 })}
+                display={(v) => `${v}×`}
+                tint="var(--kind-chat)"
+            />
+        </Card>
+    );
+}
+
+function FramingCard() {
+    const { t } = useTranslation();
+    const update = useSettingsUpdate();
+    const studio = useAppStore((state) => state.settings.studio);
+    const f = studio.framing;
+    const set = (patch: Partial<Settings["studio"]["framing"]>) => update("studio", { framing: { ...f, ...patch } });
+
+    return (
+        <Card title={t("settings.studio.framing.title")} subtitle={t("settings.studio.framing.hint")} icon={<Target />} tint="var(--kind-follow)">
+            <SliderRow
+                label={t("settings.studio.framing.zoom")}
+                value={f.zoom}
+                min={1}
+                max={2.5}
+                step={0.05}
+                format={(v) => `${v.toFixed(2)}×`}
+                onCommit={(zoom) => set({ zoom })}
+                tint="var(--kind-follow)"
+            />
+            <SwitchRow label={t("settings.studio.framing.autoReframe")} description={t("settings.studio.framing.autoReframeHint")} checked={f.autoReframe} onChange={(autoReframe) => set({ autoReframe })} tint="var(--kind-follow)" />
+            <Reveal show={f.autoReframe}>
+                <SliderRow
+                    label={t("settings.studio.framing.deadZone")}
+                    value={f.deadZone}
+                    min={0}
+                    max={0.3}
+                    step={0.01}
+                    format={(v) => `${Math.round(v * 100)}%`}
+                    onCommit={(deadZone) => set({ deadZone })}
+                    tint="var(--kind-follow)"
+                />
+                <SwitchRow label={t("settings.studio.framing.smartWide")} description={t("settings.studio.framing.smartWideHint")} checked={f.smartWide} onChange={(smartWide) => set({ smartWide })} tint="var(--kind-follow)" />
+            </Reveal>
+            <SwitchRow label={t("settings.studio.framing.dof")} description={t("settings.studio.framing.dofHint")} checked={f.dof} onChange={(dof) => set({ dof })} tint="var(--kind-follow)" />
+            <Reveal show={f.dof}>
+                <SliderRow
+                    label={t("settings.studio.framing.dofStrength")}
+                    value={f.dofStrength}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    format={(v) => `${Math.round(v * 100)}%`}
+                    onCommit={(dofStrength) => set({ dofStrength })}
+                    tint="var(--kind-follow)"
+                />
+            </Reveal>
+            <SliderRow
+                label={t("settings.studio.framing.afInterval")}
+                value={f.afIntervalS}
+                min={0}
+                max={120}
+                step={1}
+                format={(v) => (v < 1 ? t("common.off") : t("common.seconds", { count: Math.round(v) }))}
+                onCommit={(v) => set({ afIntervalS: Math.round(v) })}
+                tint="var(--kind-follow)"
+            />
+            <p className="text-[0.6875rem] text-fg-muted">{t("settings.studio.framing.arObjects", { count: studio.arObjects.length })}</p>
+        </Card>
     );
 }
 
@@ -1426,7 +1656,7 @@ function ObsSection() {
                 />
                 <Reveal show={obs.browserSourceEnabled}>
                     {url !== "" && (
-                        <code className="block select-all truncate rounded-[--radius-chip] bg-panel-alt px-3 py-2 font-mono text-xs text-accent">
+                        <code className="block select-all truncate rounded-chip bg-panel-alt px-3 py-2 font-mono text-xs text-accent">
                             {url}
                         </code>
                     )}
@@ -1553,7 +1783,7 @@ function PanelSection() {
 
             <Reveal show={p.enabled}>
                 {busy && (
-                    <div className="rounded-[--radius-chip] bg-warning/12 px-3 py-2.5">
+                    <div className="rounded-chip bg-warning/12 px-3 py-2.5">
                         <p className="text-xs font-semibold text-warning">{t("settings.panel.busy")}</p>
                         <p className="mt-0.5 text-[0.6875rem] text-fg-muted">{t("settings.panel.busyHint")}</p>
                     </div>
@@ -1618,7 +1848,7 @@ function PanelSection() {
                             alt={t("settings.panel.preview")}
                             width={160}
                             height={240}
-                            className="rounded-[--radius-chip] border border-border"
+                            className="rounded-chip border border-border"
                         />
                     </div>
                 )}
@@ -1806,7 +2036,7 @@ function DataSection() {
                         {replays.map((replay) => (
                             <li
                                 key={replay.name}
-                                className="flex items-center gap-2 rounded-[--radius-chip] bg-panel-alt px-3 py-2"
+                                className="flex items-center gap-2 rounded-chip bg-panel-alt px-3 py-2"
                             >
                                 <span className="min-w-0 flex-1 truncate text-xs text-fg">{replay.name}</span>
                                 <span className="shrink-0 text-[0.625rem] text-fg-subtle">

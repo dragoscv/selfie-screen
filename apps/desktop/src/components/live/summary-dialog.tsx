@@ -40,7 +40,7 @@ function SummaryBody({ summary }: { summary: SessionSummary }) {
         <div className="flex flex-col gap-5">
             <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {stats.map(([key, value]) => (
-                    <div key={key} className="rounded-[--radius-chip] bg-panel-alt px-3 py-2">
+                    <div key={key} className="rounded-chip bg-panel-alt px-3 py-2">
                         <dt className="text-[0.625rem] uppercase tracking-wide text-fg-muted">{t(`stats.${key}`)}</dt>
                         <dd className="text-lg font-bold tabular-nums text-fg">{nf.format(value)}</dd>
                     </div>
@@ -146,7 +146,7 @@ export function SummaryDialog() {
             ref={ref}
             aria-labelledby={titleId}
             onClose={close}
-            className="surface m-auto w-[min(46rem,92vw)] max-h-[88vh] overflow-hidden rounded-[--radius-card] p-0 text-fg backdrop:bg-black/50"
+            className="surface m-auto w-[min(46rem,92vw)] max-h-[88vh] overflow-hidden rounded-card p-0 text-fg backdrop:bg-black/50"
         >
             <div className="flex max-h-[88vh] flex-col">
                 <header className="flex items-start gap-3 border-b border-border/60 p-4">
@@ -184,7 +184,7 @@ export function SummaryDialog() {
                                 id={selectId}
                                 value={summary?.session.id ?? ""}
                                 onChange={(event) => open(Number(event.target.value))}
-                                className="no-drag h-8 w-full rounded-[--radius-chip] border border-border bg-panel-alt px-2 text-xs text-fg outline-none focus:border-accent focus:ring-2 focus:ring-ring/40"
+                                className="no-drag h-8 w-full rounded-chip border border-border bg-panel-alt px-2 text-xs text-fg outline-none focus:border-accent focus:ring-2 focus:ring-ring/40"
                             >
                                 {state.sessions.map((s) => (
                                     <option key={s.id} value={s.id}>

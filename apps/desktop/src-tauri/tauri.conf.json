@@ -1,12 +1,12 @@
 {
     "$schema": "https://schema.tauri.app/config/2",
     "productName": "TikSee",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "identifier": "ro.codai.tiksee",
     "build": {
         "beforeDevCommand": "pnpm dev",
-        "devUrl": "http://127.0.0.1:5373",
-        "beforeBuildCommand": "pnpm build && pnpm sidecar:exe",
+        "devUrl": "http://127.0.0.1:15373",
+        "beforeBuildCommand": "pnpm build && pnpm sidecar:exe && pnpm vcam:build",
         "frontendDist": "../dist"
     },
     "app": {
@@ -35,7 +35,7 @@
                 "style-src": "'self' 'unsafe-inline'",
                 "font-src": "'self' data:",
                 "img-src": "'self' data: blob: https:",
-                "connect-src": "'self' ws://127.0.0.1:* http://127.0.0.1:* https://ai.codai.ro wss://ai.codai.ro",
+                "connect-src": "'self' ws://127.0.0.1:* http://127.0.0.1:* ipc: http://ipc.localhost https://ai.codai.ro wss://ai.codai.ro https://storage.googleapis.com",
                 "media-src": "'self' blob: data: mediastream:",
                 "worker-src": "'self' blob:"
             }
@@ -54,14 +54,17 @@
             "icons/icon.ico"
         ],
         "resources": {
-            "resources/sidecar/": "sidecar/"
+            "resources/sidecar/": "sidecar/",
+            "vcam/bin/tiksee_vcam.dll": "tiksee_vcam.dll",
+            "vcam/bin/tiksee-vcam-setup.exe": "tiksee-vcam-setup.exe"
         },
         "externalBin": [
             "binaries/tiksee-sidecar"
         ],
         "windows": {
             "nsis": {
-                "installMode": "perMachine"
+                "installMode": "perMachine",
+                "installerHooks": "./windows/hooks.nsh"
             }
         }
     },

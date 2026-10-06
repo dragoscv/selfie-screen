@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { SIGNAL_FAMILIES, defaultRules, ruleSchema } from "./vision.js";
+
 /* ------------------------------------------------------------------ *
  * Appearance — the three orthogonal theme axes plus locale.
  * ------------------------------------------------------------------ */
@@ -388,6 +390,73 @@ export const PET_STYLES = ["pbr", "toon"] as const;
 /** Degrees clockwise to turn the camera image upright (camera mounted in portrait). */
 export const CAMERA_ROTATIONS = [0, 90, 180, 270] as const;
 
+export const GUIDE_KINDS = ["none", "thirds", "golden", "grid", "center"] as const;
+export const PEAKING_COLORS = ["red", "yellow", "white", "blue"] as const;
+export const SCOPE_KINDS = ["none", "histogram", "waveform", "parade", "vectorscope"] as const;
+
+/** Pro monitoring aids drawn in the studio preview only (two render targets: output never has them). */
+export const monitorSchema = z.object({
+    peaking: z.boolean().default(false),
+    peakingColor: z.enum(PEAKING_COLORS).default("red"),
+    /** Lower = more edges highlighted. */
+    peakingThreshold: z.number().min(0.03).max(0.5).default(0.15),
+    zebra: z.boolean().default(false),
+    /** IRE 50..100. */
+    zebraLevel: z.number().int().min(50).max(100).default(95),
+    falseColor: z.boolean().default(false),
+    clipping: z.boolean().default(false),
+    guides: z.enum(GUIDE_KINDS).default("thirds"),
+    safeZones: z.boolean().default(true),
+    scope: z.enum(SCOPE_KINDS).default("none"),
+    afBox: z.boolean().default(true),
+    horizon: z.boolean().default(true),
+    /** 2x/4x magnifier on the eyes while held. */
+    loupeZoom: z.union([z.literal(2), z.literal(4)]).default(2),
+    /** Hide every preview aid (what the viewers see). */
+    cleanFeed: z.boolean().default(false),
+});
+export type MonitorSettings = z.infer<typeof monitorSchema>;
+
+export const framingSchema = z.object({
+    /** Digital zoom 1..2.5 on top of the optical BLE zoom. */
+    zoom: z.number().min(1).max(2.5).default(1),
+    /** Follow the owner's face with a spring-smoothed crop. */
+    autoReframe: z.boolean().default(false),
+    /** Dead zone as a fraction of the frame before the crop moves. */
+    deadZone: z.number().min(0).max(0.3).default(0.08),
+    /** Widen on standing up or a second person. */
+    smartWide: z.boolean().default(true),
+    /** Synthetic depth of field: the face stays sharp, the rest blurs by distance. */
+    dof: z.boolean().default(false),
+    dofStrength: z.number().min(0).max(1).default(0.5),
+    /** Auto AF (BLE half-press) when the face returns or every N s while it moves; 0 = off. */
+    afIntervalS: z.number().int().min(0).max(120).default(0),
+});
+export type FramingSettings = z.infer<typeof framingSchema>;
+
+export const AR_OBJECT_KINDS = ["emoji", "text", "image", "model"] as const;
+export const arObjectSchema = z.object({
+    id: z.string().min(1).max(64),
+    name: z.string().min(1).max(60),
+    kind: z.enum(AR_OBJECT_KINDS),
+    /** Emoji glyph, text, an image data URL, or a pet/model id. */
+    content: z.string().max(400_000),
+    visible: z.boolean().default(true),
+    /** Output-normalised position 0..1 (y down). */
+    x: z.number().min(-0.5).max(1.5),
+    y: z.number().min(-0.5).max(1.5),
+    /** Metres from the camera; the person walks in front of / behind it. */
+    z: z.number().min(0.3).max(6),
+    /** Height in metres at its depth. */
+    size: z.number().min(0.02).max(3).default(0.3),
+    rotation: z.number().min(-180).max(180).default(0),
+    /** Turn slowly / bob for life. */
+    animate: z.enum(["none", "spin", "bob", "pulse"]).default("bob"),
+    /** Pin to a body anchor instead of the world. */
+    anchor: z.enum(["world", "head", "leftShoulder", "rightShoulder", "leftHand", "rightHand"]).default("world"),
+});
+export type ArObject = z.infer<typeof arObjectSchema>;
+
 export const studioSchema = z.object({
     enabled: z.boolean().default(false),
     /** MediaDeviceInfo.deviceId; empty picks a device labelled "USB3.0 Video", else the first camera. */
@@ -409,8 +478,82 @@ export const studioSchema = z.object({
     warmth: z.number().min(-1).max(1).default(0),
     /** Show the fps/frame-time HUD in the studio window (never in the captured frame). */
     showStats: z.boolean().default(false),
+    /** Feed the composited frame to the native "TikSee Camera" (WS25-01). */
+    virtualCamera: z.boolean().default(true),
+    /** 30 or 60 fps virtual-camera output. */
+    virtualCameraFps: z.union([z.literal(30), z.literal(60)]).default(60),
+    /** Preview-only monitoring aids; never in the output frame. */
+    monitor: monitorSchema.prefault({}),
+    /** Digital framing: zoom, auto-reframe on the face, synthetic depth of field. */
+    framing: framingSchema.prefault({}),
+    /** Placed AR objects (x/y in output 0..1, z in metres from the camera). */
+    arObjects: z.array(arObjectSchema).max(32).default([]),
 });
 export type StudioSettings = z.infer<typeof studioSchema>;
+
+/* ------------------------------------------------------------------ *
+ * Vision: gestures, expressions, posture, identity, depth (0.3.0).
+ * ------------------------------------------------------------------ */
+
+export const DEPTH_MODES = ["bodyScale", "model"] as const;
+export type DepthMode = (typeof DEPTH_MODES)[number];
+
+export const calibrationSchema = z.object({
+    /** Per-eye blink thresholds from the calibration wizard (0..1 blendshape). */
+    blinkLeft: z.number().min(0.1).max(0.95).default(0.5),
+    blinkRight: z.number().min(0.1).max(0.95).default(0.5),
+    smile: z.number().min(0.1).max(0.95).default(0.6),
+    mouthOpen: z.number().min(0.1).max(0.95).default(0.45),
+    browsUp: z.number().min(0.1).max(0.95).default(0.55),
+    /** Shoulder width in output px and inter-pupil distance at `referenceM`. */
+    shoulderPx: z.number().min(0).default(0),
+    ipdPx: z.number().min(0).default(0),
+    referenceM: z.number().min(0.3).max(4).default(1),
+    /** Upright posture baseline: nose-to-shoulder-line distance as a fraction of shoulder width. */
+    neckRatio: z.number().min(0).default(0),
+    /** Image-left blendshape is the subject's right eye when the feed is mirrored; the wizard confirms. */
+    swapEyes: z.boolean().default(false),
+    calibratedAt: z.number().int().default(0),
+});
+export type VisionCalibration = z.infer<typeof calibrationSchema>;
+
+export const visionSchema = z.object({
+    enabled: z.boolean().default(true),
+    /** Families the detectors run for; off = model not loaded at all. */
+    families: z
+        .record(z.enum(SIGNAL_FAMILIES), z.boolean())
+        .default({ hand: true, twoHands: true, motion: true, face: true, posture: true, state: true, presence: true }),
+    /** Up to this many hands / faces / poses tracked. */
+    maxPeople: z.number().int().min(1).max(4).default(2),
+    /** Global gate for every signal-driven rule. */
+    rulesEnabled: z.boolean().default(true),
+    /** Sensitive rules need an arm (open palm hold) within this window. */
+    armHoldMs: z.number().int().min(300).max(3000).default(1000),
+    armWindowMs: z.number().int().min(1000).max(30_000).default(5000),
+    /** Show the recognised gesture with a hold ring in the studio preview. */
+    showGestureHud: z.boolean().default(true),
+    /** Keep a timeline of state changes and durations in SQLite. */
+    logEnabled: z.boolean().default(true),
+    logRetentionDays: z.number().int().min(1).max(365).default(30),
+    depth: z.enum(DEPTH_MODES).default("bodyScale"),
+    /** Enrolled-identity matching (beta, models downloaded on demand). */
+    identity: z.boolean().default(false),
+    /** Coaching nudges, all preview-only. */
+    coach: z
+        .object({
+            eyeContact: z.boolean().default(true),
+            posture: z.boolean().default(true),
+            hydrationMin: z.number().int().min(0).max(240).default(45),
+            exposure: z.boolean().default(true),
+            safeZones: z.boolean().default(true),
+            energy: z.boolean().default(true),
+        })
+        .prefault({}),
+    calibration: calibrationSchema.prefault({}),
+    rules: z.array(ruleSchema).max(200).default(defaultRules),
+    tutorialDone: z.boolean().default(false),
+});
+export type VisionSettings = z.infer<typeof visionSchema>;
 
 /* ------------------------------------------------------------------ *
  * Root.
@@ -437,6 +580,7 @@ export const settingsSchema = z.object({
     games: gamesSchema.prefault({}),
     translation: translationSchema.prefault({}),
     studio: studioSchema.prefault({}),
+    vision: visionSchema.prefault({}),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 

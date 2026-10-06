@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { applyAppearance, wantsNativeBackdrop } from "@tiksee/ui";
 import type { Settings } from "@tiksee/core";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { load, type Store } from "@tauri-apps/plugin-store";
 
 import { setLocale } from "../i18n/index.js";
@@ -48,6 +49,39 @@ export function useSettingsSync(): void {
             cancelled = true;
         };
     }, [hydrate]);
+
+    // ---- patches from the studio window (AR edits, calibration, toggles) ----
+    useEffect(() => {
+        if (!loaded) return;
+        let disposed = false;
+        let stop: (() => void) | undefined;
+        void listen<{ studio?: Partial<Settings["studio"]>; vision?: Partial<Settings["vision"]> }>("studio://patch", (e) => {
+            useAppStore.getState().updateSettings((s) => ({
+                ...s,
+                studio: { ...s.studio, ...e.payload.studio },
+                vision: { ...s.vision, ...e.payload.vision },
+            }));
+        })
+            .then((fn) => {
+                if (disposed) fn();
+                else stop = fn;
+            })
+            .catch(() => undefined);
+        let stopClosed: (() => void) | undefined;
+        void listen("studio://closed", () => {
+            useAppStore.getState().updateSettings((s) => ({ ...s, studio: { ...s.studio, enabled: false } }));
+        })
+            .then((fn) => {
+                if (disposed) fn();
+                else stopClosed = fn;
+            })
+            .catch(() => undefined);
+        return () => {
+            disposed = true;
+            stop?.();
+            stopClosed?.();
+        };
+    }, [loaded]);
 
     // ---- persist (debounced) ------------------------------------------
     useEffect(() => {

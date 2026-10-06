@@ -1,0 +1,26 @@
+[package]
+name = "tiksee-vcam-shared"
+version = "0.3.0"
+description = "TikSee Camera: frame ring layout, NV12 conversion and Windows plumbing shared by the app and the media source DLL"
+authors = ["Dragos Catalin Vladulescu"]
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[target."cfg(windows)".dependencies]
+windows-core = "0.62"
+
+[target."cfg(windows)".dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Devices_Properties",
+    "Win32_Foundation",
+    "Win32_Media_MediaFoundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Memory",
+    "Win32_System_SystemInformation",
+    "Win32_System_Variant",
+]
