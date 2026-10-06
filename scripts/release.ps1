@@ -40,7 +40,9 @@ if (-not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { throw 'signing password miss
 
 try {
     Set-Location $root
-    pnpm turbo run build --filter=@tiksee/core --filter=@tiksee/sidecar
+    # Every workspace dependency of the desktop (core, pets, vision, ui, ...) plus the sidecar:
+    # a clean deploy worktree has no dist/ (0.3.0 first attempt: "failed to resolve @tiksee/vision").
+    pnpm turbo run build --filter=@tiksee/desktop^... --filter=@tiksee/sidecar
     if ($LASTEXITCODE) { throw "workspace build failed ($LASTEXITCODE)" }
     Set-Location $desktop
     pnpm tauri build
