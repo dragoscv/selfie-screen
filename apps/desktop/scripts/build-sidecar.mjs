@@ -116,7 +116,8 @@ const deployDir = join(tmpdir(), `tiksee-sidecar-deploy-${process.pid}`);
 rmSync(deployDir, { recursive: true, force: true });
 run(
     "pnpm",
-    ["--filter", "@tiksee/sidecar", "deploy", "--prod", "--legacy", "--config.node-linker=hoisted", deployDir],
+    // allow-unused-patches: workspace patchedDependencies (js-aruco2, desktop-only) are not in the sidecar's tree.
+    ["--filter", "@tiksee/sidecar", "deploy", "--prod", "--legacy", "--config.node-linker=hoisted", "--config.allow-unused-patches=true", deployDir],
     { cwd: root },
 );
 
