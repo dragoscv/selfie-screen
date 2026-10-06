@@ -66,7 +66,8 @@ import type {
     VisionRuntime,
 } from "./controller.js";
 import { EffectLayer, effectOrigin } from "./effects.js";
-import { HandSpace } from "./hand-space.js";
+import { cameraVfov, uprightVfov } from "./camera-fov.js";
+import { HandSpace, palmPerches } from "./hand-space.js";
 import { MetricDistance, type MetricConfig, type PoseForDistance } from "./metric-distance.js";
 import { DigitalFraming } from "./framing.js";
 import { PreviewPass } from "./monitor.js";
@@ -922,7 +923,7 @@ export class StudioEngine implements StudioController {
     /** Raw-camera vFOV + owner calibration for the metric distance. */
     #metricConfig(): MetricConfig {
         const s = this.#settings;
-        return { cameraVfovDeg: s.vfovDeg, worldScale: s.space.worldScale, irisM: s.space.irisM };
+        return { cameraVfovDeg: cameraVfov(s), worldScale: s.space.worldScale, irisM: s.space.irisM };
     }
 
     /**
@@ -998,7 +999,8 @@ export class StudioEngine implements StudioController {
             // Things worth a comment from chatty pets (rising edges only).
             if (e.phase === "start" && OBSERVED_SIGNALS.has(e.signal)) this.#observe(e.signal);
             // Mind context: an open palm invites a pet onto the hand; talking/laughing draws attention.
-            if (e.signal === "open_palm") stage.setContext({ palmUp: e.phase !== "end" });
+            // Real palm perches (setPalms) own palmUp when hands are tracked in 3D.
+            if (e.signal === "open_palm" && this.#debugHands.length === 0) stage.setContext({ palmUp: e.phase !== "end" });
             else if (e.signal === "talking") stage.setContext({ ownerTalking: e.phase !== "end" });
             else if (e.signal === "laughing" && e.phase !== "end") stage.send({ type: "gesture", gesture: "heart" });
             if (e.phase === "end") continue;
@@ -1147,7 +1149,7 @@ export class StudioEngine implements StudioController {
         // 3D: the output pinhole follows the crop + digital zoom; the body model is fed the
         // OWNER's pose as soon as it lands (early pose message, capture-timed) and is
         // interpolated a short fixed delay behind real time every render frame.
-        stage.setFov(outputVfov(this.#settings.vfovDeg, f));
+        stage.setFov(outputVfov(uprightVfov(cameraVfov(this.#settings), rotation, vw, vh), f));
         const tilt = this.#settings.cameraTiltAuto ? (this.#body.estimatedTiltDeg ?? this.#settings.cameraTiltDeg) : this.#settings.cameraTiltDeg;
         stage.setCameraPose(Math.round(tilt * 2) / 2, this.#settings.cameraHeightM);
         if (this.#effects) this.#effects.tiltDeg = stage.pinhole.tiltDeg ?? 0;
@@ -1161,8 +1163,12 @@ export class StudioEngine implements StudioController {
             const m = this.#metric.update(early, this.#metricConfig());
             if (m) this.#ownerM = m.distanceM;
             this.#spaceCapture?.push(early);
+            // Per-joint metric depth from this frame's body solve, re-anchored on the filtered torso distance.
+            const solved = m?.body && m.body.jointDepthM ? m.body : null;
+            const shift = m && solved ? m.distanceM - solved.distanceM : 0;
+            const jointDepthM = solved?.jointDepthM?.map((d) => (d === undefined ? undefined : d + shift));
             this.#body.measure(
-                { tMs: early.tMs, landmarks: pose ? poseToOutput(pose, f, rotation) : null, distanceM: this.#ownerM },
+                { tMs: early.tMs, landmarks: pose ? poseToOutput(pose, f, rotation) : null, distanceM: this.#ownerM, ...(jointDepthM ? { jointDepthM } : {}) },
                 early.arrivalMs,
             );
             if (pose) {
@@ -1183,7 +1189,7 @@ export class StudioEngine implements StudioController {
         if (freshHands) this.#handsSeq = freshHands.seq;
         const cal = this.#visionSettings.calibration.hands;
         this.#debugHands = this.#hands.update(now, freshHands, body.present ? body : null, pin, (x, y) => rawToOutput(f, rotation, x, y), {
-            cameraVfovDeg: this.#settings.vfovDeg,
+            cameraVfovDeg: cameraVfov(this.#settings),
             palmM: cal.palmM,
             pinchOn: cal.pinchOn,
             pinchOff: cal.pinchOff,
@@ -1193,6 +1199,7 @@ export class StudioEngine implements StudioController {
                 ? this.#debugHands.map((h) => ({ side: h.side, present: h.present, pinching: h.pinching, point: h.point, strength: h.strength }))
                 : [],
         );
+        stage.setPalms(this.#settings.petHands.enabled ? palmPerches(this.#debugHands, [0, pin.heightM ?? 0, 0]) : []);
         this.#ar?.update(pin, this.#ownerM, this.#arAnchors, now / 1000, dt, this.#hidden);
         this.#effects?.update(dt);
         stage.update(body.present ? body : null, dt);

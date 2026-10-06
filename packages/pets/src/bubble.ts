@@ -1,4 +1,5 @@
 import * as THREE from "three/webgpu";
+import { texture, uniform, vec4 } from "three/tsl";
 
 import {
     BUBBLE_LINE_CHARS,
@@ -35,9 +36,10 @@ const FONT = (px: number) => `600 ${px}px system-ui, "Segoe UI", "Noto Sans", sa
 const BG = "rgba(255, 253, 247, 0.96)";
 const INK = "#1d1b2e";
 const EDGE = "rgba(29, 27, 46, 0.22)";
-/** Keep the bubble inside the frame (output-normalised). */
-const UV_MIN = 0.08;
-const UV_MAX = 0.92;
+/** Safe margin (output-normalised) the whole bubble rectangle stays inside. */
+const SAFE = 0.03;
+/** Smallest size (fraction of normal) the bubble shrinks to near the frame edges. */
+const MIN_SHRINK = 0.55;
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -51,8 +53,12 @@ export interface SayOptions {
     ttlMs?: number;
 }
 
+/**
+ * A DOM canvas, not OffscreenCanvas: three's WebGPU CanvasTexture upload path is the one
+ * the AR layer uses (measured: an OffscreenCanvas-backed bubble never appeared, 2026-10-06).
+ */
 function makeCanvas(): HTMLCanvasElement | OffscreenCanvas {
-    if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(W * DPR, H * DPR);
+    if (typeof document === "undefined") return new OffscreenCanvas(W * DPR, H * DPR);
     const c = document.createElement("canvas");
     c.width = W * DPR;
     c.height = H * DPR;
@@ -70,6 +76,7 @@ export class SpeechBubble {
     readonly #ctx: Ctx;
     readonly #texture: THREE.CanvasTexture<HTMLCanvasElement | OffscreenCanvas>;
     readonly #material: THREE.MeshBasicNodeMaterial;
+    readonly #opacity = uniform(0);
     #lines: string[] = [];
     #chars = 0;
     #font = FONT_PX;
@@ -84,7 +91,11 @@ export class SpeechBubble {
     #drawnChars = -1;
     #drawnSize: Size = { w: -1, h: -1 };
     #active = false;
-    readonly #tmpUp = new THREE.Vector3();
+    /** Smoothed edge fit (shrink) and screen offset, so the bubble glides instead of jumping. */
+    #fit = 1;
+    #shift: [number, number] = [0, 0];
+    #placed = false;
+    #lastPlace = 0;
 
     constructor() {
         this.#canvas = makeCanvas();
@@ -96,12 +107,15 @@ export class SpeechBubble {
         this.#texture.generateMipmaps = false;
         this.#texture.minFilter = THREE.LinearFilter;
         const m = new THREE.MeshBasicNodeMaterial();
-        m.map = this.#texture;
+        // Explicit colour node (texture x opacity uniform), like the AR layer: the stage renders
+        // linear output with inline tone mapping, and `.map` + `.opacity` alone drew nothing.
+        const t = texture(this.#texture);
+        m.colorNode = vec4(t.rgb, t.a.mul(this.#opacity));
         m.transparent = true;
         m.depthTest = false;
         m.depthWrite = false;
         m.toneMapped = false;
-        m.opacity = 0;
+        m.side = THREE.DoubleSide;
         this.#material = m;
         this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(W / H, 1), m);
         this.mesh.renderOrder = 1000;
@@ -137,6 +151,7 @@ export class SpeechBubble {
             this.#from = this.#to;
             this.#morphStart = -Infinity;
             this.#shownAt = nowMs;
+            this.#placed = false;
         }
         this.#revealStart = nowMs;
         const total = this.#lines.join(" ");
@@ -270,23 +285,37 @@ export class SpeechBubble {
             this.#drawnSize = size;
             this.#lastDraw = nowMs;
         }
-        // Constant on-screen size: world height = fraction of the frame at this depth.
-        const depth = Math.max(project(pin, anchor).depthM, 0.1);
-        const worldH = (MESH_FRAC * pin.height * depth) / focalPx(pin);
-        const k = Math.max(pop * exit, 1e-3);
-        const bob = Math.sin(nowMs / 420) * worldH * 0.015;
+        // Screen-space layout: the tail tip sits on the pet's anchor; the bubble keeps a constant
+        // on-screen size, shrinks smoothly (down to MIN_SHRINK) when it would cross the frame edge,
+        // and is slid fully inside the safe area. It keeps following the pet; when the pet leaves
+        // the frame the bubble waits at the nearest edge and resumes as soon as the pet is back.
+        const a = project(pin, anchor);
+        const depth = Math.max(a.depthM, 0.1);
+        const au = Math.min(1, Math.max(0, a.u));
+        const av = Math.min(1, Math.max(0, a.v));
+        const hFrac = MESH_FRAC;
+        const wFrac = (hFrac * (W / H) * pin.height) / pin.width;
+        const spaceX = Math.max(0, Math.min(au - SAFE, 1 - SAFE - au) * 2);
+        const spaceY = Math.max(0, av - SAFE);
+        const wantFit = Math.max(MIN_SHRINK, Math.min(1, spaceX / wFrac, spaceY / hFrac));
+        const kf = this.#placed ? 1 - Math.exp(-Math.max(0, nowMs - this.#lastPlace) / 120) : 1;
+        this.#lastPlace = nowMs;
+        this.#fit += (wantFit - this.#fit) * kf;
+        const k = Math.max(pop * exit * this.#fit, 1e-3);
+        const bw = wFrac * k;
+        const bh = hFrac * k;
+        const cu0 = au;
+        const cv0 = av - bh / 2 + Math.sin(nowMs / 420) * bh * 0.015;
+        const tu = Math.min(1 - SAFE - bw / 2, Math.max(SAFE + bw / 2, cu0));
+        const tv = Math.min(1 - SAFE - bh / 2, Math.max(SAFE + bh / 2, cv0));
+        this.#shift = [this.#shift[0] + (tu - cu0 - this.#shift[0]) * kf, this.#shift[1] + (tv - cv0 - this.#shift[1]) * kf];
+        this.#placed = true;
+        const p: Vec3 = unproject(pin, cu0 + this.#shift[0], cv0 + this.#shift[1], depth);
+        const worldH = (bh * pin.height * depth) / focalPx(pin);
         this.mesh.quaternion.copy(camera.quaternion);
-        const up = this.#tmpUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
-        // The tail tip (canvas bottom) sits on the anchor; scale around it.
-        const lift = (worldH * k) / 2 + bob;
-        let p: Vec3 = [anchor[0] + up.x * lift, anchor[1] + up.y * lift, anchor[2] + up.z * lift];
-        const s = project(pin, p);
-        const u = Math.min(UV_MAX, Math.max(UV_MIN, s.u));
-        const v = Math.min(UV_MAX, Math.max(UV_MIN, s.v));
-        if (u !== s.u || v !== s.v) p = unproject(pin, u, v, s.depthM);
         this.mesh.position.set(p[0], p[1], p[2]);
-        this.mesh.scale.setScalar(worldH * k);
-        this.#material.opacity = Math.max(0, Math.min(1, fade)) * exit;
+        this.mesh.scale.setScalar(Math.max(worldH, 1e-4));
+        this.#opacity.value = Math.max(0, Math.min(1, fade)) * exit;
         this.mesh.visible = fade > 0.001;
     }
 

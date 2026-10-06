@@ -42,7 +42,7 @@ export interface MetricConfig {
 export interface MetricReading {
     distanceM: number;
     relSigma: number;
-    body?: { distanceM: number; residualPx: number };
+    body?: { distanceM: number; residualPx: number; jointDepthM?: (number | undefined)[] };
     iris?: { distanceM: number };
 }
 
@@ -59,7 +59,7 @@ export class MetricDistance {
     }
 
     /** Body-solve distance (m) of the shoulder midpoint for one pose; null when it cannot be solved. */
-    bodyDistance(p: PoseForDistance, cfg: MetricConfig): { distanceM: number; residualPx: number } | null {
+    bodyDistance(p: PoseForDistance, cfg: MetricConfig): { distanceM: number; residualPx: number; jointDepthM: (number | undefined)[] } | null {
         if (!p.pose || !p.world) return null;
         const k = this.intrinsics(cfg, p.rawW, p.rawH);
         const s = cfg.worldScale > 0 ? cfg.worldScale : 1;
@@ -79,7 +79,9 @@ export class MetricDistance {
         const ls = p.world[11];
         const rs = p.world[12];
         const shoulderZ = ls && rs ? ((ls.z + rs.z) / 2) * s : 0;
-        return { distanceM: r.t[2] + shoulderZ, residualPx: r.residualPx };
+        // Every joint's optical depth = root depth + its metric world z (same solve, consistent).
+        const jointDepthM = p.world.map((w) => (w ? r.t[2] + w.z * s : undefined));
+        return { distanceM: r.t[2] + shoulderZ, residualPx: r.residualPx, jointDepthM };
     }
 
     /** Fuse one pose result; returns the filtered torso distance. */

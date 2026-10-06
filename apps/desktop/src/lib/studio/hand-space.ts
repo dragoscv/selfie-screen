@@ -57,6 +57,41 @@ export function pinchStrength(ratio: number, pinchOff: number): number {
     return Math.min(1, Math.max(0, 1 - (ratio - lo) / Math.max(pinchOff - lo, 1e-3)));
 }
 
+/**
+ * Palm perches (room frame) from the tracked hands: centre = mean of the wrist and the four
+ * knuckles, up = palm normal turned towards the camera / sky, open = an open-hand shape and no
+ * pinch. `side` is the IMAGE side (smaller x = left), matching the handL / handR anchors.
+ */
+export function palmPerches(hands: readonly DebugHand[], cameraPos: Vec3): { side: "left" | "right"; centre: Vec3; up: Vec3; open: boolean }[] {
+    const live = hands.filter((h) => h.present && h.landmarks.length >= 21);
+    const out = live.map((h) => {
+        const ids = [0, 5, 9, 13, 17];
+        const c: Vec3 = [0, 0, 0];
+        for (const i of ids) {
+            const p = h.landmarks[i] as Vec3;
+            c[0] += p[0] / ids.length;
+            c[1] += p[1] / ids.length;
+            c[2] += p[2] / ids.length;
+        }
+        const w = h.landmarks[0] as Vec3;
+        const a = h.landmarks[5] as Vec3;
+        const b = h.landmarks[17] as Vec3;
+        const u: Vec3 = [a[0] - w[0], a[1] - w[1], a[2] - w[2]];
+        const v: Vec3 = [b[0] - w[0], b[1] - w[1], b[2] - w[2]];
+        let n: Vec3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        const len = Math.hypot(n[0], n[1], n[2]) || 1;
+        n = [n[0] / len, n[1] / len, n[2] / len];
+        // Face the side the camera sees (the palm shown to the camera), then bias upwards.
+        const toCam: Vec3 = [cameraPos[0] - c[0], cameraPos[1] - c[1], cameraPos[2] - c[2]];
+        if (n[0] * toCam[0] + n[1] * toCam[1] + n[2] * toCam[2] < 0) n = [-n[0], -n[1], -n[2]];
+        const open = !h.pinching && (h.shape === "open_palm" || h.shape === "fingers_5" || h.shape === "fingers_4");
+        return { centre: c, up: n, open, x: c[0] };
+    });
+    // Image side by x order (two hands), else by sign relative to the camera axis.
+    const sorted = [...out].sort((p, q) => p.x - q.x);
+    return sorted.map((p, i) => ({ side: sorted.length === 2 ? (i === 0 ? "left" : "right") : p.x < 0 ? "left" : "right", centre: p.centre, up: p.up, open: p.open }));
+}
+
 /** Pinch hysteresis: enter below `on`, leave above `off`. */
 export function nextPinch(pinching: boolean, ratio: number, on: number, off: number): boolean {
     return pinching ? ratio < off : ratio < on;

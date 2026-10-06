@@ -148,6 +148,12 @@ export interface BodyMeasurement {
     landmarks: readonly OutputLandmark[] | null;
     /** Torso distance from the camera (m), from body scale / depth model; undefined = keep the last. */
     distanceM: number | undefined;
+    /**
+     * Optional metric depth (m, along the optical axis) per MediaPipe pose index, from the
+     * whole-body solve of the world landmarks. Preferred over MediaPipe's image `z`, which
+     * is far too weak for arms reaching towards the camera.
+     */
+    jointDepthM?: readonly (number | undefined)[];
 }
 
 export class BodyModel {
@@ -231,7 +237,8 @@ export class BodyModel {
             // A landmark far off-frame is extrapolated by MediaPipe and unreliable.
             const inFrame = l.u > -0.15 && l.u < 1.15 && l.v > -0.15 && l.v < 1.15;
             if (vis < CONF_OFF || !inFrame) continue;
-            const depth = Math.max(0.3, this.#distance + (mPerZ ? (l.z - refZ) * mPerZ : 0));
+            const solved = m.jointDepthM?.[POSE_INDEX[joint]];
+            const depth = Math.max(0.2, solved !== undefined && Number.isFinite(solved) ? solved : this.#distance + (mPerZ ? (l.z - refZ) * mPerZ : 0));
             // Filter where the noise lives: image px for x/y, metres for depth. Unproject once.
             const [px = l.u * W, py = l.v * H] = t.fxy.filter([l.u * W, l.v * H], m.tMs);
             const [fd = depth] = t.fz.filter([depth], m.tMs);

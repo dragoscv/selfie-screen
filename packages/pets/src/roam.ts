@@ -90,8 +90,25 @@ export function angleDelta(from: number, to: number): number {
     return d;
 }
 
+/** An owner palm as a perch: centre of the palm (world m), its up direction and whether it is open. */
+export interface PalmPerch {
+    /** Image side of the hand (left = smaller x on screen), matching handL / handR. */
+    side: "left" | "right";
+    centre: Vec3;
+    /** Unit normal pointing out of the palm (a pet stands on this side). */
+    up: Vec3;
+    open: boolean;
+}
+
 /** Anchor positions for this frame; null = not available now. */
-export function anchorPoints(body: BodySnapshot | null, pin: Pinhole, side: "left" | "right", tSec: number, pointAt: Vec3 | null): Record<AnchorId, Vec3 | null> {
+export function anchorPoints(
+    body: BodySnapshot | null,
+    pin: Pinhole,
+    side: "left" | "right",
+    tSec: number,
+    pointAt: Vec3 | null,
+    palms: readonly PalmPerch[] = [],
+): Record<AnchorId, Vec3 | null> {
     // Ledges: the bottom of the frame, near each side, 0.25 m IN FRONT of the owner (the
     // desk edge for a seated streamer), never at or behind the body plane. The contact
     // point is the pet's FEET, so v = 0.96 keeps the whole pet visible above it.
@@ -111,6 +128,12 @@ export function anchorPoints(body: BodySnapshot | null, pin: Pinhole, side: "lef
         centre: null,
         point: pointAt,
     };
+    // Real palms (hand tracking): an OPEN palm at any height is a perch; the pet stands on it.
+    for (const p of palms) {
+        if (!p.open) continue;
+        const lift = p.up[1] > 0.3 ? 0.01 : 0.03;
+        out[p.side === "left" ? "handL" : "handR"] = [p.centre[0] + p.up[0] * lift, p.centre[1] + Math.max(p.up[1], 0.5) * lift, p.centre[2] + p.up[2] * lift];
+    }
     if (!body?.present) return out;
     const j = body.joints;
     const span = body.shoulders.span;
@@ -137,6 +160,7 @@ export function anchorPoints(body: BodySnapshot | null, pin: Pinhole, side: "lef
     // Only a hand raised above the shoulders is a perch.
     const shoulderY = shoulders.length ? Math.max(...shoulders.map((s) => s.p[1])) : Infinity;
     for (const [i, w] of wrist.entries()) {
+        if (palms.length > 0) break;
         if (w.p[1] < shoulderY - 0.05) continue;
         const key: AnchorId = wrist.length === 2 ? (i === 0 ? "handL" : "handR") : w.p[0] < body.head.p[0] ? "handL" : "handR";
         out[key] = add(w.p, [0, 0.07, 0.02]);
@@ -294,10 +318,10 @@ export class PetRoamer {
     /**
      * Advance to `nowMs`. `body` null = nobody tracked. `pointAt` = where the owner points (or null).
      */
-    update(body: BodySnapshot | null, pin: Pinhole, nowMs: number, dtSec: number, pointAt: Vec3 | null = null): PetPose {
+    update(body: BodySnapshot | null, pin: Pinhole, nowMs: number, dtSec: number, pointAt: Vec3 | null = null, palms: readonly PalmPerch[] = []): PetPose {
         const dt = Math.min(Math.max(dtSec, 0), 0.1);
         const tSec = nowMs / 1000;
-        const a = anchorPoints(body, pin, this.#o.side, tSec, pointAt);
+        const a = anchorPoints(body, pin, this.#o.side, tSec, pointAt, palms);
         this.#lastAnchors = a;
         for (const id of ANCHORS) {
             const q = a[id];

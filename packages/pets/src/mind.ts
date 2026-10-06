@@ -193,8 +193,12 @@ const ACTIONS: Readonly<Record<ActionKind, ActionSpec>> = {
     celebrate: {
         anchor: () => null,
         clip: "dance",
-        score: (_n, m, c) => (m.valence > 0.6 && m.arousal > 0.6 ? [c.spotlight ? 0.95 : 0.55, linear(m.arousal)] : []),
-        cooldownMs: 4000,
+        // Dance when happy and lively, or when the chat is buzzing; playful pets dance more.
+        score: (n, m, c) =>
+            m.valence > 0.35 && (m.arousal > 0.45 || c.chatActivity > 0.35)
+                ? [c.spotlight ? 0.95 : 0.5, linear(Math.max(m.arousal, c.chatActivity)), logistic(n.play, 0.35), linear(0.3 + n.energy)]
+                : [],
+        cooldownMs: 12_000,
     },
     sleep: {
         anchor: (_c, s) => ledge(s),

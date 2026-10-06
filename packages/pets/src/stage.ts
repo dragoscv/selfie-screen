@@ -14,7 +14,7 @@ import { EXCLUSIVE_ANCHORS, Reservations, bodyCapsules, resolve, type PetBody } 
 import { PetMind, pickSpotlight, type ActionKind, type Decision, type MindContext, type Stimulus } from "./mind.js";
 import { fadeToward, personInFront } from "./occlusion.js";
 import { PetActor } from "./pet-actor.js";
-import { ANCHORS, PetRoamer, locomotionOf, onScreen, type AnchorId, type PetPose } from "./roam.js";
+import { ANCHORS, PetRoamer, locomotionOf, onScreen, type AnchorId, type PalmPerch, type PetPose } from "./roam.js";
 import type { Side } from "./shoulders.js";
 import { DEFAULT_VFOV_DEG, project, type BodySnapshot, type Pinhole, type Vec3 } from "./space.js";
 import { PET_CLIPS, type PetClip, type PetEvent } from "./state-machine.js";
@@ -526,6 +526,14 @@ export class PetStage {
         this.#hands = hands;
     }
 
+    /** Open/closed owner palms as perches (engine, every frame). An open palm also invites a pet. */
+    setPalms(palms: readonly PalmPerch[]): void {
+        this.#palms = palms;
+        const open = palms.some((p) => p.open);
+        if (open !== this.#ctx.palmUp) this.#ctx = { ...this.#ctx, palmUp: open };
+    }
+    #palms: readonly PalmPerch[] = [];
+
     /** Current hand grab: which pet, drag or two-hand resize, and its scale. */
     get grabState(): { pet: string; mode: GrabMode; scale: number } | null {
         return this.#grabState;
@@ -715,7 +723,7 @@ export class PetStage {
         this.#updateGrab(slots, now);
         // 2) Locomotion.
         const poses = new Map<Side, PetPose>();
-        for (const [side, slot] of slots) poses.set(side, slot.roamer.update(body, pin, now, dtSec, this.#pointAt));
+        for (const [side, slot] of slots) poses.set(side, slot.roamer.update(body, pin, now, dtSec, this.#pointAt, this.#palms));
         // 3) Hard constraints: out of the owner's body, apart from each other.
         const capsules = bodyCapsules(body);
         const bodies: PetBody[] = slots.map(([side, slot]) => {

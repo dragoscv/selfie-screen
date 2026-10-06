@@ -26,6 +26,8 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 - The body skeleton moves smoothly (about 40× less jitter) and pets keep their size when you turn or move your arms.
 - Gestures: hands of other people no longer trigger your gestures, left/right no longer swap, hands partly out of the frame no longer fire false gestures, OK and pinch are told apart, swipes and waves survive a dropped frame, and hand points are smoothed.
 - Re-running the face calibration no longer resets other calibration values.
+- Pets were drawn about 3x too big with a camera mounted sideways (portrait): the field of view now follows the rotation and the camera preset, and arms reaching towards the camera get their real depth, so pets sit on your shoulders, head and open palm at their real size.
+- Pet speech bubbles stay inside the video: near an edge they shrink (down to about half size) and slide in, and they keep following the pet.
 
 ## [0.3.0] — 2026-10-06
 
