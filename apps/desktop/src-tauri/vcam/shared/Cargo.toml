@@ -1,6 +1,6 @@
 [package]
 name = "tiksee-vcam-shared"
-version = "0.3.0"
+version = "0.4.0"
 description = "TikSee Camera: frame ring layout, NV12 conversion and Windows plumbing shared by the app and the media source DLL"
 authors = ["Dragos Catalin Vladulescu"]
 edition = "2024"

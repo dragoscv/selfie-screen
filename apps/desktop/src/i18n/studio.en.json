@@ -549,7 +549,7 @@
             "record": "Record",
             "retryGesture": "Retry this gesture",
             "nextGesture": "Next gesture",
-            "prevGesture": "Back",
+            "prevGesture": "Previous gesture",
             "skip": "Skip",
             "skipped": "Skipped",
             "toSummary": "See the results",

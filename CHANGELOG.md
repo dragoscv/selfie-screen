@@ -4,6 +4,8 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-06
+
 ### Added
 - **Instant clips**: the Studio keeps the last 15/30/60 seconds of what viewers see, encoded on the GPU (about 30 MB of memory at 8 Mbps × 30 s). Press Ctrl+Shift+K, add the "Save clip" studio action to a rule, or press Highlight to save an MP4 to Videos\TikSee. Settings → Studio → Instant clips.
 - **New pets**: all seven pets rebuilt as proper models (parrot, cat, dragon, drone, fox, owl, red panda) with faces, blinking eyes, lip-sync and new moves (walk, hop, wave).
@@ -11,10 +13,10 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 - **3D debug view** (F3 in the Studio): your skeleton in metres, the floor, your shoulder height and where every pet is heading. Preview only.
 - **Smart pets**: each pet has its own needs, mood and personality and decides for itself what to do (perch, land on your open palm, listen to the co-host, play with the other pet, doze off when the stream is quiet, celebrate big gifts). Pets never pass through you or each other, take turns reacting, and move with breathing, springy tails and ears, gaze jumps and landing squash. Optional AI director nudges them from the chat mood (off by default).
 - **3D space calibration** (Studio → Camera → Calibrate 3D space): camera model and lens, your height, stand up and sit down for a few seconds; optional precise lens calibration with a printed board and a one-time scene analysis. Pets and effects are then sized correctly for your room.
-- **Touch the pets with your hands**: pinch a pet to pick it up and move it; while holding it, pinch with the other hand and spread or close your hands to resize it (the size is kept, the pet goes back to doing its own thing when you let go). Hand depth comes from the hand itself, checked against your arm.
+- **Touch the pets with your hands**: pinch right on a pet to pick it up and move it; bring the hand towards the camera to make it bigger or away to make it smaller, or pinch with the other hand too and spread or close your hands (the size is kept, the pet goes back to doing its own thing when you let go). Only a fresh pinch on the pet picks it up, so resting hands never drag pets away.
 - **Talking pets**: pets say short things in speech bubbles that viewers see in the video, comment on what you do and on the chat, and can optionally speak (off by default, never in Shop mode). Studio dock → AI: AI level (Off / Local / Reactive / Chatty / Director), how much chat they read (None / Activity / Mentions / Full), bubbles, voice and an hourly call cap. At Director level the AI can also move pets around you.
 - **Pets grow a personality**: each pet has its own traits and memories (big gifts, being picked up, regular viewers) that change slowly over streams and are kept until you reset them (Studio dock → AI → hold to reset).
-- **Gesture calibration** (Calibrate 3D space → Hands & gestures): perform each gesture, then a check pass with a score per gesture; TikSee learns your pinch and your palm size.
+- **Gesture calibration** (Calibrate 3D space → Hands & gestures): one gesture at a time at your own pace (Record, retry, Next); relaxed hand, open palm and pinch are the ones the pets need, the rest can be skipped; TikSee learns your pinch and your palm size.
 - **Camera mount**: tell TikSee how high your camera is and how much it looks down (or let it estimate the tilt), so the 3D space matches your room. Settings → Studio.
 
 ### Changed
@@ -28,6 +30,8 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 - Re-running the face calibration no longer resets other calibration values.
 - Pets were drawn about 3x too big with a camera mounted sideways (portrait): the field of view now follows the rotation and the camera preset, and arms reaching towards the camera get their real depth, so pets sit on your shoulders, head and open palm at their real size.
 - Pet speech bubbles stay inside the video: near an edge they shrink (down to about half size) and slide in, and they keep following the pet.
+- Hands: the hand skeleton moves fluidly and stays attached to your arm (no lag behind the body), hands are tracked at twice the resolution, a pinch is no longer mistaken for pointing (or an open palm for a pinch), and pets now land on your open palm and stay there.
+- A pet sent to where you pointed no longer stays there forever.
 
 ## [0.3.0] — 2026-10-06
 
