@@ -86,9 +86,40 @@ describe("HandSpace", () => {
         out = hs.update(50, { tMs: 50, hands: [moved], rawW: RAW_W, rawH: RAW_H }, null, PIN, identity, CFG);
         expect(out[0]?.point).toEqual(p0);
 
-        out = hs.update(400, null, null, PIN, identity, CFG);
+        out = hs.update(500, null, null, PIN, identity, CFG);
         expect(out[0]?.present).toBe(false);
         expect(out[0]?.pinching).toBe(false);
+    });
+
+    it("keeps a pinch through a one-result glitch and releases after 200 ms open", () => {
+        const hs = new HandSpace();
+        const closed = ownerHand([0, 0, 0.6], 0.005, 0.12);
+        const open = ownerHand([0, 0, 0.6], 0.08, 1.2);
+        let t = 0;
+        const step = (h: ReturnType<typeof ownerHand>) => {
+            t += 70;
+            return hs.update(t, { tMs: t, hands: [h], rawW: RAW_W, rawH: RAW_H }, null, PIN, identity, CFG)[0]?.pinching;
+        };
+        expect(step(closed)).toBe(true);
+        step(closed);
+        expect(step(open)).toBe(true);
+        expect(step(closed)).toBe(true);
+        step(open);
+        step(open);
+        step(open);
+        expect(step(open)).toBe(false);
+    });
+
+    it("interpolates between results every render frame", () => {
+        const hs = new HandSpace();
+        const a = ownerHand([0, 0, 0.6], 0.08, 0.6);
+        const b = ownerHand([0.1, 0, 0.6], 0.08, 0.6);
+        hs.update(0, { tMs: 0, hands: [a], rawW: RAW_W, rawH: RAW_H }, null, PIN, identity, CFG);
+        const x0 = hs.update(100, { tMs: 100, hands: [b], rawW: RAW_W, rawH: RAW_H }, null, PIN, identity, CFG)[0]?.landmarks[0]?.[0] ?? NaN;
+        const xMid = hs.update(150, null, null, PIN, identity, CFG)[0]?.landmarks[0]?.[0] ?? NaN;
+        const xEnd = hs.update(260, null, null, PIN, identity, CFG)[0]?.landmarks[0]?.[0] ?? NaN;
+        expect(xMid).toBeGreaterThan(x0);
+        expect(xEnd).toBeGreaterThan(xMid);
     });
 
     it("ignores stale hands", () => {

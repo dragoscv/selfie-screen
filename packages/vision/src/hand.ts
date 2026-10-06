@@ -102,6 +102,36 @@ export function worldPinchRatio(world: readonly Pt3[]): number {
     return d3(world[HAND.THUMB_TIP], world[HAND.INDEX_TIP]) / palm;
 }
 
+/**
+ * Thumb tip - index tip distance in the IMAGE (aspect-correct px) over the hand size
+ * (max(wrist -> middle MCP, 1.4 x palm width)). MediaPipe's world landmarks often place the
+ * thumb tip a palm-width away during a real pinch seen from the side (measured 2026-10-06:
+ * world 0.6-1.2 vs image 0.11-0.17; pointing = 1.1+), so the image view is the reliable one.
+ * Infinity when the index is curled back (tip closer to the wrist than its PIP joint: a fist
+ * also brings the fingertips together in the image). NaN when landmarks are missing.
+ */
+export function imagePinchRatio(lm: readonly Pt[]): number {
+    if (lm.length < 21) return NaN;
+    const hand = Math.max(dist(at(lm, HAND.WRIST), at(lm, HAND.MIDDLE_MCP)), 1.4 * dist(at(lm, HAND.INDEX_MCP), at(lm, HAND.PINKY_MCP)));
+    if (!(hand > 1e-6)) return NaN;
+    if (dist(at(lm, HAND.WRIST), at(lm, HAND.INDEX_TIP)) < dist(at(lm, HAND.WRIST), at(lm, HAND.INDEX_PIP))) return Infinity;
+    return dist(at(lm, HAND.THUMB_TIP), at(lm, HAND.INDEX_TIP)) / hand;
+}
+
+/**
+ * Pinch ratio used everywhere: the closer of the world and image views (either can see the
+ * contact), but never closer than the image allows: the world view alone reads an open, flat
+ * palm as a pinch (thumb and index pressed together side by side, measured 2026-10-06), so a
+ * world-only closure needs the image to agree within 2x the pinch distance.
+ */
+export function pinchRatio(world: readonly Pt3[], image: readonly Pt[]): number {
+    const w = world.length >= 21 ? worldPinchRatio(world) : NaN;
+    const i = imagePinchRatio(image);
+    if (Number.isNaN(w)) return i;
+    if (Number.isNaN(i)) return w;
+    return i <= w ? i : Math.max(w, i * 0.5);
+}
+
 const FINGERTIPS = [HAND.THUMB_TIP, HAND.INDEX_TIP, HAND.MIDDLE_TIP, HAND.RING_TIP, HAND.PINKY_TIP] as const;
 
 /**
@@ -197,7 +227,7 @@ const pattern = (e: FingerFlags, want: string): boolean =>
 export interface ClassifyOptions {
     /** Thumb-index / palm-width ratio from the hand WORLD landmarks (see worldPinchRatio). */
     pinchRatio?: number;
-    /** Personal threshold for `pinchRatio` (calibration.hands.pinchOn, or pinchOff while pinching). Default 0.2. */
+    /** Personal threshold for `pinchRatio` (calibration.hands.pinchOn, or pinchOff while pinching). Default 0.35. */
     pinchOn?: number;
 }
 
@@ -217,7 +247,7 @@ export function classifyHand(lm: readonly Pt[], side: Side, canned?: { category:
     const thumbOut = dist(at(lm, HAND.THUMB_TIP), at(lm, HAND.INDEX_MCP)) / scale > 0.5;
     const ratio = options.pinchRatio;
     const world = ratio !== undefined && Number.isFinite(ratio);
-    const on = options.pinchOn ?? 0.2;
+    const on = options.pinchOn ?? 0.35;
     const closedOk = thumbOut && (world ? ratio < on : pinchD < 0.3);
     const closedPinch = thumbOut && (world ? ratio < on : pinchD < 0.25);
 

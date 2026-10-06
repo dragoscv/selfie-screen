@@ -16,7 +16,7 @@ import { fadeToward, personInFront } from "./occlusion.js";
 import { PetActor } from "./pet-actor.js";
 import { ANCHORS, PetRoamer, locomotionOf, onScreen, type AnchorId, type PalmPerch, type PetPose } from "./roam.js";
 import type { Side } from "./shoulders.js";
-import { DEFAULT_VFOV_DEG, project, type BodySnapshot, type Pinhole, type Vec3 } from "./space.js";
+import { DEFAULT_VFOV_DEG, project, unproject, type BodySnapshot, type Pinhole, type Vec3 } from "./space.js";
 import { PET_CLIPS, type PetClip, type PetEvent } from "./state-machine.js";
 import { mouthWeights, type VisemeEvent } from "./visemes.js";
 
@@ -67,6 +67,8 @@ interface Slot {
     scale: number;
     /** In the owner's hand. */
     held: boolean;
+    /** Optical depth (m) at pick-up; a held pet stays at it and follows the fingers on screen. */
+    grabDepthM: number | null;
     /** Speech bubble (created on the first say). */
     bubble: SpeechBubble | null;
     /** This pet's own lip-sync (only its mouth moves). */
@@ -121,6 +123,12 @@ export interface StageContext {
 }
 
 const MIND_TICK_MS = 200;
+/** A pinch more than this far (m) in depth from a pet cannot pick it (measured hand-vs-pet depth error: 0.2-0.4 m). */
+const GRAB_DEPTH_GATE_M = 0.6;
+/** Smallest pick radius (m at the pet's depth) so a tiny pet stays pickable. */
+const GRAB_MIN_REACH_M = 0.04;
+/** A pointing gesture's target lives this long (ms). */
+const POINT_TTL_MS = 6000;
 
 /**
  * Replace classic materials under `root` with node materials (the same copy
@@ -199,6 +207,8 @@ export class PetStage {
     #camHeight = 0;
     #backdrop: Backdrop | null = null;
     #pointAt: Vec3 | null = null;
+    /** The point target expires (else inspectPoint kept it alive forever: pointActive -> point anchor). */
+    #pointUntil = 0;
     #debug: PetDebug[] = [];
     readonly #reservations = new Reservations(1500);
     #lastMindTick = 0;
@@ -215,7 +225,30 @@ export class PetStage {
         if (!on) for (const s of this.#slots.values()) s.roamer.direct(null);
     }
     #seed = 1;
-    readonly #grab = new HandGrab();
+    /**
+     * Picking compares the pinch and the pet ON SCREEN (their image distance scaled to metres at
+     * the pet's depth), with depth only as a loose gate: one camera puts the hand 0.2-0.4 m off in
+     * depth while the fingers visibly touch the pet (measured 2026-10-06), so a 3D sphere never hit.
+     */
+    readonly #grab = new HandGrab({
+        metric: (pinch, pet) => {
+            const pin = this.pinhole;
+            const a = project(pin, pinch);
+            const b = project(pin, pet);
+            if (Math.abs(a.depthM - b.depthM) > GRAB_DEPTH_GATE_M) return Infinity;
+            const f = pin.height / 2 / Math.tan((pin.vfovDeg * Math.PI) / 360);
+            return (Math.hypot((a.u - b.u) * pin.width, (a.v - b.v) * pin.height) * Math.max(b.depthM, 0.05)) / f;
+        },
+        // Two-hand resize by the hands' spread ON SCREEN (frame heights): the 3D spread carried the
+        // hand depth error and swung 0.4 -> 2.5 x in half a second (measured 2026-10-06).
+        spread: (a, b) => {
+            const pin = this.pinhole;
+            const p = project(pin, a);
+            const q = project(pin, b);
+            return Math.hypot(((p.u - q.u) * pin.width) / pin.height, p.v - q.v);
+        },
+        minSpread: 0.15,
+    });
     #hands: readonly HandInput[] = [];
     #grabState: { pet: string; mode: GrabMode; scale: number } | null = null;
     /** Personality / scale set before (or kept across) a pet load. */
@@ -426,6 +459,7 @@ export class PetStage {
             pushed: 0,
             scale,
             held: false,
+            grabDepthM: null,
             bubble: null,
             speech: null,
             command: null,
@@ -493,7 +527,10 @@ export class PetStage {
 
     /** Send pets to an anchor (gestures, gifts): "centre", "orbit", "crown", "point"... */
     goTo(anchor: AnchorId, pointAt: Vec3 | null = null): void {
-        if (pointAt) this.#pointAt = pointAt;
+        if (pointAt) {
+            this.#pointAt = pointAt;
+            this.#pointUntil = performance.now() + POINT_TTL_MS;
+        }
         for (const s of this.#slots.values()) s.roamer.request(anchor);
     }
 
@@ -671,6 +708,7 @@ export class PetStage {
         const pin = this.pinhole;
         const debug: PetDebug[] = [];
         const slots = [...this.#slots.entries()];
+        if (this.#pointAt && now > this.#pointUntil) this.#pointAt = null;
         // 1) Minds at 5 Hz: pick actions; reservations keep perches exclusive.
         if (this.#autonomous && now - this.#lastMindTick >= MIND_TICK_MS) {
             this.#lastMindTick = now;
@@ -792,13 +830,16 @@ export class PetStage {
             const p = s.roamer.position ?? s.pose?.p;
             if (!p || s.fade < 0.5) continue;
             const h = this.#heightOf(s);
-            pets.push({ id: s.actor.pet, p: [p[0], p[1] + h * 0.5, p[2]], radiusM: h * 0.45, scale: s.scale });
+            // Pick zone = the pet's body on screen (centre +- ~half its height), never "anywhere".
+            pets.push({ id: s.actor.pet, p: [p[0], p[1] + h * 0.5, p[2]], radiusM: h * 0.45, reachM: Math.max(GRAB_MIN_REACH_M, h * 0.55), scale: s.scale });
         }
         const out = this.#grab.update(now, this.#hidden ? [] : this.#hands, pets);
         for (const e of out.events) {
             const s = this.#slotOf(e.pet);
             if (!s) continue;
             if (e.kind === "grab") {
+                const pp = s.roamer.position ?? s.pose?.p;
+                s.grabDepthM = pp ? project(this.pinhole, pp).depthM : null;
                 s.mind.stimulus({ kind: "grabbed" });
                 s.actor.send({ type: "command", clip: "react" }, now);
                 this.onInteraction?.({ kind: "grabbed", pet: e.pet, scale: e.scale });
@@ -806,6 +847,7 @@ export class PetStage {
                 s.mind.stimulus({ kind: "dropped" });
                 s.roamer.hold(null);
                 s.held = false;
+                s.grabDepthM = null;
                 this.onInteraction?.({ kind: "dropped", pet: e.pet, scale: s.scale });
             } else if (e.kind === "resizeEnd") {
                 this.#pendingScale.set(e.pet, s.scale);
@@ -819,9 +861,16 @@ export class PetStage {
         if (!s) return;
         s.held = true;
         this.#applyScale(s, held.scale);
-        // The grab tracks the body centre; the roamer moves the contact point (feet).
+        // The grab tracks the body centre; the roamer moves the contact point (feet). The pet stays
+        // at the depth it was picked up at and follows the fingers ON SCREEN: one camera's hand depth
+        // is 0.2-0.4 m off, which made held pets lunge at the lens. Size comes from push/pull.
         const h = this.#heightOf(s);
-        s.roamer.hold([held.target[0], held.target[1] - h * 0.5, held.target[2]]);
+        let c: Vec3 = held.target;
+        if (s.grabDepthM !== null) {
+            const uv = project(this.pinhole, held.target);
+            c = unproject(this.pinhole, uv.u, uv.v, s.grabDepthM);
+        }
+        s.roamer.hold([c[0], c[1] - h * 0.5, c[2]]);
     }
 
     /** This pet's own lip-sync (speakPet / unvoiced bubble), or null to use the shared one. */

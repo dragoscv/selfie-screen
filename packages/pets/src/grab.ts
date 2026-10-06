@@ -5,7 +5,7 @@ import type { Vec3 } from "./space.js";
  * clock-injected (ms), allocation-light; the stage feeds it once per frame.
  *
  *   grab    a pinching hand within max(0.12 m, 1.6 x radius) of a pet (nearest
- *           wins), pinch held >= 50 ms. The pet keeps its initial offset to the
+ *           wins), pinch held >= 50 ms and started <= 700 ms ago (intent). The pet keeps its initial offset to the
  *           pinch point, decaying to 0 over 250 ms (it snaps into the fingers);
  *           the target is a critically damped spring (tau 0.04 s).
  *   dropout the holding hand missing for < 120 ms keeps the grab.
@@ -13,6 +13,10 @@ import type { Vec3 } from "./space.js";
  *   resize  while held, the OTHER hand pinches anywhere: scale = clamp(start x
  *           dist / dist0, 0.4, 2.5), smoothed; ends when that hand unpinches,
  *           the scale is kept.
+ *   push/pull (one hand) while held, the pet's size follows the holding hand's
+ *           apparent size on screen (`sizePx`): bring the hand towards the camera
+ *           and the pet grows, move it away and it shrinks (5 % dead band, kept
+ *           on release). On-screen size is far steadier than measured depth.
  */
 
 export type HandSide = "left" | "right";
@@ -25,6 +29,8 @@ export interface HandInput {
     point: Vec3;
     /** 0..1 pinch strength (informational). */
     strength: number;
+    /** Apparent hand size on screen (px); enables the one-hand push/pull resize. */
+    sizePx?: number;
 }
 
 export interface GrabPet {
@@ -32,6 +38,8 @@ export interface GrabPet {
     /** Body centre (or contact point) the grab radius is measured from, metres. */
     p: Vec3;
     radiusM: number;
+    /** Pick radius (in the metric's units); default max(0.12 m, 1.6 x radius). */
+    reachM?: number;
     /** Current size multiplier (resize starts from it); default 1. */
     scale?: number;
 }
@@ -61,12 +69,21 @@ export interface GrabOutput {
 export const GRAB_MIN_RADIUS_M = 0.12;
 export const GRAB_RADIUS_K = 1.6;
 export const GRAB_HOLD_MS = 50;
+/**
+ * Intent: only a pinch that STARTED within this window can pick a pet. Resting hands often read
+ * as a pinch for seconds (thumb against the index); without this they drifted into a pet and
+ * dragged it away (measured live 2026-10-06).
+ */
+export const GRAB_ONSET_MS = 700;
 export const GRAB_DROPOUT_MS = 120;
 export const GRAB_SNAP_MS = 250;
 export const GRAB_TAU_S = 0.04;
 export const PET_SCALE_MIN = 0.4;
 export const PET_SCALE_MAX = 2.5;
 const SCALE_TAU_S = 0.08;
+/** One-hand push/pull: ignore apparent-size changes below this fraction (tracker noise ~3 %). */
+const PUSH_DEADBAND = 0.05;
+const PUSH_TAU_S = 0.2;
 
 const dist = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -84,9 +101,35 @@ interface Hold {
     v: Vec3;
     scale: number;
     resize: { dist0: number; startScale: number; want: number } | null;
+    /** Scale when picked up (a changed scale on release emits resizeEnd so it is kept). */
+    grabScale: number;
+    /** One-hand push/pull: holding hand's apparent size and the scale when it was (re)based. */
+    push: { size0: number; startScale: number } | null;
+}
+
+/** Distance (m) from a pinch point to a pet for picking; default plain 3D distance. */
+export type GrabMetric = (pinch: Vec3, pet: Vec3) => number;
+
+export interface GrabOptions {
+    /** Pinch -> pet distance for picking (default 3D metres). */
+    metric?: GrabMetric;
+    /** Distance between the two pinch points for the two-hand resize (default 3D metres). */
+    spread?: GrabMetric;
+    /** The resize ratio's denominator is at least this (spread units): hands starting close would explode the ratio. */
+    minSpread?: number;
 }
 
 export class HandGrab {
+    readonly #metric: GrabMetric;
+    readonly #spread: GrabMetric;
+    readonly #minSpread: number;
+
+    constructor(options: GrabOptions = {}) {
+        this.#metric = options.metric ?? dist;
+        this.#spread = options.spread ?? dist;
+        this.#minSpread = options.minSpread ?? 0.01;
+    }
+
     /** When each hand started pinching (null = not pinching). */
     readonly #pinchSince: Record<HandSide, number | null> = { left: null, right: null };
     /** A pinch that began while another action was running cannot grab until it is released. */
@@ -134,7 +177,7 @@ export class HandGrab {
             }
             const released = h ? !h.pinching : nowMs - hold.lastSeenMs >= GRAB_DROPOUT_MS;
             if (released) {
-                if (hold.resize) events.push({ kind: "resizeEnd", pet: hold.pet, scale: hold.scale });
+                if (hold.resize || Math.abs(hold.scale - hold.grabScale) > 0.01) events.push({ kind: "resizeEnd", pet: hold.pet, scale: hold.scale });
                 events.push({ kind: "drop", pet: hold.pet, scale: hold.scale });
                 this.#spent[hold.hand] = false;
                 this.#spent[other(hold.hand)] = false;
@@ -142,6 +185,7 @@ export class HandGrab {
                 return { held: null, events };
             }
             this.#resize(hold, bySide, dt, events);
+            this.#pushPull(hold, h, dt);
             // Offset decays linearly to 0 over the snap time.
             const k = Math.max(0, 1 - (nowMs - hold.startMs) / GRAB_SNAP_MS);
             const goal: Vec3 = [hold.lastPoint[0] + hold.offset[0] * k, hold.lastPoint[1] + hold.offset[1] * k, hold.lastPoint[2] + hold.offset[2] * k];
@@ -154,10 +198,10 @@ export class HandGrab {
         for (const side of ["left", "right"] as const) {
             const h = bySide[side];
             const since = this.#pinchSince[side];
-            if (!h?.pinching || since === null || this.#spent[side] || nowMs - since < GRAB_HOLD_MS) continue;
+            if (!h?.pinching || since === null || this.#spent[side] || nowMs - since < GRAB_HOLD_MS || nowMs - since > GRAB_ONSET_MS) continue;
             for (const pet of pets) {
-                const d = dist(h.point, pet.p);
-                const reach = Math.max(GRAB_MIN_RADIUS_M, GRAB_RADIUS_K * pet.radiusM);
+                const d = this.#metric(h.point, pet.p);
+                const reach = pet.reachM ?? Math.max(GRAB_MIN_RADIUS_M, GRAB_RADIUS_K * pet.radiusM);
                 if (d <= reach && (!best || d < best.d)) best = { side, pet, d };
             }
         }
@@ -175,11 +219,33 @@ export class HandGrab {
             v: [0, 0, 0],
             scale: clamp(p.scale ?? 1, PET_SCALE_MIN, PET_SCALE_MAX),
             resize: null,
+            grabScale: clamp(p.scale ?? 1, PET_SCALE_MIN, PET_SCALE_MAX),
+            push: null,
         };
         // The other hand, if already pinching, must re-pinch to start a resize.
         if (bySide[other(best.side)]?.pinching) this.#spent[other(best.side)] = true;
         events.push({ kind: "grab", pet: p.id, scale: this.#hold.scale });
         return { held: this.held, events };
+    }
+
+    /** One-hand push/pull: scale follows the holding hand's apparent size (two-hand resize wins). */
+    #pushPull(hold: Hold, h: HandInput | undefined, dt: number): void {
+        const size = h?.sizePx;
+        if (hold.resize || !h || !(size !== undefined && size > 1)) {
+            hold.push = null;
+            return;
+        }
+        if (!hold.push) {
+            hold.push = { size0: size, startScale: hold.scale };
+            return;
+        }
+        const ratio = size / hold.push.size0;
+        if (Math.abs(ratio - 1) < PUSH_DEADBAND) return;
+        // Outside the dead band, measured from its edge so the size does not jump when entering it.
+        const k = ratio > 1 ? ratio - PUSH_DEADBAND : ratio + PUSH_DEADBAND;
+        const want = clamp(hold.push.startScale * k, PET_SCALE_MIN, PET_SCALE_MAX);
+        const a = dt > 0 ? 1 - Math.exp(-dt / PUSH_TAU_S) : 0;
+        hold.scale = clamp(hold.scale + (want - hold.scale) * a, PET_SCALE_MIN, PET_SCALE_MAX);
     }
 
     #resize(hold: Hold, bySide: Record<HandSide, HandInput | undefined>, dt: number, events: GrabEvent[]): void {
@@ -188,17 +254,20 @@ export class HandGrab {
         const pinching = !!h2?.pinching && !this.#spent[side];
         if (hold.resize && !pinching) {
             hold.resize = null;
+            // Push/pull re-bases on the current hand size, so the two-hand result is not undone.
+            hold.push = null;
             events.push({ kind: "resizeEnd", pet: hold.pet, scale: hold.scale });
         } else if (!hold.resize && pinching && h2) {
-            const d0 = dist(hold.lastPoint, h2.point);
-            if (d0 > 0.01) {
-                hold.resize = { dist0: d0, startScale: hold.scale, want: hold.scale };
+            const d0 = this.#spread(hold.lastPoint, h2.point);
+            if (Number.isFinite(d0) && d0 > 0) {
+                hold.resize = { dist0: Math.max(d0, this.#minSpread), startScale: hold.scale, want: hold.scale };
                 events.push({ kind: "resizeStart", pet: hold.pet, scale: hold.scale });
             }
         }
         if (hold.resize && h2) {
             const r = hold.resize;
-            r.want = clamp((r.startScale * dist(hold.lastPoint, h2.point)) / r.dist0, PET_SCALE_MIN, PET_SCALE_MAX);
+            const d = this.#spread(hold.lastPoint, h2.point);
+            if (Number.isFinite(d)) r.want = clamp((r.startScale * Math.max(d, this.#minSpread * 0.25)) / r.dist0, PET_SCALE_MIN, PET_SCALE_MAX);
         }
         if (hold.resize) {
             const k = dt > 0 ? 1 - Math.exp(-dt / SCALE_TAU_S) : 0;

@@ -27,7 +27,7 @@ import type { FromWorker, HandsEarly, OptionalModel, PipelineConfig, PoseEarly, 
  * schedule (pose + face on even frames, hands on odd, objects every 12th).
  * `timings` carries per-task EMA ms either way, plus `mode.worker` (1/0).
  */
-const LONG_EDGE = 640;
+const LONG_EDGE = 1280;
 
 interface Pending {
     resolve: (m: FromWorker) => void;

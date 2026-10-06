@@ -23,7 +23,7 @@ import {
     toUpright,
     TwoHandAnalyzer,
     uprightSize,
-    worldPinchRatio,
+    pinchRatio,
     type Blendshapes,
     type Box,
     type HandShape,
@@ -80,8 +80,8 @@ const ASSETS = {
     objects: "/mediapipe/efficientdet_lite0.tflite",
 };
 const OBJECT_LABELS = ["person", "dog", "cup", "bottle", "cell phone", "wine glass"];
-const OBJECT_INTERVAL_MS = 200;
-const OBJECT_TTL_MS = 1000;
+const OBJECT_INTERVAL_MS = 1000;
+const OBJECT_TTL_MS = 2500;
 const DEPTH_INTERVAL_MS = 100;
 const IDENTITY_INTERVAL_MS = 2000;
 const SNAPSHOT_MS = 500;
@@ -143,7 +143,7 @@ interface HandDet {
     mpSide: Side;
     score: number;
     canned: { category: string; score: number } | undefined;
-    /** Thumb-index / palm width (world 3D when `pinchWorld`, else display 2D fallback). */
+    /** Thumb-index / hand size: min of the world 3D and image views when `pinchWorld`, else the 2D palm-width fallback. */
     pinch: number;
     pinchWorld: boolean;
     inFrame: boolean;
@@ -553,7 +553,8 @@ export class VisionPipeline {
         // --- MediaPipe tasks (staggered on the main thread).
         const runPose = !stagger || frameNo % 2 === 0;
         const runGesture = !stagger || frameNo % 2 === 1;
-        const runFace = !stagger || frameNo % 2 === 0;
+        // Face (expressions) tolerates half rate; hands and pose drive the pets and need every frame.
+        const runFace = frameNo % 2 === 0;
         const runObjects = stagger ? frameNo % 12 === 0 : tMs - this.#lastObjectRun >= OBJECT_INTERVAL_MS;
 
         let mask: VisionFrame["mask"] = null;
@@ -603,8 +604,9 @@ export class VisionPipeline {
                     const mpSide: Side = (cat?.categoryName ?? "Right") === "Left" ? "right" : "left";
                     const g = at(r.gestures, i)?.[0];
                     const world = (at(r.worldLandmarks, i) ?? []).map((p) => ({ x: p.x, y: p.y, z: p.z }));
-                    const wr = world.length >= 21 ? worldPinchRatio(world) : NaN;
-                    const pinchWorld = Number.isFinite(wr);
+                    // Image view in aspect-correct display px (the world view misses side-on pinches).
+                    const wr = pinchRatio(world, lm.map((p) => disp(p)));
+                    const pinchWorld = !Number.isNaN(wr);
                     return {
                         raw: lm,
                         world,
@@ -613,7 +615,7 @@ export class VisionPipeline {
                         mpSide,
                         score: cat?.score ?? 0,
                         canned: g ? { category: g.categoryName, score: g.score } : undefined,
-                        pinch: pinchWorld ? wr : imagePinchRatio(lm.map((p) => disp(p))),
+                        pinch: pinchWorld ? wr : legacyImagePinchRatio(lm.map((p) => disp(p))),
                         pinchWorld,
                         inFrame: handInFrame(lm),
                         stale: false,
@@ -1049,7 +1051,7 @@ export class VisionPipeline {
         );
         h.disp = norm.map((p) => ({ x: p.x * uw, y: p.y * uh }));
         const cal = this.#cfg?.settings.calibration.hands;
-        const on = st.pinching[h.side] ? (cal?.pinchOff ?? 0.38) : (cal?.pinchOn ?? 0.2);
+        const on = st.pinching[h.side] ? (cal?.pinchOff ?? 0.55) : (cal?.pinchOn ?? 0.35);
         const shape = classifyHand(h.disp, h.side, h.canned, h.pinchWorld ? { pinchRatio: h.pinch, pinchOn: on } : {});
         st.pinching[h.side] = h.pinchWorld ? h.pinch < on : shape.shape === "pinch" || shape.shape === "ok";
         h.shape = h.inFrame ? shape : { ...shape, shape: null, confidence: 0 };
@@ -1370,7 +1372,7 @@ function pulse(signal: SignalId, tMs: number, subject: Subject): SignalEvent {
 type DispFn = (p: { x: number; y: number }, w?: number, h?: number) => Pt;
 
 /** 2D fallback when world landmarks are missing: thumb-index / (index MCP - pinky MCP), display px. */
-function imagePinchRatio(d: readonly Pt[]): number {
+function legacyImagePinchRatio(d: readonly Pt[]): number {
     const q = (i: number) => d[i] ?? { x: 0, y: 0 };
     const palm = Math.hypot(q(5).x - q(17).x, q(5).y - q(17).y);
     return palm > 1e-6 ? Math.hypot(q(4).x - q(8).x, q(4).y - q(8).y) / palm : NaN;

@@ -11,19 +11,36 @@ import type { DebugHand, OwnerHand } from "./controller.js";
  *     metric body solve + Kalman): a solve more than 0.25 m away is replaced
  *     by the wrist depth ("wrist" source), never trusted blindly;
  *  3. One-Euro on every landmark and on the pinch point, pinch with hysteresis
- *     (on < pinchOn, off > pinchOff, in palm widths) and a 50 ms freeze of the
- *     pinch point at onset (closing the fingers moves the midpoint).
+ *     (on < pinchOn, off > pinchOff, in palm widths) on a median-of-3 ratio,
+ *     released only after 200 ms open, and a 50 ms freeze of the pinch point at
+ *     onset (closing the fingers moves the midpoint).
+ *  4. Hand results arrive at ~8-15 Hz: every render frame interpolates the
+ *     landmarks between the last two results, half a result interval behind
+ *     (max 60 ms) with a capped 25 % extrapolation, so the skeleton and the
+ *     pets move fluidly without adding a full interval of lag.
  * Output feeds PetStage.setHands (grab / resize) and the F3 overlay.
  */
 
-const HAND_FILTER = { minCutoff: 1.6, beta: 0.6, dCutoff: 1 };
-const POINT_FILTER = { minCutoff: 1.2, beta: 0.9, dCutoff: 1 };
+// Units are metres: a moving hand is ~0.3-1 m/s, so beta must be several Hz per m/s to open
+// the filter while moving (0.6 kept ~100 ms of lag at 8-15 Hz). Still jitter is handled by
+// minCutoff; render-time interpolation provides the visual smoothness.
+const HAND_FILTER = { minCutoff: 2.5, beta: 6, dCutoff: 1 };
+const POINT_FILTER = { minCutoff: 2, beta: 6, dCutoff: 1 };
+/** Apparent hand size (px): heavier smoothing, a deliberate push/pull takes ~0.3 s anyway. */
+const SIZE_FILTER = { minCutoff: 1, beta: 0.02, dCutoff: 1 };
 /** A solve this far (m) from the pose wrist depth is rejected. */
 export const WRIST_GATE_M = 0.25;
-/** Hand unseen this long = not present. */
-export const HAND_LOST_MS = 150;
+/** Hand unseen this long = not present (results arrive every 70-250 ms). */
+export const HAND_LOST_MS = 400;
+/** Interpolation delay bounds (ms) behind the newest result. */
+const MIN_DELAY_MS = 15;
+const MAX_DELAY_MS = 60;
+/** How far past the newest result the segment may be extended (fraction of a segment). */
+const MAX_EXTRAPOLATE = 0.25;
 /** Pinch point frozen this long at pinch onset. */
 export const PINCH_FREEZE_MS = 50;
+/** A pinch ends only after the ratio stayed above pinchOff this long. */
+export const PINCH_RELEASE_MS = 200;
 /** MediaPipe's average palm width (index MCP -> pinky MCP) in its world landmarks is used when uncalibrated. */
 const PALM = { indexMcp: 5, pinkyMcp: 17, wrist: 0, thumbTip: 4, indexTip: 8 } as const;
 
@@ -49,6 +66,28 @@ interface SideState {
     lastT: number;
     out: DebugHand | null;
     palmEstimates: number[];
+    /** Newest two results (arrival time, landmarks, point) for render-time interpolation. */
+    prev: { at: number; lm: Vec3[]; point: Vec3 } | null;
+    cur: { at: number; lm: Vec3[]; point: Vec3 } | null;
+    /** Smoothed inter-arrival interval (ms). */
+    interval: number;
+    /** Hand wrist - body wrist (m), low-passed: the hand rides the body's interpolated wrist. */
+    corr: Vec3 | null;
+    /** Last pinch ratios (median filter) and when the ratio first went above pinchOff. */
+    ratios: number[];
+    releaseSince: number | null;
+    /** Apparent hand size filter (px). */
+    size: OneEuroPoint;
+}
+
+/** Low-pass weight per hand result for the hand-to-body wrist offset. */
+const CORR_ALPHA = 0.35;
+/** Offsets larger than this (m) mean the pose wrist is wrong for this hand: do not anchor. */
+const CORR_MAX_M = 0.15;
+
+function bodyWrist(body: BodySnapshot | null, side: "left" | "right"): Vec3 | null {
+    const j = body?.present ? (side === "left" ? body.joints.leftWrist : body.joints.rightWrist) : null;
+    return j && j.conf > 0.5 ? j.p : null;
 }
 
 /** Pinch strength 0..1 from the thumb-index / palm ratio (1 = touching). */
@@ -98,6 +137,37 @@ export function nextPinch(pinching: boolean, ratio: number, on: number, off: num
 }
 
 /**
+ * Translate the (shape-correct) hand so its wrist sits on the body's interpolated wrist plus
+ * the filtered offset: the hand then moves on the same clock as the body skeleton and the pets
+ * (BodyModel's adaptive-delay interpolation), and only its finger shape comes from the slower
+ * hand tracker. Without a trusted body wrist the hand keeps its own position.
+ */
+function anchorToBody(h: { landmarks: Vec3[]; point: Vec3 } | Record<string, never>, wrist: Vec3 | null, corr: Vec3 | null): { landmarks: Vec3[]; point: Vec3 } | Record<string, never> {
+    if (!("landmarks" in h) || !wrist || !corr) return h;
+    const w0 = h.landmarks[PALM.wrist];
+    if (!w0) return h;
+    const d: Vec3 = [wrist[0] + corr[0] - w0[0], wrist[1] + corr[1] - w0[1], wrist[2] + corr[2] - w0[2]];
+    const move = (p: Vec3): Vec3 => [p[0] + d[0], p[1] + d[1], p[2] + d[2]];
+    return { landmarks: h.landmarks.map(move), point: move(h.point) };
+}
+
+/**
+ * Landmarks/point at `nowMs - delay`, between the last two results. delay = half a result
+ * interval (latency matters more than perfect continuity), with a short capped extrapolation
+ * past the newest result so the hand keeps moving until the next one lands. While pinching
+ * the point is the newest one (grabbing wants the lowest latency).
+ */
+function interpolate(s: { prev: { at: number; lm: Vec3[]; point: Vec3 } | null; cur: { at: number; lm: Vec3[]; point: Vec3 } | null; interval: number; pinching: boolean }, nowMs: number): { landmarks: Vec3[]; point: Vec3 } | Record<string, never> {
+    const { prev, cur } = s;
+    if (!cur) return {};
+    if (!prev || cur.at <= prev.at) return { landmarks: cur.lm, point: cur.point };
+    const delay = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, s.interval * 0.5));
+    const k = Math.min(1 + MAX_EXTRAPOLATE, Math.max(0, (nowMs - delay - prev.at) / (cur.at - prev.at)));
+    const mix = (a: Vec3, b: Vec3): Vec3 => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+    return { landmarks: cur.lm.map((p, i) => mix(prev.lm[i] ?? p, p)), point: s.pinching ? cur.point : mix(prev.point, cur.point) };
+}
+
+/**
  * Camera-frame points (x right, y DOWN, z forward, metres) of the 21 landmarks: solve when
  * possible, else null. `scale` multiplies the world landmarks (personal palm size).
  */
@@ -143,6 +213,13 @@ export class HandSpace {
                 lastT: -Infinity,
                 out: null,
                 palmEstimates: [],
+                prev: null,
+                cur: null,
+                interval: 100,
+                corr: null,
+                ratios: [],
+                releaseSince: null,
+                size: new OneEuroPoint(1, SIZE_FILTER),
             };
             this.#sides.set(side, s);
         }
@@ -191,12 +268,19 @@ export class HandSpace {
             if (!present) {
                 s.pinching = false;
                 s.frozen = null;
+                s.ratios = [];
+                s.releaseSince = null;
                 if (nowMs - s.lastSeen > 400) {
                     s.lm.reset();
                     s.point.reset();
+                    s.size.reset();
+                    s.prev = null;
+                    s.cur = null;
+                    s.corr = null;
                 }
             }
-            s.out = { ...s.out, present, pinching: present && s.pinching };
+            const lerped = anchorToBody(interpolate(s, nowMs), bodyWrist(body, s.out.side), s.corr);
+            s.out = { ...s.out, ...lerped, present, pinching: present && s.pinching };
             out.push(s.out);
         }
         return out;
@@ -257,7 +341,19 @@ export class HandSpace {
         const index = landmarks[PALM.indexTip] as Vec3;
         const mid: Vec3 = [(thumb[0] + index[0]) / 2, (thumb[1] + index[1]) / 2, (thumb[2] + index[2]) / 2];
         const was = s.pinching;
-        s.pinching = h.inFrame && nextPinch(s.pinching, h.pinch, cfg.pinchOn, cfg.pinchOff);
+        // Median of the last 3 ratios: the tracker misplaces the thumb tip for single results.
+        s.ratios = [...s.ratios.slice(-2), h.pinch];
+        const ratio = [...s.ratios].sort((a, b) => a - b)[Math.floor((s.ratios.length - 1) / 2)] ?? h.pinch;
+        const want = h.inFrame && nextPinch(s.pinching, ratio, cfg.pinchOn, cfg.pinchOff);
+        if (was && !want) {
+            // Release only after the hand has stayed open for PINCH_RELEASE_MS (no drop on a glitch).
+            s.releaseSince ??= r.tMs;
+            s.pinching = r.tMs - s.releaseSince < PINCH_RELEASE_MS;
+        } else {
+            s.releaseSince = null;
+            s.pinching = want;
+        }
+        if (!s.pinching) s.releaseSince = null;
         if (s.pinching && !was) {
             s.pinchSince = r.tMs;
             s.frozen = mid;
@@ -265,7 +361,25 @@ export class HandSpace {
         const filtered = s.point.filter(mid, r.tMs) as Vec3;
         const point: Vec3 = s.pinching && s.frozen && r.tMs - s.pinchSince < PINCH_FREEZE_MS ? s.frozen : filtered;
         if (!s.pinching) s.frozen = null;
+        if (s.cur) s.interval += (Math.min(Math.max(nowMs - s.cur.at, 16), 400) - s.interval) * 0.2;
+        // A long gap (hand re-acquired) starts a fresh segment instead of sweeping across the frame.
+        s.prev = s.cur && nowMs - s.cur.at < HAND_LOST_MS ? s.cur : null;
+        s.cur = { at: nowMs, lm: landmarks, point };
+        const bw = bodyWrist(body, h.side);
+        const hw = landmarks[PALM.wrist] as Vec3;
+        const off: Vec3 | null = bw ? [hw[0] - bw[0], hw[1] - bw[1], hw[2] - bw[2]] : null;
+        if (!off || Math.hypot(off[0], off[1], off[2]) > CORR_MAX_M) s.corr = null;
+        else s.corr = s.corr ? [s.corr[0] + (off[0] - s.corr[0]) * CORR_ALPHA, s.corr[1] + (off[1] - s.corr[1]) * CORR_ALPHA, s.corr[2] + (off[2] - s.corr[2]) * CORR_ALPHA] : off;
         s.lastSeen = nowMs;
+        // Apparent hand size (raw px): max(wrist -> middle MCP, 1.4 x palm width) is steady under
+        // pinching (fingers move, the palm does not) and under wrist rotation.
+        const px = (i: number, j: number) => {
+            const a = h.raw[i];
+            const b = h.raw[j];
+            return a && b ? Math.hypot((a.x - b.x) * r.rawW, (a.y - b.y) * r.rawH) : 0;
+        };
+        const size = Math.max(px(PALM.wrist, 9), 1.4 * px(PALM.indexMcp, PALM.pinkyMcp));
+        const [sizePx = size] = s.size.filter([size], r.tMs);
         s.out = {
             side: h.side,
             present: true,
@@ -276,6 +390,7 @@ export class HandSpace {
             depthM: depthOf(pin, landmarks[PALM.wrist] as Vec3),
             source,
             shape: h.shape,
+            sizePx,
         };
     }
 }

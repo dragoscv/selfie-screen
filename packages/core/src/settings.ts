@@ -585,6 +585,10 @@ export type StudioSettings = z.infer<typeof studioSchema>;
 export const DEPTH_MODES = ["bodyScale", "model"] as const;
 export type DepthMode = (typeof DEPTH_MODES)[number];
 
+/** Pinch start/end (thumb-index / palm width). Measured live 2026-10-06: a real pinch reads 0.13-0.30, point/open hands >= 0.8. */
+export const PINCH_ON_DEFAULT = 0.35;
+export const PINCH_OFF_DEFAULT = 0.55;
+
 export const calibrationSchema = z.object({
     /** Per-eye blink thresholds from the calibration wizard (0..1 blendshape). */
     blinkLeft: z.number().min(0.1).max(0.95).default(0.5),
@@ -609,13 +613,15 @@ export const calibrationSchema = z.object({
     hands: z
         .object({
             palmM: z.number().min(0).max(0.15).default(0),
-            pinchOn: z.number().min(0.08).max(0.6).default(0.2),
-            pinchOff: z.number().min(0.12).max(0.9).default(0.38),
+            pinchOn: z.number().min(0.08).max(0.6).default(PINCH_ON_DEFAULT),
+            pinchOff: z.number().min(0.12).max(0.9).default(PINCH_OFF_DEFAULT),
             gestures: z.record(z.string(), z.number().min(0).max(1)).default({}),
             /** Verify pass: gesture -> pass rate 0..1 at calibration time. */
             verified: z.record(z.string(), z.number().min(0).max(1)).default({}),
             calibratedAt: z.number().int().default(0),
         })
+        // Never calibrated = the stored pinch values are just old defaults (0.2/0.38 missed most real pinches).
+        .transform((h) => (h.calibratedAt === 0 ? { ...h, pinchOn: PINCH_ON_DEFAULT, pinchOff: PINCH_OFF_DEFAULT } : h))
         .prefault({}),
     calibratedAt: z.number().int().default(0),
 });

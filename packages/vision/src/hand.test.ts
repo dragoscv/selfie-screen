@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { boxFromUpright, fromUpright, toDisplay, toUpright } from "./geometry.js";
-import { classifyHand, fingerExtension, handInFrame, handObservations, HandSmoother, handScale, mapCanned, palmSize, worldPinchRatio, type Pt3 } from "./hand.js";
+import { classifyHand, fingerExtension, handInFrame, handObservations, HandSmoother, handScale, imagePinchRatio, mapCanned, palmSize, pinchRatio, worldPinchRatio, type Pt3 } from "./hand.js";
 import { makeHand, OPEN } from "./testing.js";
 
 const shape = (spec: Parameters<typeof makeHand>[0], canned?: { category: string; score: number }) =>
@@ -159,6 +159,30 @@ describe("pinch from the world ratio", () => {
         const okLm = makeHand({ index: "pinch", middle: true, ring: true, pinky: true });
         expect(classifyHand(okLm, "right", undefined, { pinchRatio: 0.15, pinchOn: 0.2 }).shape).toBe("ok");
         expect(classifyHand(okLm, "right", undefined, { pinchRatio: 0.5, pinchOn: 0.2 }).shape).not.toBe("ok");
+    });
+
+    it("sees a side-on pinch in the image when the world view misplaces the thumb", () => {
+        const pinchImg = makeHand({ index: "pinch" });
+        const i = imagePinchRatio(pinchImg);
+        expect(i).toBeLessThan(0.35);
+        // World view says ~1 palm apart (MediaPipe's side-on error): the image wins.
+        expect(pinchRatio(world(0.08), pinchImg)).toBeCloseTo(i);
+        expect(classifyHand(pinchImg, "right", undefined, { pinchRatio: pinchRatio(world(0.08), pinchImg), pinchOn: 0.35 }).shape).toBe("pinch");
+    });
+
+    it("does not read a flat open palm as a pinch when only the world view closes", () => {
+        const open = makeHand({ thumb: true, index: true, middle: true, ring: true, pinky: true });
+        const i = imagePinchRatio(open);
+        expect(i).toBeGreaterThan(0.7);
+        // World says thumb on index (0.15): the image vetoes it.
+        expect(pinchRatio(world(0.012), open)).toBeGreaterThan(0.35);
+    });
+
+    it("keeps pointing and fists out of the pinch", () => {
+        expect(imagePinchRatio(makeHand({ index: true }))).toBeGreaterThan(0.6);
+        expect(imagePinchRatio(makeHand({}))).toBe(Infinity);
+        expect(imagePinchRatio([])).toBeNaN();
+        expect(pinchRatio([], [])).toBeNaN();
     });
 
     it("falls back to the 2D rule when the ratio is NaN", () => {

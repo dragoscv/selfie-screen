@@ -74,6 +74,7 @@ import { PreviewPass } from "./monitor.js";
 import { VcamPump } from "./output.js";
 import { ScopeSampler } from "./scopes.js";
 import { StudioVision } from "./vision/runtime.js";
+import type * as TraceModule from "./trace.js";
 
 export const PET_ASSET_BASE = "/pets";
 const TRANSCODER = "/basis/";
@@ -268,6 +269,15 @@ export interface EngineOptions {
     vcamCpu?: boolean;
 }
 
+/** Dev telemetry switch (see trace.ts): `vite dev`, or localStorage "tiksee.trace" = "1". */
+function traceWanted(): boolean {
+    try {
+        return import.meta.env.DEV || globalThis.localStorage?.getItem("tiksee.trace") === "1";
+    } catch {
+        return false;
+    }
+}
+
 function syntheticStream(): MediaStream {
     const c = document.createElement("canvas");
     c.width = 1920;
@@ -352,6 +362,9 @@ export class StudioEngine implements StudioController {
     readonly #body = new BodyModel({ width: 1080, height: 1920, vfovDeg: 60 });
     #bodySnap: ReturnType<BodyModel["sample"]> | null = null;
     #poseHz = 0;
+    /** Dev telemetry (trace.ts), loaded only when enabled so it never ships in the studio chunk. */
+    #trace: typeof TraceModule | null = null;
+    #traceAt = 0;
     #lastPoseAt = 0;
     #poseSeq = -1;
     readonly #metric = new MetricDistance();
@@ -459,6 +472,7 @@ export class StudioEngine implements StudioController {
         if (this.#stopped) return stage.dispose();
         this.#cb.onStep?.(`renderer ${stage.backend}`);
         this.#stage = stage;
+        if (traceWanted()) void import("./trace.js").then((m) => (this.#trace = m));
         stage.onInteraction = (e) => {
             this.#observe(e.kind, e.pet);
             if (e.kind === "resized" && e.scale !== undefined) {
@@ -1196,13 +1210,18 @@ export class StudioEngine implements StudioController {
         });
         stage.setHands(
             this.#settings.petHands.enabled && this.#settings.petAi.level !== "off"
-                ? this.#debugHands.map((h) => ({ side: h.side, present: h.present, pinching: h.pinching, point: h.point, strength: h.strength }))
+                ? this.#debugHands.map((h) => ({ side: h.side, present: h.present, pinching: h.pinching, point: h.point, strength: h.strength, sizePx: h.sizePx }))
                 : [],
         );
         stage.setPalms(this.#settings.petHands.enabled ? palmPerches(this.#debugHands, [0, pin.heightM ?? 0, 0]) : []);
         this.#ar?.update(pin, this.#ownerM, this.#arAnchors, now / 1000, dt, this.#hidden);
         this.#effects?.update(dt);
         stage.update(body.present ? body : null, dt);
+        if (this.#trace && now - this.#traceAt >= this.#trace.TRACE_MS) {
+            this.#traceAt = now;
+            const g = stage.grabState;
+            console.error(this.#trace.traceLine(now, stage.debug, this.#debugHands, pin, { ownerM: this.#ownerM ?? NaN, poseHz: this.#poseHz, grab: g ? `${g.pet}:${g.mode}:${g.scale.toFixed(2)}` : "-" }));
+        }
 
         // Pass 1: graded camera. Pass 2: output composite. Pass 3: preview to the canvas.
         const r = stage.renderer;

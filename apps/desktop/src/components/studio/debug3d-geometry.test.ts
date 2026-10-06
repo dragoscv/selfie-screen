@@ -185,6 +185,7 @@ describe("debug3d hands", () => {
         depthM: 0.62,
         source: "solve",
         shape: "open_palm",
+        sizePx: 120,
     };
 
     it("connects all 21 landmarks into one tree (20 fingers bones + palm closure)", () => {

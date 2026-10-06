@@ -42,6 +42,55 @@ describe("HandGrab", () => {
         expect(r.events).toHaveLength(0);
     });
 
+    it("does not grab with a pinch that started long before reaching the pet (resting hand)", () => {
+        const g = new HandGrab();
+        const far: Vec3 = [0.6, 1, -1];
+        const near: Vec3 = [0.05, 1.02, -1];
+        const r = frames(g, 0, 1500, (t) => [hand("right", t < 1000 ? far : near)]);
+        expect(r.last.held).toBeNull();
+        // Re-pinching near the pet grabs.
+        g.update(r.end + 16, [hand("right", near, false)], [PET]);
+        expect(frames(g, r.end + 32, 200, () => [hand("right", near)]).last.held?.pet).toBe("parrot");
+    });
+
+    it("one-hand push/pull: the pet grows with the hand's apparent size and keeps it on release", () => {
+        const g = new HandGrab();
+        const at: Vec3 = [0.05, 1.02, -1];
+        const sized = (px: number, pinching = true): HandInput => ({ ...hand("right", at, pinching), sizePx: px });
+        frames(g, 0, 200, () => [sized(100)]);
+        // 3 % wobble stays inside the dead band.
+        expect(frames(g, 216, 300, () => [sized(103)]).last.held?.scale).toBeCloseTo(1, 2);
+        const big = frames(g, 532, 1500, () => [sized(150)]);
+        expect(big.last.held?.scale).toBeGreaterThan(1.35);
+        expect(big.last.held?.scale).toBeLessThan(1.5);
+        const drop = g.update(big.end + 16, [sized(150, false)], [PET]);
+        expect(drop.events.map((e) => e.kind)).toEqual(["resizeEnd", "drop"]);
+    });
+
+    it("two-hand resize: a close start spread is floored so the ratio does not explode", () => {
+        const g = new HandGrab({ minSpread: 0.2 });
+        const at: Vec3 = [0.05, 1.02, -1];
+        frames(g, 0, 200, () => [hand("right", at)]);
+        // Other hand starts 2 cm away (would be x10 at 0.2 m without the floor), then moves to 0.3 m.
+        frames(g, 216, 100, () => [hand("right", at), hand("left", [0.07, 1.02, -1])]);
+        const r = frames(g, 332, 1500, () => [hand("right", at), hand("left", [0.35, 1.02, -1])]);
+        expect(r.last.held?.scale).toBeGreaterThan(1.4);
+        expect(r.last.held?.scale).toBeLessThan(1.6);
+    });
+
+    it("honours a per-pet pick radius (body-only)", () => {
+        const tight = { ...PET, reachM: 0.03 };
+        const r = frames(new HandGrab(), 0, 300, () => [hand("right", [0.05, 1.02, -1])], [tight]);
+        expect(r.last.held).toBeNull();
+    });
+
+    it("picks with a custom metric (on-screen distance ignores depth error)", () => {
+        const screen = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+        const behind: Vec3 = [0.03, 1.02, -0.65];
+        expect(frames(new HandGrab(), 0, 300, () => [hand("right", behind)]).last.held).toBeNull();
+        expect(frames(new HandGrab({ metric: screen }), 0, 300, () => [hand("right", behind)]).last.held?.pet).toBe("parrot");
+    });
+
     it("picks the nearest pet when two are in reach", () => {
         const g = new HandGrab();
         const pets = [PET, { id: "fox", p: [0.1, 1, -1] as Vec3, radiusM: 0.09 }];

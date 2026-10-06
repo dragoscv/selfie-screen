@@ -207,9 +207,15 @@ export function formatMetres(m: number | undefined, locale = "en"): string {
  * Hands & gestures step
  * ------------------------------------------------------------------ */
 
-/** Gestures recorded in order; "relaxed" = open, still hand (pinch-off baseline, not a classifier shape). */
-export const HAND_TARGETS = ["relaxed", "open_palm", "fist", "pinch", "point_up", "thumb_up", "victory"] as const;
+/**
+ * Gestures recorded one at a time, in order; "relaxed" = open, still hand (pinch-off baseline,
+ * not a classifier shape). The first three are what the pets need (palm perch, pinch grab);
+ * the rest are optional and can be skipped.
+ */
+export const HAND_TARGETS = ["relaxed", "open_palm", "pinch", "fist", "point_up", "thumb_up", "victory"] as const;
 export type HandTarget = (typeof HAND_TARGETS)[number];
+export const HAND_REQUIRED: readonly HandTarget[] = ["relaxed", "open_palm", "pinch"];
+export const isHandRequired = (t: HandTarget): boolean => HAND_REQUIRED.includes(t);
 
 export const HAND_EMOJI: Readonly<Record<HandTarget, string>> = {
     relaxed: "🖐️",
@@ -221,8 +227,7 @@ export const HAND_EMOJI: Readonly<Record<HandTarget, string>> = {
     victory: "✌️",
 };
 
-export const HAND_RECORD_MS = 1500;
-export const HAND_VERIFY_MS = 1000;
+export const HAND_RECORD_MS = 2000;
 /** Pass: the classifier saw the target in >= 60 % of the hand frames ... */
 export const HAND_HIT_PASS = 0.6;
 /** ... and a hand was in frame for >= 70 % of all frames. */
@@ -259,34 +264,33 @@ export type HandSamples = Partial<Record<HandTarget, HandSample>>;
 
 export interface HandSummaryRow {
     target: HandTarget;
-    /** Recording-pass hit rate (undefined = not recorded). */
+    /** Hit rate of the recording (undefined = skipped / not recorded). */
     record?: number;
-    /** Verify-pass hit rate (undefined = not verified). */
-    verify?: number;
     pass: boolean;
 }
 
-/** Per-gesture rows + the verify pass rate (share of verified gestures that passed). */
-export function summariseHands(record: HandSamples, verify: HandSamples): { rows: HandSummaryRow[]; passRate: number; verified: number } {
+/** Per-gesture rows + the pass rate over the recorded gestures. */
+export function summariseHands(record: HandSamples): { rows: HandSummaryRow[]; passRate: number; recorded: number } {
     const rows: HandSummaryRow[] = [];
-    let verified = 0;
+    let recorded = 0;
     let passed = 0;
     for (const target of HAND_TARGETS) {
         const r = record[target];
-        const v = verify[target];
         const row: HandSummaryRow = { target, pass: false };
-        if (r) row.record = judgeHandSample(r).hitRate;
-        if (v) {
-            const j = judgeHandSample(v);
-            row.verify = j.hitRate;
+        if (r) {
+            const j = judgeHandSample(r);
+            row.record = j.hitRate;
             row.pass = j.verdict === "pass";
-            verified++;
+            recorded++;
             if (row.pass) passed++;
         }
         rows.push(row);
     }
-    return { rows, passRate: verified > 0 ? passed / verified : 0, verified };
+    return { rows, passRate: recorded > 0 ? passed / recorded : 0, recorded };
 }
+
+/** The pets' gestures (relaxed, open palm, pinch) all recorded. */
+export const handsRequiredDone = (record: HandSamples): boolean => HAND_REQUIRED.every((t) => record[t] !== undefined);
 
 export type HandsCalibration = VisionCalibration["hands"];
 
@@ -297,7 +301,7 @@ export function gestureThreshold(confidence: number): number {
 
 /** Pinch start ratio from the pinch recording (thumb-index / palm width, 90th percentile). */
 export function pinchOnFrom(pinchP90: number): number {
-    return round(clamp(pinchP90 * 1.25, 0.1, 0.35), 3);
+    return round(clamp(pinchP90 * 1.25, 0.1, 0.45), 3);
 }
 
 /** Pinch end ratio: hysteresis above `pinchOn`, from the relaxed hand's 10th percentile when known. */
@@ -308,14 +312,15 @@ export function pinchOffFrom(pinchOn: number, relaxedP10: number | undefined, fa
 
 /**
  * The `vision.calibration.hands` value written on Save. Gestures not recorded keep their
- * stored thresholds; `now` is a parameter so the caller stamps it at save time.
+ * stored thresholds; `verified` = each recorded gesture's hit rate; `now` is a parameter so
+ * the caller stamps it at save time.
  */
-export function buildHandsCalibration(prev: HandsCalibration, record: HandSamples, verify: HandSamples, now: number = Date.now()): HandsCalibration {
-    const both = (t: HandTarget) => [record[t], verify[t]].filter((s): s is HandSample => s !== undefined);
+export function buildHandsCalibration(prev: HandsCalibration, record: HandSamples, now: number = Date.now()): HandsCalibration {
+    const both = (t: HandTarget) => [record[t]].filter((s): s is HandSample => s !== undefined);
     const palms = [...both("relaxed"), ...both("open_palm")].map((s) => s.palmM).filter((m) => m > 0);
     const palmM = median(palms);
-    const pinch = record.pinch ?? verify.pinch;
-    const relaxed = record.relaxed ?? verify.relaxed;
+    const pinch = record.pinch;
+    const relaxed = record.relaxed;
     const pinchOn = pinch && pinch.handFrames > 0 ? pinchOnFrom(pinch.pinchP90) : prev.pinchOn;
     const pinchOff = pinchOffFrom(pinchOn, relaxed && relaxed.handFrames > 0 ? relaxed.pinchP10 : undefined, prev.pinchOff);
     const gestures: Record<string, number> = { ...prev.gestures };
@@ -327,8 +332,8 @@ export function buildHandsCalibration(prev: HandsCalibration, record: HandSample
             .map((s) => s.confidence);
         const c = median(confidences);
         if (c !== undefined) gestures[target] = gestureThreshold(c);
-        const v = verify[target];
-        if (v) verified[target] = round(judgeHandSample(v).hitRate, 3);
+        const r = record[target];
+        if (r) verified[target] = round(judgeHandSample(r).hitRate, 3);
     }
     return {
         // No depth-backed palm sample = 0 (MediaPipe's average hand).

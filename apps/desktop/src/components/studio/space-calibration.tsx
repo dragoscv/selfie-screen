@@ -11,7 +11,6 @@ import {
     HAND_EMOJI,
     HAND_RECORD_MS,
     HAND_TARGETS,
-    HAND_VERIFY_MS,
     HEIGHT_MAX_CM,
     HEIGHT_MIN_CM,
     LENS_MAX_MM,
@@ -28,6 +27,8 @@ import {
     formatMetres,
     formatMm,
     formatPct,
+    handsRequiredDone,
+    isHandRequired,
     judgeHandSample,
     parseHeightCm,
     presetNeedsLens,
@@ -49,7 +50,7 @@ const SAMPLE_MS = 3000;
 const CHARUCO = import.meta.glob<{ renderCharucoBoard?: (canvas: HTMLCanvasElement) => unknown }>("../../lib/studio/calibration/charuco.ts");
 
 type Capture = { kind: "idle" } | { kind: "countdown"; n: number } | { kind: "sampling"; ms?: number };
-type HandPhase = "intro" | "record" | "verify" | "summary";
+type HandPhase = "intro" | "record" | "summary";
 type Lens = { kind: "idle" } | { kind: "running"; progress: LensProgress } | { kind: "done"; result: LensResult } | { kind: "error"; error: string };
 type Scene = { kind: "idle" } | { kind: "running"; progress: number } | { kind: "done"; result: SceneResult } | { kind: "error"; error: string };
 
@@ -129,11 +130,9 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
     const [handPhase, setHandPhase] = useState<HandPhase>("intro");
     const [handIdx, setHandIdx] = useState(0);
     const [handRecord, setHandRecord] = useState<HandSamples>({});
-    const [handVerify, setHandVerify] = useState<HandSamples>({});
-    const [verifying, setVerifying] = useState(false);
 
     const step: Step = STEPS[index] ?? "review";
-    const busy = capture.kind !== "idle" || scene.kind === "running" || verifying;
+    const busy = capture.kind !== "idle" || scene.kind === "running";
     const heightCm = parseHeightCm(heightText);
     const heightInvalid = heightText.trim() !== "" && heightCm === null;
 
@@ -251,40 +250,30 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
         if (s) setHandRecord((prev) => ({ ...prev, [target]: s }));
     };
 
+    /** Next gesture (Next or Skip), or the summary after the last one. */
     const nextGesture = () => {
         if (handIdx + 1 < HAND_TARGETS.length) setHandIdx(handIdx + 1);
-        else {
-            setHandIdx(0);
-            setHandPhase("verify");
-        }
+        else setHandPhase("summary");
     };
 
-    const runVerify = async () => {
-        setHandVerify({});
-        setVerifying(true);
-        try {
-            for (let i = 0; i < HAND_TARGETS.length; i++) {
-                const target = HAND_TARGETS[i];
-                if (!target) continue;
-                setHandIdx(i);
-                const s = await recordHand(target, HAND_VERIFY_MS);
-                if (cancelled.current) return;
-                if (s) setHandVerify((prev) => ({ ...prev, [target]: s }));
-            }
-            setHandPhase("summary");
-        } finally {
-            if (!cancelled.current) setVerifying(false);
-        }
+    const prevGesture = () => {
+        if (handIdx > 0) setHandIdx(handIdx - 1);
+        else setHandPhase("intro");
+    };
+
+    /** Back from the summary to one gesture, to redo just that one. */
+    const redoGesture = (target: HandTarget) => {
+        setHandIdx(HAND_TARGETS.indexOf(target));
+        setHandPhase("record");
     };
 
     const restartHands = () => {
         setHandRecord({});
-        setHandVerify({});
         setHandIdx(0);
         setHandPhase("record");
     };
 
-    const handsSummary = summariseHands(handRecord, handVerify);
+    const handsSummary = summariseHands(handRecord);
     const handsRecorded = Object.keys(handRecord).length > 0;
 
     const measure = combineSamples(samples.standing, samples.seated);
@@ -300,7 +289,7 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
         patchStudio(patch);
         if (handsRecorded) {
             // Stamped with Date.now() inside the helper (default param) at save time.
-            const hands = buildHandsCalibration(vision.calibration.hands, handRecord, handVerify);
+            const hands = buildHandsCalibration(vision.calibration.hands, handRecord);
             patchVision({ calibration: { ...vision.calibration, hands } });
         }
         toast.success(t("studio.space.saved"));
@@ -396,17 +385,26 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0 }}
                             transition={reduced ? INSTANT : SPRING}
-                            className={`grid items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 ${summary ? "grid-cols-[1.5rem_1fr_3rem_3rem_1.25rem]" : "grid-cols-[1.5rem_1fr_auto]"}`}
+                            className={`grid items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 ${summary ? "grid-cols-[1.5rem_1fr_3rem_1.25rem_auto]" : "grid-cols-[1.5rem_1fr_auto]"}`}
                         >
                             <span aria-hidden>{HAND_EMOJI[target]}</span>
-                            <span className="truncate">{gestureName(target)}</span>
+                            <span className="truncate">
+                                {gestureName(target)}
+                                {!isHandRequired(target) && <span className="ml-1 text-white/55">{t("studio.space.hands.optional")}</span>}
+                            </span>
                             {summary ? (
                                 <>
-                                    <span className="text-right tabular-nums text-white/75">{formatPct(row?.record)}</span>
-                                    <span className="text-right font-semibold tabular-nums">{formatPct(row?.verify)}</span>
+                                    <span className="text-right font-semibold tabular-nums">{row?.record === undefined ? t("studio.space.hands.skipped") : formatPct(row.record)}</span>
                                     <span className={row?.pass ? "text-emerald-300" : "text-amber-300"}>
-                                        {row?.pass ? <Check className="size-3.5" aria-label={t("studio.space.hands.pass")} /> : <X className="size-3.5" aria-label={t("studio.space.hands.fail")} />}
+                                        {row?.record === undefined ? null : row.pass ? (
+                                            <Check className="size-3.5" aria-label={t("studio.space.hands.pass")} />
+                                        ) : (
+                                            <X className="size-3.5" aria-label={t("studio.space.hands.fail")} />
+                                        )}
                                     </span>
+                                    <button type="button" onClick={() => redoGesture(target)} className={BTN} aria-label={t("studio.space.hands.redoOne", { gesture: gestureName(target) })}>
+                                        <RotateCcw className="size-3.5" aria-hidden />
+                                    </button>
                                 </>
                             ) : (
                                 <span className={`tabular-nums ${verdict ? VERDICT_TONE[verdict] : ""}`}>
@@ -451,12 +449,15 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
             return (
                 <LayoutGroup id="hand-rows">
                     <div className="space-y-3">
-                        <p className="text-sm text-white/85">{t("studio.space.hands.summary", { pct: formatPct(handsSummary.passRate), n: handsSummary.verified })}</p>
-                        <div className="grid grid-cols-[1.5rem_1fr_3rem_3rem_1.25rem] gap-2 px-2 text-[0.625rem] uppercase tracking-wide text-white/60" aria-hidden>
+                        <p className="text-sm text-white/85">{t("studio.space.hands.summary", { pct: formatPct(handsSummary.passRate), n: handsSummary.recorded })}</p>
+                        {!handsRequiredDone(handRecord) && (
+                            <p className="rounded-xl bg-amber-400/15 p-2 text-[0.6875rem] text-amber-100">{t("studio.space.hands.requiredMissing")}</p>
+                        )}
+                        <div className="grid grid-cols-[1.5rem_1fr_3rem_1.25rem_auto] gap-2 px-2 text-[0.625rem] uppercase tracking-wide text-white/60" aria-hidden>
                             <span />
                             <span>{t("studio.space.hands.gesture")}</span>
                             <span className="text-right">{t("studio.space.hands.recordCol")}</span>
-                            <span className="text-right">{t("studio.space.hands.verifyCol")}</span>
+                            <span />
                             <span />
                         </div>
                         {handRows(HAND_TARGETS, true)}
@@ -470,8 +471,9 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
                 </LayoutGroup>
             );
         }
-        const verify = handPhase === "verify";
         const rec = handRecord[target];
+        const required = isHandRequired(target);
+        const last = handIdx + 1 >= HAND_TARGETS.length;
         const judged = rec ? judgeHandSample(rec) : null;
         const done = HAND_TARGETS.filter((g) => handRecord[g]);
         return (
@@ -481,9 +483,9 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
                         {gestureBox(target)}
                         <div className="min-w-0 flex-1">
                             <p className="text-[0.6875rem] uppercase tracking-wide text-white/60">
-                                {verify
-                                    ? t("studio.space.hands.verifyStep", { n: handIdx + 1, total: HAND_TARGETS.length })
-                                    : t("studio.space.hands.recordStep", { n: handIdx + 1, total: HAND_TARGETS.length })}
+                                {t("studio.space.hands.recordStep", { n: handIdx + 1, total: HAND_TARGETS.length })}
+                                {" · "}
+                                {required ? t("studio.space.hands.forPets") : t("studio.space.hands.optional")}
                             </p>
                             <AnimatePresence mode="popLayout" initial={false}>
                                 <motion.p
@@ -497,33 +499,34 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
                                     {gestureName(target)}
                                 </motion.p>
                             </AnimatePresence>
-                            <p className="text-xs leading-snug text-white/75">{verify ? t("studio.space.hands.verifyBody") : t(`studio.space.hands.how.${target}`)}</p>
+                            <p className="text-xs leading-snug text-white/75">{t(`studio.space.hands.how.${target}`)}</p>
                         </div>
                     </div>
-                    {!verify && judged && (
+                    {judged && (
                         <p className={`rounded-xl bg-white/5 p-2 text-[0.6875rem] ${VERDICT_TONE[judged.verdict]}`} aria-live="polite">
                             {t(`studio.space.hands.message.${judged.verdict}`, { pct: formatPct(judged.hitRate) })}
                         </p>
                     )}
                     {done.length > 0 && handRows(done, false)}
-                    <div className="flex flex-wrap justify-end gap-2">
-                        {verify ? (
-                            <button type="button" disabled={busy} onClick={() => void runVerify()} className={PRIMARY}>
-                                {busy ? t("studio.space.capturing") : t("studio.space.hands.verifyStart")}
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button type="button" disabled={busy} onClick={prevGesture} className={`${BTN} mr-auto`}>
+                            <ArrowLeft className="size-3.5" aria-hidden />
+                            {t("studio.space.hands.prevGesture")}
+                        </button>
+                        {!rec && !required && (
+                            <button type="button" disabled={busy} onClick={nextGesture} className={BTN}>
+                                {t("studio.space.hands.skip")}
                             </button>
-                        ) : (
-                            <>
-                                <button type="button" disabled={busy} onClick={() => void recordCurrent()} className={rec ? BTN : PRIMARY}>
-                                    {rec ? <RotateCcw className="size-3.5" aria-hidden /> : null}
-                                    {busy ? t("studio.space.capturing") : rec ? t("studio.space.hands.retryGesture") : t("studio.space.hands.record")}
-                                </button>
-                                {rec && (
-                                    <button type="button" disabled={busy} onClick={nextGesture} className={PRIMARY}>
-                                        {handIdx + 1 < HAND_TARGETS.length ? t("studio.space.hands.nextGesture") : t("studio.space.hands.toVerify")}
-                                        <ArrowRight className="size-3.5" aria-hidden />
-                                    </button>
-                                )}
-                            </>
+                        )}
+                        <button type="button" disabled={busy} onClick={() => void recordCurrent()} className={rec ? BTN : PRIMARY}>
+                            {rec ? <RotateCcw className="size-3.5" aria-hidden /> : null}
+                            {busy ? t("studio.space.capturing") : rec ? t("studio.space.hands.retryGesture") : t("studio.space.hands.record")}
+                        </button>
+                        {rec && (
+                            <button type="button" disabled={busy} onClick={nextGesture} className={PRIMARY}>
+                                {last ? t("studio.space.hands.toSummary") : t("studio.space.hands.nextGesture")}
+                                <ArrowRight className="size-3.5" aria-hidden />
+                            </button>
                         )}
                     </div>
                 </div>
@@ -754,7 +757,7 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
                         [t("studio.space.fields.headHeight"), formatMetres(measure.seatedHeadM, lang)],
                         [
                             t("studio.space.fields.hands"),
-                            handsRecorded ? (handsSummary.verified > 0 ? formatPct(handsSummary.passRate) : t("studio.space.hands.notVerified")) : "—",
+                            handsRecorded ? formatPct(handsSummary.passRate) : "—",
                         ],
                     ]}
                 />

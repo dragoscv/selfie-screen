@@ -176,6 +176,8 @@ export interface DebugHand {
     /** How the depth was found: own 21-point solve, or the pose wrist fallback. */
     source: "solve" | "wrist";
     shape: string | null;
+    /** Apparent hand size on the raw frame (px, smoothed): push/pull resize of a held pet. */
+    sizePx: number;
 }
 
 /** Owner hand as the vision pipeline reports it (RAW camera space + MediaPipe hand world landmarks). */

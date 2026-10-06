@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { HandSample, SpaceSample } from "../../lib/studio/controller.js";
 import {
+    HAND_TARGETS,
     acceptMeasuredFov,
     buildHandsCalibration,
     buildSpacePatch,
@@ -16,6 +17,8 @@ import {
     formatMm,
     formatPct,
     gestureThreshold,
+    handsRequiredDone,
+    isHandRequired,
     judgeHandSample,
     median,
     parseHeightCm,
@@ -178,7 +181,7 @@ describe("hand thresholds", () => {
     it("derives pinch on/off with hysteresis", () => {
         expect(pinchOnFrom(0.16)).toBeCloseTo(0.2);
         expect(pinchOnFrom(0.01)).toBe(0.1);
-        expect(pinchOnFrom(0.9)).toBe(0.35);
+        expect(pinchOnFrom(0.9)).toBe(0.45);
         expect(pinchOffFrom(0.2, 0.6, 0.38)).toBeCloseTo(0.48);
         expect(pinchOffFrom(0.3, 0.1, 0.38)).toBeCloseTo(0.42);
         expect(pinchOffFrom(0.2, undefined, 0.38)).toBeCloseTo(0.38);
@@ -186,30 +189,35 @@ describe("hand thresholds", () => {
 });
 
 describe("summariseHands", () => {
-    it("rates the verify pass and keeps unrecorded rows", () => {
-        const s = summariseHands({ fist: hand("fist") }, { fist: hand("fist"), pinch: hand("pinch", { hits: 5 }) });
-        expect(s.verified).toBe(2);
+    it("rates the recorded gestures and keeps skipped rows", () => {
+        const s = summariseHands({ fist: hand("fist"), pinch: hand("pinch", { hits: 5 }) });
+        expect(s.recorded).toBe(2);
         expect(s.passRate).toBe(0.5);
         expect(s.rows.find((r) => r.target === "fist")).toMatchObject({ pass: true });
         expect(s.rows.find((r) => r.target === "victory")).toEqual({ target: "victory", pass: false });
+    });
+    it("requires only the pets' gestures", () => {
+        expect(HAND_TARGETS.slice(0, 3)).toEqual(["relaxed", "open_palm", "pinch"]);
+        expect(handsRequiredDone({ relaxed: hand("relaxed"), open_palm: hand("open_palm") })).toBe(false);
+        expect(handsRequiredDone({ relaxed: hand("relaxed"), open_palm: hand("open_palm"), pinch: hand("pinch") })).toBe(true);
+        expect(isHandRequired("victory")).toBe(false);
     });
 });
 
 describe("buildHandsCalibration", () => {
     const prev = visionSchema.parse({}).calibration.hands;
-    it("builds a schema-valid patch from recordings + verify", () => {
+    it("builds a schema-valid patch from the recordings", () => {
         const record = {
             relaxed: hand("relaxed", { hits: 0, pinchP10: 0.6, palmM: 0.08 }),
-            open_palm: hand("open_palm", { palmM: 0.09 }),
+            open_palm: hand("open_palm", { palmM: 0.1 }),
             pinch: hand("pinch", { pinchP90: 0.16, confidence: 0.7 }),
-            fist: hand("fist", { confidence: 0.75 }),
+            fist: hand("fist", { confidence: 0.75, hits: 10 }),
         };
-        const verify = { fist: hand("fist", { confidence: 0.85, hits: 10 }), open_palm: hand("open_palm", { palmM: 0.1 }) };
-        const out = buildHandsCalibration(prev, record, verify, 1234.4);
+        const out = buildHandsCalibration(prev, record, 1234.4);
         expect(out.palmM).toBeCloseTo(0.09);
         expect(out.pinchOn).toBeCloseTo(0.2);
         expect(out.pinchOff).toBeCloseTo(0.48);
-        expect(out.gestures.fist).toBeCloseTo(0.64);
+        expect(out.gestures.fist).toBeCloseTo(0.6);
         expect(out.gestures.pinch).toBeCloseTo(0.56);
         expect(out.gestures.relaxed).toBeUndefined();
         expect(out.verified.fist).toBeCloseTo(10 / 45, 3);
@@ -217,7 +225,7 @@ describe("buildHandsCalibration", () => {
         expect(visionSchema.parse({ calibration: { hands: out } }).calibration.hands).toEqual(out);
     });
     it("keeps stored pinch values and zero palm when nothing usable was recorded", () => {
-        const out = buildHandsCalibration({ ...prev, pinchOn: 0.22, pinchOff: 0.4, gestures: { fist: 0.5 } }, {}, {}, 1);
+        const out = buildHandsCalibration({ ...prev, pinchOn: 0.22, pinchOff: 0.4, gestures: { fist: 0.5 } }, {}, 1);
         expect(out).toMatchObject({ palmM: 0, pinchOn: 0.22, pinchOff: 0.4, gestures: { fist: 0.5 } });
     });
     it("formats pass rates", () => {
