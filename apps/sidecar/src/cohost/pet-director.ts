@@ -1,4 +1,4 @@
-import { eventDiamonds, PET_ACTION_KINDS, type ChatEvent, type PetBias, type PetMindState } from "@tiksee/core";
+import { eventDiamonds, PET_ACTION_KINDS, type ChatEvent, type PetAiLevel, type PetBias, type PetMindState } from "@tiksee/core";
 import { z } from "zod";
 
 import type { CodaiClient } from "../codai/client.js";
@@ -48,8 +48,14 @@ export const SYSTEM_PROMPT = [
 export type DirectorTrigger = "routine" | "gift" | "follow" | "mention";
 
 export interface PetDirectorSettings {
-    enabled: boolean;
+    /** `studio.petAi.level`, or "off" while the studio is disabled. */
+    level: PetAiLevel;
     everySec: number;
+}
+
+/** Bias nudges run at the LLM levels only (reactive, chatty, director); off/local never call. */
+export function directorEnabled(level: PetAiLevel): boolean {
+    return level === "reactive" || level === "chatty" || level === "director";
 }
 
 export interface PetDirectorDeps {
@@ -179,7 +185,7 @@ export class PetDirector {
     }
 
     onEvent(event: ChatEvent): void {
-        if (!this.#deps.settings().enabled) return;
+        if (!directorEnabled(this.#deps.settings().level)) return;
         const at = this.#now();
         if (event.kind === "chat") {
             this.#activityAt = at;
@@ -202,7 +208,7 @@ export class PetDirector {
     async tick(): Promise<number> {
         const settings = this.#deps.settings();
         const now = this.#now();
-        if (!settings.enabled || this.#busy) return 0;
+        if (!directorEnabled(settings.level) || this.#busy) return 0;
         if (this.#pets.length === 0 || now - this.#petsAt > STATE_MAX_AGE_MS) return 0;
         if (this.#deps.quiet()) return 0;
         if (now - this.#lastCallAt < settings.everySec * 1000) return 0;

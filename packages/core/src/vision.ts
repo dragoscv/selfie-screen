@@ -522,6 +522,7 @@ export const PET_ACTION_KINDS = [
     "sleep",
     "inspectPoint",
     "greetViewers",
+    "chatter",
 ] as const;
 export type PetActionKind = (typeof PET_ACTION_KINDS)[number];
 
@@ -546,6 +547,77 @@ export const petBiasSchema = z.object({
 });
 export type PetBias = z.infer<typeof petBiasSchema>;
 
+/** Mirror of `ANCHORS` in `@tiksee/pets` roam.ts. */
+export const PET_ANCHORS = ["shoulderL", "shoulderR", "crown", "handL", "handR", "ledgeL", "ledgeR", "orbit", "centre", "point"] as const;
+export type PetAnchor = (typeof PET_ANCHORS)[number];
+/** Clips the director may ask for (subset of the pet clip set). */
+export const PET_COMMAND_CLIPS = ["wave", "dance", "happy", "look", "sleep", "talk", "idle"] as const;
+export const PET_EMOTIONS = ["neutral", "happy", "excited", "curious", "sleepy", "shy", "proud", "sad"] as const;
+export type PetEmotion = (typeof PET_EMOTIONS)[number];
+
+/** OCEAN traits 0..1, per pet; drift slowly from experience (computed in code, never by the LLM). */
+export const petTraitsSchema = z.object({
+    openness: z.number().min(0).max(1),
+    conscientiousness: z.number().min(0).max(1),
+    extraversion: z.number().min(0).max(1),
+    agreeableness: z.number().min(0).max(1),
+    neuroticism: z.number().min(0).max(1),
+});
+export type PetTraits = z.infer<typeof petTraitsSchema>;
+
+/** One remembered moment (importance 0..1); the newest/most important feed the pet prompt. */
+export const petMemorySchema = z.object({
+    at: z.number().int(),
+    text: z.string().min(1).max(160),
+    importance: z.number().min(0).max(1),
+});
+export type PetMemory = z.infer<typeof petMemorySchema>;
+
+/** Persistent per-pet personality (sidecar SQLite; reset from the studio). */
+export const petPersonalitySchema = z.object({
+    pet: z.string().min(1).max(32),
+    traits: petTraitsSchema,
+    /** Learned action preferences: multiplier per action (0.6..1.6), drift from what it enjoys. */
+    likes: z.record(z.string(), z.number().min(0.6).max(1.6)),
+    /** Short self-description the LLM keeps consistent (written by code from traits + memories). */
+    bio: z.string().max(240),
+    memories: z.array(petMemorySchema).max(40),
+    sessions: z.number().int().min(0),
+    createdAt: z.number().int(),
+    updatedAt: z.number().int(),
+});
+export type PetPersonality = z.infer<typeof petPersonalitySchema>;
+
+/** Studio -> sidecar: what the owner did recently (for chatty pets), compact. */
+export const petObservationSchema = z.object({
+    at: z.number().int(),
+    /** Signal id or interaction ("grabbed", "resized", "petted", "dropped"). */
+    what: z.string().min(1).max(40),
+    pet: z.string().max(32).optional(),
+});
+export type PetObservation = z.infer<typeof petObservationSchema>;
+
+/** Sidecar -> studio: a pet says something (bubble in the output, optional TTS via `say`). */
+export const petSaySchema = z.object({
+    pet: z.string().min(1).max(32),
+    text: z.string().min(1).max(120),
+    emotion: z.enum(PET_EMOTIONS).default("neutral"),
+    /** Bubble time on screen; the studio caps it from the text length. */
+    ttlMs: z.number().int().min(1500).max(9000),
+    /** Id of the matching TTS utterance when voiced (lip-sync only this pet). */
+    sayId: z.string().optional(),
+});
+export type PetSay = z.infer<typeof petSaySchema>;
+
+/** Sidecar -> studio (director level only): move a pet / play a clip; validated, TTL-bound. */
+export const petCommandSchema = z.object({
+    pet: z.string().min(1).max(32),
+    anchor: z.enum(PET_ANCHORS).optional(),
+    clip: z.enum(PET_COMMAND_CLIPS).optional(),
+    ttlSec: z.number().min(2).max(30),
+});
+export type PetCommand = z.infer<typeof petCommandSchema>;
+
 /* ------------------------------------------------------------------ *
  * Wire messages (merged into protocol.ts).
  * ------------------------------------------------------------------ */
@@ -569,7 +641,16 @@ export const visionClientMessages = [
     /** Gesture arming state from the studio (open palm 1 s -> armed for armTimeoutMs). */
     z.object({ type: z.literal("visionArm"), armed: z.boolean() }),
     /** Pet minds from the studio (~every 5 s) for the optional LLM director. */
-    z.object({ type: z.literal("petState"), pets: z.array(petMindStateSchema).max(8) }),
+    z.object({
+        type: z.literal("petState"),
+        pets: z.array(petMindStateSchema).max(8),
+        /** Recent owner/interaction observations since the last petState. */
+        observations: z.array(petObservationSchema).max(20).default([]),
+    }),
+    /** Ask for the stored personalities (answer: `petPersonalities`). */
+    z.object({ type: z.literal("petPersonalityList") }),
+    /** Forget one pet's personality and memories (or every pet with "all"). */
+    z.object({ type: z.literal("petPersonalityReset"), pet: z.string().min(1).max(32) }),
 ] as const;
 
 export const visionServerMessages = [
@@ -586,4 +667,7 @@ export const visionServerMessages = [
     z.object({ type: z.literal("visionSnapshot"), snapshot: visionSnapshotSchema }),
     /** Director nudge: multiply one pet action's utility for `ttlSec` (never a command). */
     z.object({ type: z.literal("petBias"), ...petBiasSchema.shape }),
+    z.object({ type: z.literal("petSay"), ...petSaySchema.shape }),
+    z.object({ type: z.literal("petCommand"), ...petCommandSchema.shape }),
+    z.object({ type: z.literal("petPersonalities"), pets: z.array(petPersonalitySchema).max(16) }),
 ] as const;

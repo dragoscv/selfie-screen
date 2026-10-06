@@ -24,7 +24,8 @@ const STEPS: readonly { key: SampleKey; emoji: string }[] = [
 const COUNTDOWN_S = 3;
 const SAMPLE_MS = 2000;
 
-type Phase = { kind: "intro" } | { kind: "countdown"; n: number } | { kind: "sampling" } | { kind: "distance" } | { kind: "review"; result: VisionCalibration };
+type FaceCalibration = Omit<VisionCalibration, "hands">;
+type Phase = { kind: "intro" } | { kind: "countdown"; n: number } | { kind: "sampling" } | { kind: "distance" } | { kind: "review"; result: FaceCalibration };
 
 /** Calibration wizard: countdown + 2 s sample per expression, thresholds, distance reference, save. */
 export function Calibration({ onClose }: { onClose: () => void }) {
@@ -102,8 +103,9 @@ export function Calibration({ onClose }: { onClose: () => void }) {
         setPhase({ kind: "intro" });
     };
 
-    const save = (result: VisionCalibration) => {
-        patchVision({ calibration: result });
+    const save = (result: FaceCalibration) => {
+        // Keep the hand calibration from the space wizard.
+        patchVision({ calibration: { ...result, hands: vision.calibration.hands } });
         toast.success(t("studio.calibration.saved"));
         onClose();
     };

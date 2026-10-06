@@ -183,6 +183,9 @@ function Studio() {
                 },
                 { synthetic: query.get("bench") === "synthetic", vision: settings.vision },
             );
+            engine.sendToSidecar = (m) => {
+                if (sidecarClient.connected) sidecarClient.send(m);
+            };
             engineRef.current = engine;
             offEngine.push(
                 engine.onFrame((frame) => frames.set(frame)),
@@ -210,13 +213,24 @@ function Studio() {
         }, SNAPSHOT_MS);
         const petStateTimer = window.setInterval(() => {
             const engine = engineRef.current;
-            if (!engine || !sidecarClient.connected || !studioRef.current?.petDirector.enabled) return;
-            sidecarClient.send({ type: "petState", pets: engine.petSummary() });
+            const level = studioRef.current?.petAi.level ?? "off";
+            if (!engine || !sidecarClient.connected || level === "off" || level === "local") return;
+            const observations = engine.drainObservations();
+            // A pet that chose "chatter" is reported now even between ticks (petsWantingToTalk consumes it).
+            const talk = engine.petsWantingToTalk();
+            const pets = engine.petSummary().map((p) => (talk.includes(p.pet) ? { ...p, action: "chatter" as const } : p));
+            sidecarClient.send({ type: "petState", pets, observations });
         }, PET_STATE_MS);
         const offState = sidecarClient.onStateChange((connected) => {
-            if (connected) sidecarClient.send({ type: "identityList" });
+            if (connected) {
+                sidecarClient.send({ type: "identityList" });
+                sidecarClient.send({ type: "petPersonalityList" });
+            }
         });
-        if (sidecarClient.connected) sidecarClient.send({ type: "identityList" });
+        if (sidecarClient.connected) {
+            sidecarClient.send({ type: "identityList" });
+            sidecarClient.send({ type: "petPersonalityList" });
+        }
 
         const saveClip = () => {
             void engineRef.current?.saveClip().catch((e: unknown) => toast.error(i18n.t("studio.clips.failed", { error: String(e) }), { id: "clip-saved" }));
@@ -239,6 +253,9 @@ function Studio() {
                 if (m.action.type === "studio" && m.action.action === "saveClip") saveClip();
                 else void engine.run(m.action).catch((e: unknown) => setError(`rule: ${String(e)}`));
             } else if (m.type === "petBias") engine.petBias(m.pet, m.action, m.k, m.ttlSec);
+            else if (m.type === "petSay") engine.petSay(m);
+            else if (m.type === "petCommand") engine.petCommand(m);
+            else if (m.type === "petPersonalities") engine.setPetPersonalities(m.pets);
         });
         if (isTauri()) {
             void listen<StudioSettings>("studio://settings", (e) => {

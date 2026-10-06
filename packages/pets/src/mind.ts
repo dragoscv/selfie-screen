@@ -1,6 +1,10 @@
+import { ACTION_KINDS, type ActionKind } from "./actions.js";
 import type { PetFamily, PetId } from "./catalogue.js";
+import { PersonalityLearner, defaultPersonalityState, defaultTraits, traitsToPersonality, type PersonalityState, type PetTraits } from "./personality.js";
 import type { AnchorId } from "./roam.js";
 import type { PetClip } from "./state-machine.js";
+
+export { ACTION_KINDS, type ActionKind };
 
 /**
  * A pet's mind: needs + mood + personality, choosing what to do with a
@@ -37,24 +41,11 @@ export interface Personality {
     baseline: Mood;
     /** Reaction delay jitter (ms) so pets do not react in lockstep. */
     reactionMs: [number, number];
+    /** Multiplier on the current-action momentum bonus (conscientiousness); default 1. */
+    momentum?: number;
+    /** Multiplier on a startle's arousal jump (neuroticism); default 1. */
+    startle?: number;
 }
-
-export const ACTION_KINDS = [
-    "perchShoulder",
-    "perchHead",
-    "landOnHand",
-    "restOnLedge",
-    "orbit",
-    "watchOwner",
-    "watchCohost",
-    "visitPet",
-    "playWithPet",
-    "celebrate",
-    "sleep",
-    "inspectPoint",
-    "greetViewers",
-] as const;
-export type ActionKind = (typeof ACTION_KINDS)[number];
 
 const BASE: Personality = {
     weights: {},
@@ -128,7 +119,7 @@ interface ActionSpec {
     anchor: (c: MindContext, side: "left" | "right") => AnchorId | null;
     clip: PetClip;
     /** Consideration values (0..1). Empty list = unavailable. */
-    score: (n: Needs, m: Mood, c: MindContext) => number[];
+    score: (n: Needs, m: Mood, c: MindContext, t: PetTraits) => number[];
     /** Minimum ms before this action can repeat. */
     cooldownMs: number;
     /** Allowed for these locomotions only (default all). */
@@ -223,6 +214,13 @@ const ACTIONS: Readonly<Record<ActionKind, ActionSpec>> = {
         score: (n, m, c) => (c.chatActivity > 0.4 ? [0.45, linear(c.chatActivity), logistic(m.valence, 0.3), linear(n.attention)] : []),
         cooldownMs: 30_000,
     },
+    chatter: {
+        anchor: () => null,
+        clip: "talk",
+        // Wants to say something: attention need x extraversion, quieter while the owner talks.
+        score: (n, _m, c, t) => [0.4, logistic(n.attention, 0.45), linear(0.25 + t.extraversion), c.ownerTalking ? 0.5 : 1],
+        cooldownMs: 20_000,
+    },
 };
 
 /** Actions answering an explicit invitation from the owner or the stream: they beat momentum. */
@@ -264,15 +262,27 @@ export type Stimulus =
     | { kind: "wave" }
     | { kind: "heart" }
     | { kind: "petted" }
-    | { kind: "startle" };
+    | { kind: "startle" }
+    /** Picked up by the owner's hand (counts as being petted). */
+    | { kind: "grabbed" }
+    /** Let go by the owner's hand (a small jolt). */
+    | { kind: "dropped" };
+
+export interface MindOptions {
+    /** Learned personality (traits + likes); default = the species traits. */
+    personality?: PersonalityState;
+    /** Session start (performance clock) for checkpoints. */
+    startMs?: number;
+}
 
 export class PetMind {
     readonly pet: PetId;
     readonly side: "left" | "right";
-    readonly personality: Personality;
     readonly needs: Needs = { energy: 0.8, curiosity: 0.5, attention: 0.4, affection: 0.6, play: 0.4 };
     readonly mood: Mood;
     readonly #rand: () => number;
+    readonly #learner: PersonalityLearner;
+    #personality: Personality;
     #decision: Decision | null = null;
     #since = 0;
     #last = 0;
@@ -281,12 +291,58 @@ export class PetMind {
     readonly #bias = new Map<ActionKind, { k: number; until: number }>();
     readonly #log: { at: number; action: ActionKind; score: number; reason: string }[] = [];
 
-    constructor(pet: PetId, side: "left" | "right", seed = 1) {
+    constructor(pet: PetId, side: "left" | "right", seed = 1, options: MindOptions = {}) {
         this.pet = pet;
         this.side = side;
-        this.personality = PERSONALITIES[pet];
-        this.mood = { ...this.personality.baseline };
+        this.#learner = new PersonalityLearner(options.personality ?? defaultPersonalityState(pet), options.startMs ?? 0);
+        this.#personality = traitsToPersonality(PERSONALITIES[pet], this.#learner.state, defaultTraits(pet));
+        this.mood = { ...this.#personality.baseline };
         this.#rand = seeded(seed);
+    }
+
+    /** Species temperament x learned traits and likes. */
+    get personality(): Personality {
+        return this.#personality;
+    }
+
+    /** Committed learned state (base + 10-min checkpoints); save this. */
+    get personalityState(): PersonalityState {
+        return this.#learner.state;
+    }
+
+    get traits(): PetTraits {
+        return this.#learner.state.traits;
+    }
+
+    /** Load a learned personality (keeps the current session's experience). */
+    setPersonality(state: PersonalityState): void {
+        this.#learner.reset(state);
+        this.#personality = traitsToPersonality(PERSONALITIES[this.pet], this.#learner.state, defaultTraits(this.pet));
+    }
+
+    /** Incremental drift every >= 10 min; returns the new state or null. */
+    checkpoint(nowMs: number): PersonalityState | null {
+        const s = this.#learner.checkpoint(nowMs);
+        if (s) this.#personality = traitsToPersonality(PERSONALITIES[this.pet], s, defaultTraits(this.pet));
+        return s;
+    }
+
+    /** Commit the session's drift (sessions + 1) and return the state to save. */
+    endSession(nowMs?: number): PersonalityState {
+        const s = this.#learner.endSession(nowMs);
+        this.#personality = traitsToPersonality(PERSONALITIES[this.pet], s, defaultTraits(this.pet));
+        return s;
+    }
+
+    /**
+     * The stage asked the LLM for a line: end the current chatter decision so the
+     * pet moves on (its cooldown then keeps it quiet for a while).
+     */
+    consumeChatter(nowMs: number): void {
+        if (this.#decision?.action !== "chatter") return;
+        this.#lastRun.set("chatter", nowMs);
+        this.needs.attention = Math.max(0, this.needs.attention - 0.3);
+        this.#decision = null;
     }
 
     get decision(): Decision | null {
@@ -334,18 +390,25 @@ export class PetMind {
                 n.energy = Math.min(1, n.energy + 0.25);
                 break;
             case "petted":
+            case "grabbed":
                 bump(0.3, -0.1);
                 n.affection = Math.max(0, n.affection - 0.5);
                 break;
             case "startle":
-                bump(-0.1, 0.5);
+                bump(-0.1, 0.5 * (this.#personality.startle ?? 1));
                 n.energy = Math.min(1, n.energy + 0.3);
                 break;
+            case "dropped":
+                bump(0, 0.15 * (this.#personality.startle ?? 1));
+                break;
         }
+        const learn = s.kind === "grabbed" ? "petted" : s.kind === "follow" ? "gift" : s.kind === "dropped" ? null : s.kind;
+        if (learn) this.#learner.stimulus(learn);
     }
 
     /** Drift needs and decay mood toward the baseline. */
     #drift(dtSec: number): void {
+        this.#learner.observe(this.#decision?.action ?? null, dtSec, this.mood.valence);
         const d = this.personality.drift;
         const n = this.needs;
         const perMin = dtSec / 60;
@@ -377,7 +440,7 @@ export class PetMind {
             if (spec.fliersOnly && !flier) continue;
             const anchor = spec.anchor(c, this.side);
             if (!has(c, anchor)) continue;
-            const considerations = spec.score(this.needs, this.mood, c);
+            const considerations = spec.score(this.needs, this.mood, c, this.traits);
             if (considerations.length === 0) continue;
             let s = compensate(considerations) * (this.personality.weights[kind] ?? 1) * (INVITATION[kind] ?? 1);
             // Urgent needs override habits: an exhausted pet must sleep even if it was perched.
@@ -386,7 +449,7 @@ export class PetMind {
             if (cur) {
                 // Momentum (no flip-flopping), fading into boredom after ~20 s on the same thing.
                 const held = c.nowMs - this.#since;
-                s *= 1.25 * Math.max(0.45, 1 - Math.max(0, held - 20_000) / 60_000);
+                s *= (1 + 0.25 * (this.#personality.momentum ?? 1)) * Math.max(0.45, 1 - Math.max(0, held - 20_000) / 60_000);
             }
             const lastRun = this.#lastRun.get(kind) ?? -Infinity;
             if (!cur && c.nowMs - lastRun < spec.cooldownMs) s *= 0.2;

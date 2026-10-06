@@ -7,6 +7,8 @@ import {
     LOCALES,
     OVERLAY_LAYOUTS,
     PEAKING_COLORS,
+    PET_AI_LEVELS,
+    PET_CHAT_AWARENESS,
     PET_CHOICES,
     PET_STYLES,
     SCOPE_KINDS,
@@ -86,7 +88,7 @@ import { useOpenStudio } from "../lib/vision/use-vision.js";
 import { useAppStore } from "../store/app-store.js";
 import { ChipToggleGroup, NumberField, SelectField } from "./settings-fields.js";
 
-/** Pet director cadence chips (seconds); the schema allows 5..120. */
+/** Pet AI nudge cadence chips (seconds); the schema allows 5..120. */
 const PET_DIRECTOR_INTERVALS = ["8", "12", "20"] as const;
 
 const SECTIONS = [
@@ -1404,20 +1406,50 @@ function StudioSection() {
                     display={(p) => t(`settings.studio.petStyles.${p}`)}
                     tint="var(--kind-like)"
                 />
-                <SwitchRow
-                    label={t("settings.studio.petDirector")}
-                    description={t("settings.studio.petDirectorHint")}
-                    checked={s.petDirector.enabled}
-                    onChange={(enabled) => update("studio", { petDirector: { ...s.petDirector, enabled } })}
+                <ChipSelector
+                    label={t("studio.controls.ai.level")}
+                    options={PET_AI_LEVELS}
+                    value={s.petAi.level}
+                    onSelect={(level) => update("studio", { petAi: { ...s.petAi, level } })}
+                    display={(v) => t(`studio.controls.ai.levels.${v}`)}
                     tint="var(--kind-like)"
                 />
-                <Reveal show={s.petDirector.enabled}>
+                <p className="text-xs text-fg-muted" aria-live="polite">
+                    {t(`studio.controls.ai.levelHint.${s.petAi.level}`)}{" "}
+                    {s.petAi.level === "off" || s.petAi.level === "local"
+                        ? t("studio.controls.ai.noCost")
+                        : t("studio.controls.ai.cost", { n: s.petAi.maxCallsPerHour })}
+                </p>
+                <ChipSelector
+                    label={t("studio.controls.ai.chatLabel")}
+                    options={PET_CHAT_AWARENESS}
+                    value={s.petAi.chat}
+                    onSelect={(chat) => update("studio", { petAi: { ...s.petAi, chat } })}
+                    display={(v) => t(`studio.controls.ai.chats.${v}`)}
+                    tint="var(--kind-like)"
+                    disabled={s.petAi.level === "off" || s.petAi.level === "local"}
+                />
+                <SwitchRow
+                    label={t("studio.controls.ai.bubbles")}
+                    checked={s.petAi.bubbles}
+                    onChange={(bubbles) => update("studio", { petAi: { ...s.petAi, bubbles } })}
+                    tint="var(--kind-like)"
+                />
+                <SwitchRow
+                    label={t("studio.controls.ai.voice")}
+                    description={t("studio.controls.ai.voiceHint")}
+                    checked={s.petAi.voice}
+                    disabled={s.petAi.level === "off" || s.petAi.level === "local"}
+                    onChange={(voice) => update("studio", { petAi: { ...s.petAi, voice } })}
+                    tint="var(--kind-like)"
+                />
+                <Reveal show={s.petAi.level === "reactive" || s.petAi.level === "chatty" || s.petAi.level === "director"}>
                     <ChipSelector
-                        label={t("settings.studio.petDirectorEvery")}
+                        label={t("settings.studio.petNudgeEvery")}
                         options={PET_DIRECTOR_INTERVALS}
                         value={String(s.petDirector.everySec)}
                         onSelect={(v) => update("studio", { petDirector: { ...s.petDirector, everySec: Number(v) } })}
-                        display={(v) => t("settings.studio.petDirectorSeconds", { count: Number(v) })}
+                        display={(v) => t("settings.studio.petNudgeSeconds", { count: Number(v) })}
                         tint="var(--kind-like)"
                     />
                 </Reveal>

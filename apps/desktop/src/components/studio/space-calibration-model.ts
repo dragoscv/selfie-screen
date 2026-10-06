@@ -1,6 +1,6 @@
-import type { StudioSettings } from "@tiksee/core";
+import type { StudioSettings, VisionCalibration } from "@tiksee/core";
 
-import type { SpaceSample } from "../../lib/studio/controller.js";
+import type { HandSample, SpaceSample } from "../../lib/studio/controller.js";
 
 /**
  * Pure logic of the 3D space calibration wizard: camera preset -> vFOV, owner
@@ -202,3 +202,143 @@ export function formatDeg(deg: number | undefined, locale = "en"): string {
 export function formatMetres(m: number | undefined, locale = "en"): string {
     return m === undefined || !Number.isFinite(m) ? DASH : `${num(m, 2, locale)} m`;
 }
+
+/* ------------------------------------------------------------------ *
+ * Hands & gestures step
+ * ------------------------------------------------------------------ */
+
+/** Gestures recorded in order; "relaxed" = open, still hand (pinch-off baseline, not a classifier shape). */
+export const HAND_TARGETS = ["relaxed", "open_palm", "fist", "pinch", "point_up", "thumb_up", "victory"] as const;
+export type HandTarget = (typeof HAND_TARGETS)[number];
+
+export const HAND_EMOJI: Readonly<Record<HandTarget, string>> = {
+    relaxed: "🖐️",
+    open_palm: "✋",
+    fist: "✊",
+    pinch: "🤏",
+    point_up: "☝️",
+    thumb_up: "👍",
+    victory: "✌️",
+};
+
+export const HAND_RECORD_MS = 1500;
+export const HAND_VERIFY_MS = 1000;
+/** Pass: the classifier saw the target in >= 60 % of the hand frames ... */
+export const HAND_HIT_PASS = 0.6;
+/** ... and a hand was in frame for >= 70 % of all frames. */
+export const HAND_IN_FRAME_PASS = 0.7;
+
+export type HandVerdict = "pass" | "miss" | "outOfFrame" | "noHand";
+
+export interface HandJudgement {
+    verdict: HandVerdict;
+    /** hits / handFrames, 0..1 ("relaxed" has no classifier shape: its score is the in-frame rate). */
+    hitRate: number;
+    /** handFrames / frames, 0..1. */
+    inFrameRate: number;
+}
+
+export function judgeHandSample(s: HandSample): HandJudgement {
+    const inFrameRate = s.frames > 0 ? clamp(s.handFrames / s.frames, 0, 1) : 0;
+    const hitRate = s.target === "relaxed" ? inFrameRate : s.handFrames > 0 ? clamp(s.hits / s.handFrames, 0, 1) : 0;
+    let verdict: HandVerdict;
+    if (s.frames === 0 || s.handFrames === 0) verdict = "noHand";
+    else if (inFrameRate < HAND_IN_FRAME_PASS) verdict = "outOfFrame";
+    else verdict = hitRate >= HAND_HIT_PASS ? "pass" : "miss";
+    return { verdict, hitRate, inFrameRate };
+}
+
+export function median(values: readonly number[]): number | undefined {
+    const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+    if (v.length === 0) return undefined;
+    const mid = Math.floor(v.length / 2);
+    return v.length % 2 ? v[mid] : ((v[mid - 1] ?? 0) + (v[mid] ?? 0)) / 2;
+}
+
+export type HandSamples = Partial<Record<HandTarget, HandSample>>;
+
+export interface HandSummaryRow {
+    target: HandTarget;
+    /** Recording-pass hit rate (undefined = not recorded). */
+    record?: number;
+    /** Verify-pass hit rate (undefined = not verified). */
+    verify?: number;
+    pass: boolean;
+}
+
+/** Per-gesture rows + the verify pass rate (share of verified gestures that passed). */
+export function summariseHands(record: HandSamples, verify: HandSamples): { rows: HandSummaryRow[]; passRate: number; verified: number } {
+    const rows: HandSummaryRow[] = [];
+    let verified = 0;
+    let passed = 0;
+    for (const target of HAND_TARGETS) {
+        const r = record[target];
+        const v = verify[target];
+        const row: HandSummaryRow = { target, pass: false };
+        if (r) row.record = judgeHandSample(r).hitRate;
+        if (v) {
+            const j = judgeHandSample(v);
+            row.verify = j.hitRate;
+            row.pass = j.verdict === "pass";
+            verified++;
+            if (row.pass) passed++;
+        }
+        rows.push(row);
+    }
+    return { rows, passRate: verified > 0 ? passed / verified : 0, verified };
+}
+
+export type HandsCalibration = VisionCalibration["hands"];
+
+/** Personal score threshold for a gesture from its median classifier confidence. */
+export function gestureThreshold(confidence: number): number {
+    return round(clamp(confidence * 0.8, 0.35, 0.8), 3);
+}
+
+/** Pinch start ratio from the pinch recording (thumb-index / palm width, 90th percentile). */
+export function pinchOnFrom(pinchP90: number): number {
+    return round(clamp(pinchP90 * 1.25, 0.1, 0.35), 3);
+}
+
+/** Pinch end ratio: hysteresis above `pinchOn`, from the relaxed hand's 10th percentile when known. */
+export function pinchOffFrom(pinchOn: number, relaxedP10: number | undefined, fallback: number): number {
+    const base = relaxedP10 !== undefined && relaxedP10 > 0 ? clamp(relaxedP10 * 0.8, 0.2, 0.8) : fallback;
+    return round(clamp(Math.max(pinchOn + 0.12, base), 0.12, 0.9), 3);
+}
+
+/**
+ * The `vision.calibration.hands` value written on Save. Gestures not recorded keep their
+ * stored thresholds; `now` is a parameter so the caller stamps it at save time.
+ */
+export function buildHandsCalibration(prev: HandsCalibration, record: HandSamples, verify: HandSamples, now: number = Date.now()): HandsCalibration {
+    const both = (t: HandTarget) => [record[t], verify[t]].filter((s): s is HandSample => s !== undefined);
+    const palms = [...both("relaxed"), ...both("open_palm")].map((s) => s.palmM).filter((m) => m > 0);
+    const palmM = median(palms);
+    const pinch = record.pinch ?? verify.pinch;
+    const relaxed = record.relaxed ?? verify.relaxed;
+    const pinchOn = pinch && pinch.handFrames > 0 ? pinchOnFrom(pinch.pinchP90) : prev.pinchOn;
+    const pinchOff = pinchOffFrom(pinchOn, relaxed && relaxed.handFrames > 0 ? relaxed.pinchP10 : undefined, prev.pinchOff);
+    const gestures: Record<string, number> = { ...prev.gestures };
+    const verified: Record<string, number> = { ...prev.verified };
+    for (const target of HAND_TARGETS) {
+        if (target === "relaxed") continue;
+        const confidences = both(target)
+            .filter((s) => s.hits > 0)
+            .map((s) => s.confidence);
+        const c = median(confidences);
+        if (c !== undefined) gestures[target] = gestureThreshold(c);
+        const v = verify[target];
+        if (v) verified[target] = round(judgeHandSample(v).hitRate, 3);
+    }
+    return {
+        // No depth-backed palm sample = 0 (MediaPipe's average hand).
+        palmM: palmM !== undefined ? round(clamp(palmM, 0, 0.15), 4) : 0,
+        pinchOn,
+        pinchOff,
+        gestures,
+        verified,
+        calibratedAt: Math.round(now),
+    };
+}
+
+export const formatPct = (v: number | undefined): string => (v === undefined || !Number.isFinite(v) ? DASH : `${Math.round(v * 100)}%`);

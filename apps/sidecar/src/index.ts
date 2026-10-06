@@ -11,6 +11,7 @@ import {
     type ChatEvent,
     type ClientMessage,
     type ControlAction,
+    type PetPersonality,
     type RuleVar,
     type ServerMessage,
     type Settings,
@@ -21,6 +22,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { CodaiClient } from "./codai/client.js";
 import { CoHost } from "./cohost/engine.js";
 import { PetDirector } from "./cohost/pet-director.js";
+import { PetVoice } from "./cohost/pet-voice.js";
 import { EffectsController } from "./effects/controller.js";
 import { VmuiClient } from "./effects/vmui.js";
 import { GameManager } from "./games/manager.js";
@@ -31,6 +33,7 @@ import type { TikTokSession } from "./ingest/types.js";
 import { LiveControl } from "./live-control.js";
 import { logger } from "./logger.js";
 import { ViewerMemory } from "./memory/db.js";
+import { PetStore } from "./memory/pet-store.js";
 import { ObsController } from "./obs.js";
 import { OverlayServer } from "./overlay/server.js";
 import { PanelService } from "./panel/service.js";
@@ -88,9 +91,14 @@ type VisionClientMessage = Extract<
             | "visionLogQuery"
             | "visionLogClear"
             | "ruleTest"
-            | "petState";
+            | "petState"
+            | "petPersonalityList"
+            | "petPersonalityReset";
     }
 >;
+
+/** Trait/memory changes are rebroadcast at most this often. */
+const PET_PERSONALITY_DEBOUNCE_MS = 5_000;
 
 /** The studio pushes ~2 Hz; never rebroadcast faster than this. */
 const SNAPSHOT_MIN_INTERVAL_MS = 500;
@@ -129,6 +137,10 @@ class Sidecar {
     #summaries: SummaryService;
     #rules: RulesEngine;
     #petDirector: PetDirector;
+    #petVoice: PetVoice;
+    #petStore: PetStore | null = null;
+    #petPersonalityTimer: ReturnType<typeof setTimeout> | null = null;
+    #lastPetIds: string[] = [];
     #visionLog: VisionLog | null = null;
     #identities: IdentityStore | null = null;
     #snapshot: VisionSnapshot | null = null;
@@ -222,6 +234,7 @@ class Sidecar {
             const memory = this.#memory;
             this.#visionLog = new VisionLog({ db: memory.raw, sessionId: () => memory.activeSessionId() });
             this.#identities = new IdentityStore(memory.raw);
+            this.#petStore = new PetStore(memory.raw);
         }
         this.#rules = new RulesEngine({
             sink: this.#ruleSink(),
@@ -233,12 +246,30 @@ class Sidecar {
         this.#petDirector = new PetDirector({
             client: this.#codai,
             model: () => this.#settings.codai.replyModel,
-            settings: () => ({ ...this.#settings.studio.petDirector, enabled: this.#settings.studio.enabled && this.#settings.studio.petDirector.enabled }),
-            quiet: () => {
-                const c = this.#control.state;
-                return c.muted || c.repliesPaused || c.petsHidden;
-            },
+            settings: () => ({
+                level: this.#settings.studio.enabled ? this.#settings.studio.petAi.level : "off",
+                everySec: this.#settings.studio.petDirector.everySec,
+            }),
+            quiet: () => this.#petsQuiet(),
             emit: (bias) => this.#broadcast({ type: "petBias", ...bias }),
+            log: logger.scoped("[pets]"),
+        });
+
+        this.#petVoice = new PetVoice({
+            client: this.#codai,
+            model: () => this.#settings.codai.replyModel,
+            settings: () => this.#settings,
+            quiet: () => this.#petsQuiet(),
+            shopMode: () => this.#control.state.shopMode,
+            emitSay: (say) => this.#broadcast({ type: "petSay", ...say }),
+            emitCommand: (command) => this.#broadcast({ type: "petCommand", ...command }),
+            // Same path as the UI `speak` message: queued behind the co-host, through the speaking gate.
+            speak: (text) => {
+                this.#cohost.speak(text);
+                return undefined;
+            },
+            store: this.#petStore,
+            onPersonalityChanged: () => this.#schedulePetPersonalities(),
             log: logger.scoped("[pets]"),
         });
 
@@ -271,6 +302,7 @@ class Sidecar {
             if (event.kind === "gift") this.#lastGift = { diamonds: eventDiamonds(event), at: event.at };
             this.#rules.onChat(event);
             this.#petDirector.onEvent(event);
+            this.#petVoice.onEvent(event);
             if (event.kind === "chat") this.#translator.offer({ eventId: event.id, text: event.text });
         });
 
@@ -288,6 +320,7 @@ class Sidecar {
         }
         this.#cohost.start();
         this.#petDirector.start();
+        this.#petVoice.start();
         await this.#configureTrigger();
 
         if (OverlayServer.wanted(this.#settings)) {
@@ -474,6 +507,8 @@ class Sidecar {
                 case "visionLogClear":
                 case "ruleTest":
                 case "petState":
+                case "petPersonalityList":
+                case "petPersonalityReset":
                     await this.#handleVision(socket, message);
                     break;
 
@@ -580,7 +615,18 @@ class Sidecar {
                 break;
             case "petState":
                 this.#petDirector.onPetState(message.pets);
+                this.#petVoice.onPetState(message.pets, message.observations);
+                this.#lastPetIds = message.pets.map((p) => p.pet);
                 break;
+            case "petPersonalityList":
+                this.#send(socket, { type: "petPersonalities", pets: this.#petPersonalities() });
+                break;
+            case "petPersonalityReset": {
+                const removed = this.#requirePetStore().reset(message.pet);
+                log.info(`pet personality reset (${message.pet === "all" ? "all" : "one"}, ${removed} rows)`);
+                this.#broadcast({ type: "petPersonalities", pets: this.#petPersonalities() });
+                break;
+            }
             case "identityList":
                 this.#send(socket, { type: "identities", profiles: this.#requireIdentities().list() });
                 break;
@@ -621,6 +667,39 @@ class Sidecar {
     #requireIdentities(): IdentityStore {
         if (!this.#identities) throw new Error("Memoria locală nu este disponibilă");
         return this.#identities;
+    }
+
+    #requirePetStore(): PetStore {
+        if (!this.#petStore) throw new Error("Memoria locală nu este disponibilă");
+        return this.#petStore;
+    }
+
+    /** Live Control silences every pet LLM path (muted, replies paused, pets hidden). */
+    #petsQuiet(): boolean {
+        const c = this.#control.state;
+        return c.muted || c.repliesPaused || c.petsHidden;
+    }
+
+    /** Stored personalities, after creating defaults for the pets currently in the studio (max 16). */
+    #petPersonalities(): PetPersonality[] {
+        const store = this.#petStore;
+        if (!store) return [];
+        const current = [this.#settings.studio.leftPet, this.#settings.studio.rightPet].filter((p) => p !== "none");
+        for (const pet of new Set([...current, ...this.#lastPetIds])) store.ensure(pet);
+        return store.list().slice(0, 16);
+    }
+
+    #schedulePetPersonalities(): void {
+        if (this.#petPersonalityTimer) return;
+        this.#petPersonalityTimer = setTimeout(() => {
+            this.#petPersonalityTimer = null;
+            try {
+                this.#broadcast({ type: "petPersonalities", pets: this.#petPersonalities() });
+            } catch (error) {
+                log.debug(`pet personalities broadcast failed: ${describeError(error)}`);
+            }
+        }, PET_PERSONALITY_DEBOUNCE_MS);
+        this.#petPersonalityTimer.unref();
     }
 
     #requireVisionLog(): VisionLog {
@@ -884,6 +963,9 @@ class Sidecar {
         this.#translator.dispose();
         this.#rules.dispose();
         this.#petDirector.dispose();
+        this.#petVoice.dispose();
+        if (this.#petPersonalityTimer) clearTimeout(this.#petPersonalityTimer);
+        this.#petPersonalityTimer = null;
         if (this.#snapshotTimer) clearTimeout(this.#snapshotTimer);
         try {
             this.#visionLog?.close();

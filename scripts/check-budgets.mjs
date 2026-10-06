@@ -22,8 +22,11 @@ const budgets = [
     // + metric owner distance (body solve, iris, Kalman) and the fluid-skeleton interpolation: 51.6 KB;
     // + per-frame pet runtime (utility AI minds, body capsules + constraint pass, procedural
     //   animation: saccades, springs, squash) and the director wiring: 58.3 KB measured.
+    // + hands in the room (21-point solve, wrist anchor, pinch hysteresis), pinch grab / two-hand
+    //   resize, in-video speech bubbles, personality learner and the EN+RO strings for them: 67.2 KB.
+    //   The AI dock panel (2.2 KB) is a lazy chunk.
     // Space calibration, ChArUco, MoGe-2, the F3 overlay and the MP4 muxer are lazy chunks.
-    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 62 * KB],
+    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 70 * KB],
     ["desktop studio vendor", /^studio-vendor-.*\.js$/, "apps/desktop/dist/assets", 380 * KB],
     // Vision worker (MediaPipe + ONNX glue) and its main-thread fallback pipeline; measured 211 / 113 KB.
     ["studio vision worker", /^worker-.*\.js$/, "apps/desktop/dist/assets", 230 * KB],
@@ -37,7 +40,8 @@ const budgets = [
     ["studio lens calibration (lazy)", /^charuco-.*\.js$/, "apps/desktop/dist/assets", 10 * KB],
     ["studio aruco detector (lazy)", /^aruco-.*\.js$/, "apps/desktop/dist/assets", 13 * KB],
     // 0.3.0 adds the rules engine, vision log and identities: 85.1 KB measured.
-    ["sidecar bundle", /^index\.js$/, "apps/sidecar/dist", 95 * KB],
+    // 0.4.0: + pet director, pet voice (levels, chat awareness, moderation) and the personality store: 100.5 KB.
+    ["sidecar bundle", /^index\.js$/, "apps/sidecar/dist", 105 * KB],
 ];
 
 let failed = 0;

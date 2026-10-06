@@ -92,6 +92,12 @@ const MIGRATIONS: readonly string[] = [
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );`,
+    // 4 — pet personalities (Q53): one zod-validated PetPersonality JSON per pet.
+    `CREATE TABLE pet_personality (
+        pet TEXT PRIMARY KEY,
+        json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+    );`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

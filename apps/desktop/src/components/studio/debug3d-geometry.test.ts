@@ -11,9 +11,13 @@ import {
     distanceLine,
     dotRadius,
     floorGrid,
+    grabLine,
+    HAND_BONES,
+    handLabel,
     moodDot,
     needBars,
     petBox,
+    pinchFill,
     projectedRadius,
     pushBadge,
     rotateY,
@@ -166,5 +170,45 @@ describe("debug3d geometry", () => {
         );
         expect(distanceLine({ ...base, metric: { distanceM: 1.2, relSigma: 0.1 } })).toBe("dist 1.20 m ±10%");
         expect(distanceLine(base)).toBe("dist —");
+    });
+});
+
+describe("debug3d hands", () => {
+    type Hand = NonNullable<Debug3dState["hands"]>[number];
+    const hand: Hand = {
+        side: "left",
+        present: true,
+        landmarks: [],
+        pinching: false,
+        strength: 0.4,
+        point: [0, 1, -0.6],
+        depthM: 0.62,
+        source: "solve",
+        shape: "open_palm",
+    };
+
+    it("connects all 21 landmarks into one tree (20 fingers bones + palm closure)", () => {
+        const used = new Set(HAND_BONES.flat());
+        expect(used.size).toBe(21);
+        expect(Math.max(...used)).toBe(20);
+        expect(HAND_BONES).toHaveLength(21);
+    });
+
+    it("labels shape, depth and depth source", () => {
+        expect(handLabel(hand)).toBe("L open_palm · 0.62 m · solve");
+        expect(handLabel({ ...hand, side: "right", shape: null, source: "wrist" })).toBe("R — · 0.62 m · wrist");
+        expect(handLabel({ ...hand, pinching: true })).toBe("L pinch · 0.62 m · solve");
+    });
+
+    it("fills the pinch ring with strength and solid while pinching", () => {
+        expect(pinchFill(hand)).toBe(0.4);
+        expect(pinchFill({ ...hand, strength: 3 })).toBe(1);
+        expect(pinchFill({ ...hand, strength: 0.1, pinching: true })).toBe(1);
+    });
+
+    it("describes the grab in the HUD", () => {
+        const base = { body: null } as unknown as Debug3dState;
+        expect(grabLine(base)).toBeNull();
+        expect(grabLine({ ...base, grab: { pet: "fox", mode: "resize", scale: 1.234 } })).toBe("grab fox · resize · scale ×1.23");
     });
 });

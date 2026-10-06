@@ -193,6 +193,37 @@ export class PetRoamer {
         this.#directed = anchor;
     }
 
+    /**
+     * Held by the owner's hand: follow `target` directly (spring, no anchors)
+     * until `hold(null)`; then the normal behaviour (mind / preferences) resumes.
+     */
+    hold(target: Vec3 | null): void {
+        if (target && !this.#held) {
+            this.#hopT = -1;
+            this.#hopFrom = null;
+        }
+        if (!target && this.#held) {
+            this.#settled = false;
+            this.#since = -Infinity;
+        }
+        this.#held = target ? [...target] : null;
+    }
+
+    get held(): boolean {
+        return this.#held !== null;
+    }
+
+    /** Pet height after an owner resize (m). */
+    setHeight(heightM: number): void {
+        if (heightM > 0 && Number.isFinite(heightM)) this.#o.heightM = heightM;
+    }
+
+    get heightM(): number {
+        return this.#o.heightM;
+    }
+
+    #held: Vec3 | null = null;
+
     /** Positions of every anchor this frame (for the mind's availability check). */
     get anchors(): Readonly<Record<AnchorId, Vec3 | null>> | null {
         return this.#lastAnchors;
@@ -281,7 +312,7 @@ export class PetRoamer {
             if (this.#want === next) this.#want = null;
         }
         if (this.#want === "centre" && this.#anchor === "centre" && nowMs - this.#since > 4000) this.#want = null;
-        const target = a[this.#anchor] ?? this.#lastSeen.get(this.#anchor)?.p ?? a.ledgeL ?? ([0, -0.5, -1] as Vec3);
+        const target = this.#held ?? a[this.#anchor] ?? this.#lastSeen.get(this.#anchor)?.p ?? a.ledgeL ?? ([0, -0.5, -1] as Vec3);
         if (!this.#p) this.#p = [...target];
         const p = this.#p;
 
@@ -293,7 +324,16 @@ export class PetRoamer {
 
         // Orbit is a moving target: follow it continuously, never "settle".
         const moving = this.#anchor === "orbit";
-        if (this.#settled && dist < 0.12 && !moving) {
+        if (this.#held) {
+            // In the hand: the grab already smooths the target; a short spring removes frame steps.
+            const k = 1 - Math.exp(-dt / 0.03);
+            const next = lerp3(p, target, k);
+            this.#v = dt > 0 ? mul(sub(next, p), 1 / dt) : [0, 0, 0];
+            this.#p = next;
+            this.#settled = false;
+            gait = this.loco === "walk" ? null : "fly";
+            gaitWeight = this.loco === "walk" ? 0 : 1;
+        } else if (this.#settled && dist < 0.12 && !moving) {
             // Perched: follow the anchor rigidly (the body moves the pet), with a short spring.
             const k = 1 - Math.exp(-dt / 0.05);
             this.#p = lerp3(p, target, k);

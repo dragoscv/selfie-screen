@@ -20,6 +20,8 @@ interface Sample {
 
 const HISTORY_MS = 1000;
 const RATE_WINDOW_MS = 400;
+/** Missing hands are tolerated this long before the distance history is dropped, ms. */
+export const TWO_HAND_GRACE_MS = 150;
 
 function direction(lm: readonly Pt[]): Pt {
     const w = at(lm, HAND.WRIST);
@@ -76,15 +78,23 @@ export class TwoHandAnalyzer {
     #history: Sample[] = [];
     #lastClap = -Infinity;
     #wideAt = -Infinity;
+    #lastBoth = -Infinity;
 
-    /** Feed both hands of one person (or null when they do not have two hands in view). */
+    /**
+     * Feed both hands of one person (or null when they do not have two hands in view). The
+     * history survives gaps up to TWO_HAND_GRACE_MS (time-based) and is cleared after.
+     */
     update(a: HandInput | null, b: HandInput | null, tMs: number): { obs: Obs[]; pulses: Pulse[] } {
         const obs: Obs[] = [];
         const pulses: Pulse[] = [];
-        if (!a || !b) {
+        if (tMs - this.#lastBoth > TWO_HAND_GRACE_MS) {
             this.#history = [];
+            this.#wideAt = -Infinity;
+        }
+        if (!a || !b) {
             return { obs, pulses };
         }
+        this.#lastBoth = tMs;
         if (isHeart(a, b)) obs.push({ signal: "heart", score: 0.85 });
         if (isFrame(a, b)) obs.push({ signal: "frame", score: 0.8 });
         if (isTimeout(a, b)) obs.push({ signal: "timeout", score: 0.8 });
@@ -116,5 +126,6 @@ export class TwoHandAnalyzer {
     reset(): void {
         this.#history = [];
         this.#wideAt = -Infinity;
+        this.#lastBoth = -Infinity;
     }
 }

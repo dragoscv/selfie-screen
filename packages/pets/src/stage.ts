@@ -5,7 +5,11 @@ import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 
 import type { Backdrop } from "./backdrop.js";
+import { SpeechBubble, type SayOptions } from "./bubble.js";
+import { sanitizeBubbleText, textVisemes } from "./bubble-layout.js";
 import { PETS, petUrl, type PetId } from "./catalogue.js";
+import { HandGrab, PET_SCALE_MAX, PET_SCALE_MIN, type GrabMode, type GrabPet, type HandInput } from "./grab.js";
+import type { PersonalityState } from "./personality.js";
 import { EXCLUSIVE_ANCHORS, Reservations, bodyCapsules, resolve, type PetBody } from "./constraints.js";
 import { PetMind, pickSpotlight, type ActionKind, type Decision, type MindContext, type Stimulus } from "./mind.js";
 import { fadeToward, personInFront } from "./occlusion.js";
@@ -13,7 +17,7 @@ import { PetActor } from "./pet-actor.js";
 import { ANCHORS, PetRoamer, locomotionOf, onScreen, type AnchorId, type PetPose } from "./roam.js";
 import type { Side } from "./shoulders.js";
 import { DEFAULT_VFOV_DEG, project, type BodySnapshot, type Pinhole, type Vec3 } from "./space.js";
-import type { PetEvent } from "./state-machine.js";
+import { PET_CLIPS, type PetClip, type PetEvent } from "./state-machine.js";
 import { mouthWeights, type VisemeEvent } from "./visemes.js";
 
 export interface StageOptions {
@@ -59,6 +63,33 @@ interface Slot {
     mind: PetMind;
     /** Hard-constraint correction applied this frame (m). */
     pushed: number;
+    /** Owner resize multiplier on PETS[pet].heightM (1 = catalogue size). */
+    scale: number;
+    /** In the owner's hand. */
+    held: boolean;
+    /** Speech bubble (created on the first say). */
+    bubble: SpeechBubble | null;
+    /** This pet's own lip-sync (only its mouth moves). */
+    speech: { visemes: readonly VisemeEvent[]; startMs: number } | null;
+    /** Director command holding an anchor until a time. */
+    command: { anchor: AnchorId; until: number } | null;
+    /** Last mind action (chatter rising edge). */
+    lastAction: ActionKind | null;
+}
+
+/** Director command for one pet (anchor and/or clip), TTL-bound. */
+export interface PetStageCommand {
+    anchor?: AnchorId;
+    /** A pet clip; "happy" (core PET_COMMAND_CLIPS) maps to a hop. */
+    clip?: PetClip | "happy";
+    ttlMs: number;
+}
+
+/** What the owner's hands did to a pet. */
+export interface PetInteraction {
+    kind: "grabbed" | "dropped" | "resized";
+    pet: string;
+    scale?: number;
 }
 
 /** What the debug overlay reads per pet. */
@@ -74,6 +105,10 @@ export interface PetDebug {
     mind: { decision: Decision | null; needs: PetMind["needs"]; mood: PetMind["mood"] };
     /** Metres the hard constraints pushed the pet this frame (> 0 = it tried to enter the body / the other pet). */
     pushed: number;
+    /** In the owner's hand. */
+    held: boolean;
+    /** Owner resize multiplier (1 = catalogue size). */
+    scale: number;
 }
 
 /** Live context the engine feeds the minds (cheap, set whenever it changes). */
@@ -171,7 +206,24 @@ export class PetStage {
     #spotlight: string | null = null;
     #spotlightUntil = 0;
     #ctx: StageContext = { palmUp: false, cohostSpeaking: false, ownerTalking: false, chatActivity: 0 };
+    #autonomous = true;
+
+    /** AI level "off": minds stop deciding, pets keep their built-in perch preferences. */
+    setAutonomous(on: boolean): void {
+        if (on === this.#autonomous) return;
+        this.#autonomous = on;
+        if (!on) for (const s of this.#slots.values()) s.roamer.direct(null);
+    }
     #seed = 1;
+    readonly #grab = new HandGrab();
+    #hands: readonly HandInput[] = [];
+    #grabState: { pet: string; mode: GrabMode; scale: number } | null = null;
+    /** Personality / scale set before (or kept across) a pet load. */
+    readonly #pendingPersonality = new Map<string, PersonalityState>();
+    readonly #pendingScale = new Map<string, number>();
+    readonly #wantsToTalk = new Set<string>();
+    /** Owner hand interactions (grab, drop, resize). */
+    onInteraction?: (e: PetInteraction) => void;
 
     constructor(options: StageOptions) {
         this.#o = options;
@@ -340,7 +392,8 @@ export class PetStage {
         });
         const actor = new PetActor(pet, root, animations, performance.now(), height);
         const scaleM = PETS[pet].heightM / height;
-        actor.root.scale.setScalar(scaleM);
+        const scale = this.#pendingScale.get(pet) ?? 1;
+        actor.setBaseScale(scaleM * scale);
         // Contact shadow: a soft procedural ellipse under the feet, same occlusion rule.
         const shadowAlpha = uniform(0);
         const sm = new THREE.MeshBasicNodeMaterial();
@@ -354,14 +407,44 @@ export class PetStage {
         shadow.renderOrder = 5;
         shadow.frustumCulled = false;
         this.scene.add(actor.root, shadow);
-        const roamer = new PetRoamer({ side, family: PETS[pet].family, heightM: PETS[pet].heightM });
-        const mind = new PetMind(pet, side, this.#seed++ * 7919);
-        this.#slots.set(side, { actor, roamer, scaleM, fade: 0, front, depth, alpha, inFront: false, shadow, shadowAlpha, pose: null, mind, pushed: 0 });
+        const roamer = new PetRoamer({ side, family: PETS[pet].family, heightM: PETS[pet].heightM * scale });
+        const personality = this.#pendingPersonality.get(pet);
+        const mind = new PetMind(pet, side, this.#seed++ * 7919, personality ? { personality, startMs: performance.now() } : { startMs: performance.now() });
+        this.#slots.set(side, {
+            actor,
+            roamer,
+            scaleM,
+            fade: 0,
+            front,
+            depth,
+            alpha,
+            inFront: false,
+            shadow,
+            shadowAlpha,
+            pose: null,
+            mind,
+            pushed: 0,
+            scale,
+            held: false,
+            bubble: null,
+            speech: null,
+            command: null,
+            lastAction: null,
+        });
     }
 
     #remove(side: Side): void {
         const old = this.#slots.get(side);
         if (!old) return;
+        // Keep what it learned and its size if the same pet comes back this session.
+        this.#pendingPersonality.set(old.actor.pet, old.mind.personalityState);
+        this.#pendingScale.set(old.actor.pet, old.scale);
+        if (this.#grabState?.pet === old.actor.pet) {
+            this.#grab.cancel();
+            this.#grabState = null;
+        }
+        this.#wantsToTalk.delete(old.actor.pet);
+        old.bubble?.dispose();
         this.#reservations.release(old.actor.pet);
         old.actor.dispose();
         old.shadow.removeFromParent();
@@ -425,6 +508,124 @@ export class PetStage {
         this.send({ type: "speechEnd" });
     }
 
+    #slotOf(pet: string): Slot | null {
+        for (const s of this.#slots.values()) if (s.actor.pet === pet) return s;
+        return null;
+    }
+
+    /** Lip-sync ONE pet (its own voiced line); the others keep their mouths shut. */
+    speakPet(pet: string, visemes: readonly VisemeEvent[], startMs = performance.now()): void {
+        const s = this.#slotOf(pet);
+        if (!s) return;
+        s.speech = { visemes, startMs };
+        s.actor.send({ type: "speechStart" }, performance.now());
+    }
+
+    /** Owner hands for this frame (engine, every frame). Points in world metres. */
+    setHands(hands: readonly HandInput[]): void {
+        this.#hands = hands;
+    }
+
+    /** Current hand grab: which pet, drag or two-hand resize, and its scale. */
+    get grabState(): { pet: string; mode: GrabMode; scale: number } | null {
+        return this.#grabState;
+    }
+
+    /** Size multiplier on the catalogue height (0.4..2.5). Kept for a pet that is not loaded yet. */
+    setPetScale(pet: string, k: number): void {
+        if (!Number.isFinite(k)) return;
+        const scale = Math.min(PET_SCALE_MAX, Math.max(PET_SCALE_MIN, k));
+        this.#pendingScale.set(pet, scale);
+        const s = this.#slotOf(pet);
+        if (s) this.#applyScale(s, scale);
+    }
+
+    petScale(pet: string): number {
+        return this.#slotOf(pet)?.scale ?? this.#pendingScale.get(pet) ?? 1;
+    }
+
+    #applyScale(s: Slot, scale: number): void {
+        if (Math.abs(scale - s.scale) < 1e-4) return;
+        s.scale = scale;
+        s.actor.setBaseScale(s.scaleM * scale);
+        s.roamer.setHeight(PETS[s.actor.pet].heightM * scale);
+    }
+
+    /** World height (m) of a pet including the owner's resize. */
+    #heightOf(s: Slot): number {
+        return PETS[s.actor.pet].heightM * s.scale;
+    }
+
+    /** Load a learned personality; kept until the pet loads when it is not on stage yet. */
+    setPersonality(pet: string, state: PersonalityState): void {
+        this.#pendingPersonality.set(pet, state);
+        this.#slotOf(pet)?.mind.setPersonality(state);
+    }
+
+    /** Current learned states (committed base + 10-min checkpoints), for saving. */
+    personalities(): { pet: string; state: PersonalityState }[] {
+        const out = new Map<string, PersonalityState>(this.#pendingPersonality);
+        for (const s of this.#slots.values()) out.set(s.actor.pet, s.mind.personalityState);
+        return [...out].map(([pet, state]) => ({ pet, state }));
+    }
+
+    /** End the session for every pet on stage (sessions + 1, full drift); returns the states to save. */
+    endSession(): { pet: string; state: PersonalityState }[] {
+        const now = performance.now();
+        for (const s of this.#slots.values()) this.#pendingPersonality.set(s.actor.pet, s.mind.endSession(now));
+        return this.personalities();
+    }
+
+    /**
+     * Pets that just decided to say something (rising edge of the "chatter"
+     * action). Reading consumes them: the engine asks the LLM for one line each.
+     */
+    wantsToTalk(): string[] {
+        const out = [...this.#wantsToTalk];
+        this.#wantsToTalk.clear();
+        const now = performance.now();
+        for (const pet of out) this.#slotOf(pet)?.mind.consumeChatter(now);
+        return out;
+    }
+
+    /** Show a speech bubble above `pet` (one per pet; a new line morphs the bubble). */
+    say(pet: string, text: string, opts: SayOptions = {}): void {
+        const s = this.#slotOf(pet);
+        const clean = sanitizeBubbleText(text);
+        if (!s || !clean) return;
+        if (!s.bubble) {
+            if (typeof document === "undefined" && typeof OffscreenCanvas === "undefined") return;
+            s.bubble = new SpeechBubble();
+            this.scene.add(s.bubble.mesh);
+        }
+        const now = performance.now();
+        s.bubble.say(clean, now, opts);
+        // Unvoiced line: flap the mouth with the typewriter unless a voiced line is playing.
+        if (!s.speech) this.speakPet(pet, textVisemes(s.bubble.lines.join(" ")), now);
+    }
+
+    /** Hide one pet's bubble (or all). */
+    clearSpeech(pet?: string): void {
+        const now = performance.now();
+        for (const s of this.#slots.values()) if (!pet || s.actor.pet === pet) s.bubble?.clear(now);
+    }
+
+    /** Director command: send ONE pet to an anchor and/or play a clip, for `ttlMs`. */
+    command(pet: string, cmd: PetStageCommand): void {
+        const s = this.#slotOf(pet);
+        if (!s) return;
+        const now = performance.now();
+        const ttl = Math.min(Math.max(Number.isFinite(cmd.ttlMs) ? cmd.ttlMs : 0, 0), 60_000);
+        if (cmd.anchor && (ANCHORS as readonly string[]).includes(cmd.anchor)) {
+            s.command = { anchor: cmd.anchor, until: now + ttl };
+            s.roamer.request(cmd.anchor);
+        }
+        if (cmd.clip) {
+            const clip: PetClip | null = cmd.clip === "happy" ? "hop" : (PET_CLIPS as readonly string[]).includes(cmd.clip) ? cmd.clip : null;
+            if (clip) s.actor.send({ type: "command", clip }, now);
+        }
+    }
+
     setHidden(hidden: boolean): void {
         this.#hidden = hidden;
     }
@@ -463,7 +664,7 @@ export class PetStage {
         const debug: PetDebug[] = [];
         const slots = [...this.#slots.entries()];
         // 1) Minds at 5 Hz: pick actions; reservations keep perches exclusive.
-        if (now - this.#lastMindTick >= MIND_TICK_MS) {
+        if (this.#autonomous && now - this.#lastMindTick >= MIND_TICK_MS) {
             this.#lastMindTick = now;
             if (now > this.#spotlightUntil) this.#spotlight = null;
             for (const [, slot] of slots) {
@@ -492,15 +693,26 @@ export class PetStage {
                     pointActive: this.#pointAt !== null,
                 };
                 const d = slot.mind.tick(ctx, locomotionOf(PETS[slot.actor.pet].family) !== "walk");
+                if (d.action === "chatter" && slot.lastAction !== "chatter") this.#wantsToTalk.add(slot.actor.pet);
+                slot.lastAction = d.action;
+                const ckpt = slot.mind.checkpoint(now);
+                if (ckpt) this.#pendingPersonality.set(slot.actor.pet, ckpt);
                 this.#reservations.release(slot.actor.pet);
-                if (d.anchor && EXCLUSIVE_ANCHORS.has(d.anchor)) this.#reservations.take(d.anchor, slot.actor.pet, now);
-                slot.roamer.direct(d.anchor);
+                // A director command holds its anchor for its TTL (validated, this pet only).
+                if (slot.command && slot.command.until <= now) slot.command = null;
+                const anchor = slot.command?.anchor ?? d.anchor;
+                if (anchor && EXCLUSIVE_ANCHORS.has(anchor)) this.#reservations.take(anchor, slot.actor.pet, now);
+                slot.roamer.direct(anchor);
+                if (slot.command) slot.roamer.request(slot.command.anchor);
                 // Behaviour clips the mind asks for (look, wave, dance, sleep...) go through the brain.
-                if (d.clip !== "idle" && slot.actor.brain.clip !== d.clip && d.action !== "perchShoulder") {
+                // Chatter talks through the bubble + lip-sync, not a looping clip.
+                if (d.clip !== "idle" && slot.actor.brain.clip !== d.clip && d.action !== "perchShoulder" && d.action !== "chatter" && !slot.held) {
                     slot.actor.send({ type: "command", clip: d.clip }, now);
                 }
             }
         }
+        // 1b) Owner hands: pinch-grab and two-hand resize override the roamer.
+        this.#updateGrab(slots, now);
         // 2) Locomotion.
         const poses = new Map<Side, PetPose>();
         for (const [side, slot] of slots) poses.set(side, slot.roamer.update(body, pin, now, dtSec, this.#pointAt));
@@ -508,10 +720,10 @@ export class PetStage {
         const capsules = bodyCapsules(body);
         const bodies: PetBody[] = slots.map(([side, slot]) => {
             const pose = poses.get(side) as PetPose;
-            const h = PETS[slot.actor.pet].heightM;
+            const h = this.#heightOf(slot);
             const a = pose.anchor;
-            const perchedOn: PetBody["perchedOn"] = !pose.settled ? null : a === "crown" ? "head" : a.startsWith("shoulder") ? "shoulder" : a.startsWith("hand") ? "hand" : null;
-            return { p: [...pose.p] as Vec3, r: h * 0.45, cy: h * 0.5, perchedOn };
+            const perchedOn: PetBody["perchedOn"] = !pose.settled || slot.held ? null : a === "crown" ? "head" : a.startsWith("shoulder") ? "shoulder" : a.startsWith("hand") ? "hand" : null;
+            return { p: [...pose.p] as Vec3, r: h * 0.45, cy: h * 0.5, perchedOn, ignoreBody: slot.held };
         });
         const report = resolve(bodies, capsules);
         for (const [i, [side, slot]] of slots.entries()) {
@@ -533,20 +745,22 @@ export class PetStage {
             slot.shadow.visible = visible && pose.settled && pose.gait !== "fly";
             // LOD: skip the mixer/skinning updates while invisible; tick at half rate when tiny on screen.
             const s = project(pin, pose.p);
-            const px = (PETS[slot.actor.pet].heightM * (pin.height / 2 / Math.tan((pin.vfovDeg * Math.PI) / 360))) / Math.max(s.depthM, 0.05);
+            const heightM = this.#heightOf(slot);
+            const px = (heightM * (pin.height / 2 / Math.tan((pin.vfovDeg * Math.PI) / 360))) / Math.max(s.depthM, 0.05);
             const animate = visible && (px > 40 || Math.floor(now / 16) % 2 === 0);
             slot.actor.setArousal(slot.mind.mood.arousal);
-            slot.actor.tick(pose, now, animate ? dtSec * (px > 40 ? 1 : 2) : 0, mouth, animate);
+            slot.actor.tick(pose, now, animate ? dtSec * (px > 40 ? 1 : 2) : 0, this.#petMouth(slot, now) ?? mouth, animate);
             slot.alpha.value = slot.fade;
             const petM = s.depthM;
             slot.depth.value = petM;
             slot.inFront = personInFront(slot.inFront, body?.present ? body.distanceM : undefined, petM);
             slot.front.value = fadeToward(slot.front.value, slot.inFront ? 1 : 0, dtSec * 1000);
             // Shadow on the perch surface, slightly above to avoid z-fighting with nothing.
-            const sw = PETS[slot.actor.pet].heightM * 0.9;
+            const sw = heightM * 0.9;
             slot.shadow.position.set(pose.p[0], pose.p[1] + 0.002, pose.p[2]);
             slot.shadow.scale.set(sw, sw * 0.6, 1);
             slot.shadowAlpha.value = slot.fade;
+            if (slot.bubble?.active) slot.bubble.update(now, [pose.p[0], pose.p[1] + heightM * 1.15, pose.p[2]], pin, this.camera, slot.fade);
             debug.push({
                 side,
                 pet: slot.actor.pet,
@@ -556,10 +770,64 @@ export class PetStage {
                 animating: animate,
                 mind: { decision: slot.mind.decision, needs: slot.mind.needs, mood: slot.mind.mood },
                 pushed: slot.pushed,
+                held: slot.held,
+                scale: slot.scale,
             });
         }
         this.#debug = debug;
         if (this.#pointAt && [...this.#slots.values()].every((s) => s.roamer.anchor !== "point")) this.#pointAt = null;
+    }
+
+    #updateGrab(slots: readonly [Side, Slot][], now: number): void {
+        const pets: GrabPet[] = [];
+        for (const [, s] of slots) {
+            const p = s.roamer.position ?? s.pose?.p;
+            if (!p || s.fade < 0.5) continue;
+            const h = this.#heightOf(s);
+            pets.push({ id: s.actor.pet, p: [p[0], p[1] + h * 0.5, p[2]], radiusM: h * 0.45, scale: s.scale });
+        }
+        const out = this.#grab.update(now, this.#hidden ? [] : this.#hands, pets);
+        for (const e of out.events) {
+            const s = this.#slotOf(e.pet);
+            if (!s) continue;
+            if (e.kind === "grab") {
+                s.mind.stimulus({ kind: "grabbed" });
+                s.actor.send({ type: "command", clip: "react" }, now);
+                this.onInteraction?.({ kind: "grabbed", pet: e.pet, scale: e.scale });
+            } else if (e.kind === "drop") {
+                s.mind.stimulus({ kind: "dropped" });
+                s.roamer.hold(null);
+                s.held = false;
+                this.onInteraction?.({ kind: "dropped", pet: e.pet, scale: s.scale });
+            } else if (e.kind === "resizeEnd") {
+                this.#pendingScale.set(e.pet, s.scale);
+                this.onInteraction?.({ kind: "resized", pet: e.pet, scale: s.scale });
+            }
+        }
+        const held = out.held;
+        this.#grabState = held ? { pet: held.pet, mode: held.mode, scale: held.scale } : null;
+        if (!held) return;
+        const s = this.#slotOf(held.pet);
+        if (!s) return;
+        s.held = true;
+        this.#applyScale(s, held.scale);
+        // The grab tracks the body centre; the roamer moves the contact point (feet).
+        const h = this.#heightOf(s);
+        s.roamer.hold([held.target[0], held.target[1] - h * 0.5, held.target[2]]);
+    }
+
+    /** This pet's own lip-sync (speakPet / unvoiced bubble), or null to use the shared one. */
+    #petMouth(s: Slot, now: number): ReturnType<typeof mouthWeights> | null {
+        const sp = s.speech;
+        if (!sp) return null;
+        const t = now - sp.startMs;
+        const last = sp.visemes.at(-1);
+        if (!last || t > last.offsetMs + 400) {
+            s.speech = null;
+            if (!this.#speech) s.actor.send({ type: "speechEnd" }, now);
+            return null;
+        }
+        return t < 0 ? null : mouthWeights(sp.visemes, t);
     }
 
     #mouth(now: number): ReturnType<typeof mouthWeights> | null {

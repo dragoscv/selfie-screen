@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { boxFromUpright, fromUpright, toDisplay, toUpright } from "./geometry.js";
-import { classifyHand, fingerExtension, handObservations, mapCanned } from "./hand.js";
+import { classifyHand, fingerExtension, handInFrame, handObservations, HandSmoother, handScale, mapCanned, palmSize, worldPinchRatio, type Pt3 } from "./hand.js";
 import { makeHand, OPEN } from "./testing.js";
 
 const shape = (spec: Parameters<typeof makeHand>[0], canned?: { category: string; score: number }) =>
@@ -89,6 +89,119 @@ describe("hand shapes", () => {
         const obs = handObservations(classifyHand(makeHand({ index: true, middle: true }), "left"));
         expect(obs.map((o) => o.signal)).toEqual(["fingers_2", "victory"]);
         expect(obs.every((o) => o.hand === "left")).toBe(true);
+    });
+});
+
+/** Hand fixture scaled into frame-normalised coords around (cx, cy). */
+const normHand = (cx: number, cy: number) => makeHand({ ...OPEN, scale: 0.001, at: { x: cx, y: cy } });
+
+describe("off-frame gating", () => {
+    it("accepts a hand fully inside the frame", () => {
+        expect(handInFrame(normHand(0.5, 0.6))).toBe(true);
+    });
+
+    it("rejects a hand whose wrist is outside [0.01, 0.99]", () => {
+        expect(handInFrame(normHand(0.5, 0.995))).toBe(false);
+        expect(handInFrame(normHand(0.005, 0.6))).toBe(false);
+    });
+
+    it("tolerates up to 2 fingertips outside, not 3", () => {
+        const lm = normHand(0.5, 0.6);
+        const out = (idx: number[]) => lm.map((p, i) => (idx.includes(i) ? { ...p, y: -0.05 } : p));
+        expect(handInFrame(out([8, 12]))).toBe(true);
+        expect(handInFrame(out([8, 12, 16]))).toBe(false);
+    });
+
+    it("rejects a short landmark list", () => {
+        expect(handInFrame(normHand(0.5, 0.6).slice(0, 10))).toBe(false);
+    });
+});
+
+describe("ok / pinch disjointness", () => {
+    it("is decided by the middle finger alone", () => {
+        // Middle folded -> pinch, even with ring + pinky up.
+        expect(shape({ index: "pinch", ring: true, pinky: true })).toBe("pinch");
+        // Middle up but ring folded -> neither ok nor pinch.
+        const s = shape({ index: "pinch", middle: true });
+        expect(s).not.toBe("pinch");
+        expect(s).not.toBe("ok");
+    });
+
+    it("never returns pinch with the middle finger extended", () => {
+        for (const ring of [true, false])
+            for (const pinky of [true, false]) {
+                const s = shape({ index: "pinch", middle: true, ring, pinky });
+                expect(s).not.toBe("pinch");
+                if (s === "ok") expect(ring && pinky).toBe(true);
+            }
+    });
+});
+
+describe("pinch from the world ratio", () => {
+    const world = (gapM: number): Pt3[] => {
+        const w: Pt3[] = Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 }));
+        w[5] = { x: 0, y: 0, z: 0 };
+        w[17] = { x: 0.08, y: 0, z: 0 };
+        w[4] = { x: 0.01, y: -0.1, z: 0.01 };
+        w[8] = { x: 0.01 + gapM, y: -0.1, z: 0.01 };
+        return w;
+    };
+
+    it("measures thumb-index distance over palm width in 3D", () => {
+        expect(worldPinchRatio(world(0.012))).toBeCloseTo(0.15);
+        expect(worldPinchRatio([])).toBeNaN();
+    });
+
+    it("uses the calibrated pinchOn threshold instead of the 2D rule", () => {
+        const lm = makeHand({ index: "pinch" });
+        expect(classifyHand(lm, "right", undefined, { pinchRatio: 0.15, pinchOn: 0.2 }).shape).toBe("pinch");
+        expect(classifyHand(lm, "right", undefined, { pinchRatio: 0.15, pinchOn: 0.1 }).shape).not.toBe("pinch");
+        const okLm = makeHand({ index: "pinch", middle: true, ring: true, pinky: true });
+        expect(classifyHand(okLm, "right", undefined, { pinchRatio: 0.15, pinchOn: 0.2 }).shape).toBe("ok");
+        expect(classifyHand(okLm, "right", undefined, { pinchRatio: 0.5, pinchOn: 0.2 }).shape).not.toBe("ok");
+    });
+
+    it("falls back to the 2D rule when the ratio is NaN", () => {
+        expect(classifyHand(makeHand({ index: "pinch" }), "right", undefined, { pinchRatio: NaN, pinchOn: 0.01 }).shape).toBe("pinch");
+    });
+});
+
+describe("hand scale and smoothing", () => {
+    it("never scales below the palm, and holds up when the palm is foreshortened", () => {
+        const lm = makeHand(OPEN);
+        expect(handScale(lm)).toBeGreaterThanOrEqual(palmSize(lm));
+        // Squash the wrist -> MCP span (palm tilted towards the camera); fingers stay long.
+        const tilted = lm.map((p, i) => (i <= 1 ? { ...p, y: p.y - 70 } : p));
+        expect(handScale(tilted)).toBeGreaterThan(palmSize(tilted) * 2);
+    });
+
+    it("moves a still, jittery hand < 0.002 per frame and restarts after a 200 ms gap", () => {
+        const sm = new HandSmoother();
+        const base = normHand(0.5, 0.6);
+        let seed = 7;
+        const noise = () => {
+            seed = (seed * 1103515245 + 12345) % 2 ** 31;
+            return (seed / 2 ** 31 - 0.5) * 0.005;
+        };
+        let worst = 0;
+        let rawWorst = 0;
+        let prev: Pt3[] | null = null;
+        let prevRaw: Pt3[] | null = null;
+        for (let f = 0; f < 90; f++) {
+            const raw = base.map((p) => ({ x: p.x + noise(), y: p.y + noise(), z: 0 }));
+            const out = sm.smooth(raw, f * 33).map((p) => ({ x: p.x, y: p.y, z: 0 }));
+            const step = (a: Pt3[], b: Pt3[]) => Math.max(...a.map((p, i) => Math.hypot(p.x - (b[i]?.x ?? 0), p.y - (b[i]?.y ?? 0))));
+            if (prev && prevRaw) {
+                worst = Math.max(worst, step(out, prev));
+                rawWorst = Math.max(rawWorst, step(raw, prevRaw));
+            }
+            prev = out;
+            prevRaw = raw;
+        }
+        expect(worst).toBeLessThan(0.002);
+        expect(rawWorst).toBeGreaterThan(0.004);
+        const moved = base.map((p) => ({ x: p.x + 0.2, y: p.y }));
+        expect(sm.smooth(moved, 90 * 33 + 250)[0]?.x).toBeCloseTo(moved[0]?.x ?? 0);
     });
 });
 

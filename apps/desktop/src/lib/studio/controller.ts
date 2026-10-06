@@ -1,4 +1,4 @@
-import type { ArObject, IdentityProfile, RuleAction, SignalEvent, StudioSettings, VisionSettings, VisionSnapshot } from "@tiksee/core";
+import type { ArObject, IdentityProfile, PetPersonality, RuleAction, SignalEvent, StudioSettings, VisionSettings, VisionSnapshot } from "@tiksee/core";
 import type { AnchorId, BodySnapshot, PetDebug, Pinhole, Vec3 } from "@tiksee/pets";
 
 /**
@@ -156,6 +156,65 @@ export interface Debug3dState {
     };
     /** Fused metric owner distance (whole-body solve + iris + Kalman); absent before the first reading. */
     metric?: { distanceM: number; relSigma: number; body?: number; iris?: number };
+    /** Owner hands in the room frame (metres), filtered, as the pets see them. */
+    hands?: readonly DebugHand[];
+    /** Current hand interaction with a pet, if any. */
+    grab?: { pet: string; mode: "drag" | "resize"; scale: number } | null;
+}
+
+export interface DebugHand {
+    side: "left" | "right";
+    present: boolean;
+    /** 21 landmarks, world metres (room frame). */
+    landmarks: readonly Vec3[];
+    pinching: boolean;
+    /** 0..1 (1 = fingertips touching). */
+    strength: number;
+    /** Pinch point (thumb/index midpoint), world metres. */
+    point: Vec3;
+    depthM: number;
+    /** How the depth was found: own 21-point solve, or the pose wrist fallback. */
+    source: "solve" | "wrist";
+    shape: string | null;
+}
+
+/** Owner hand as the vision pipeline reports it (RAW camera space + MediaPipe hand world landmarks). */
+export interface OwnerHand {
+    side: "left" | "right";
+    /** 21 image landmarks normalised to the RAW frame. */
+    raw: RawLandmark[];
+    /** 21 MediaPipe hand world landmarks: metres, origin = hand centre, raw image axes (y down). */
+    world: { x: number; y: number; z: number }[];
+    /** Handedness/presence score 0..1. */
+    score: number;
+    /** Classified one-hand shape (gesture id) or null. */
+    shape: string | null;
+    shapeConfidence: number;
+    /** Thumb tip - index tip distance / palm width, from world landmarks (rotation/distance invariant). */
+    pinch: number;
+    /** False when the wrist or > 2 fingertips are outside the frame (landmarks partly invented). */
+    inFrame: boolean;
+    /** True when reused from an earlier run (main-thread stagger); not a new observation. */
+    stale: boolean;
+}
+
+/** One gesture-calibration recording (wizard hands step). */
+export interface HandSample {
+    /** Gesture asked for ("relaxed" = hand open and still, "pinch" = thumb-index touch). */
+    target: string;
+    frames: number;
+    /** Frames with an in-frame owner hand. */
+    handFrames: number;
+    /** Frames whose classified shape == target. */
+    hits: number;
+    /** Median classifier confidence over the hit frames. */
+    confidence: number;
+    /** Thumb-index / palm-width ratio percentiles over hand frames. */
+    pinchP10: number;
+    pinchP50: number;
+    pinchP90: number;
+    /** Owner palm width (m) from image size x wrist depth; 0 when the depth was unknown. */
+    palmM: number;
 }
 
 export interface StudioController {
@@ -168,6 +227,12 @@ export interface StudioController {
     calibrateLens?(onProgress: (p: LensProgress) => void, signal: AbortSignal): Promise<LensResult>;
     /** Optional one-shot scene analysis (MoGe-2, lazy 141 MB): FOV estimate + desk/wall planes. */
     analyseScene?(onProgress: (p: number) => void): Promise<SceneResult>;
+    /** Record `ms` of the owner's hands while they perform `target` (gesture calibration step). */
+    sampleHands(target: string, ms: number): Promise<HandSample>;
+    /** Stored pet personalities (sidecar `petPersonalities`), pushed on change. Returns an unsubscribe. */
+    onPetPersonalities(cb: (pets: readonly PetPersonality[]) => void): () => void;
+    /** Ask the sidecar to forget a pet's personality + memories ("all" = every pet). */
+    resetPetPersonality(pet: string): void;
     /** Subscribe to per-frame UI info (throttled to ~15 Hz). Returns an unsubscribe. */
     onFrame(cb: (info: StudioFrameInfo) => void): () => void;
     /** Debounced signal edges + arming changes, to forward to the sidecar (`visionSignals`, `visionArm`). */
@@ -229,6 +294,8 @@ export interface VisionFrame {
     events: SignalEvent[];
     snapshot: VisionSnapshot;
     ownerDistanceM?: number;
+    /** Owner's hands (at most one per side), present when the hand models ran. */
+    ownerHands?: OwnerHand[];
     armed: boolean;
     /** Per-task latency, ms (EMA). */
     timings: Record<string, number>;
@@ -263,6 +330,7 @@ export interface VisionRuntime {
     } | null;
     sampleCalibration(ms: number): Promise<CalibrationSample>;
     sampleEnrolment(kind: "person" | "dog"): Promise<EnrolSample | null>;
+    latestHands?(): { tMs: number; arrivalMs: number; seq: number; hands: OwnerHand[]; rawW: number; rawH: number } | null;
     ensureModels(which: ("identity" | "dogIdentity" | "depth")[], onProgress?: (p: number) => void): Promise<void>;
     /** Enrolled profiles to match against (from the sidecar `identities` message). */
     setProfiles(profiles: IdentityProfile[]): void;

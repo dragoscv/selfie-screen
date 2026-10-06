@@ -46,12 +46,25 @@ describe("swipes", () => {
         const path = line([0.2, 0.5], [0.6, 0.5], 10);
         const pulses = path.slice(0, 5).flatMap(([x, y], i) => m.update({ x, y }, i * 33));
         m.update(null, 170);
-        const rest = path.slice(5).flatMap(([x, y], i) => m.update({ x, y }, 200 + i * 33));
+        const rest = path.slice(5).flatMap(([x, y], i) => m.update({ x, y }, 400 + i * 33));
         expect(pulses).toEqual([]);
         expect(rest).toEqual([]);
         const again = new MotionAnalyzer("left");
         const out = path.flatMap(([x, y], i) => again.update({ x, y }, i * 33));
         expect(out[0]?.hand).toBe("left");
+    });
+
+    it("keeps the trajectory across a 100 ms gap and drops it after 300 ms", () => {
+        const path = line([0.2, 0.5], [0.6, 0.5], 10);
+        const feed = (gap: number): string[] => {
+            const m = new MotionAnalyzer();
+            const a = path.slice(0, 5).flatMap(([x, y], i) => m.update({ x, y }, i * 33).map((p) => p.signal));
+            m.update(null, 132 + gap / 2);
+            const b = path.slice(5).flatMap(([x, y], i) => m.update({ x, y }, 132 + gap + i * 33).map((p) => p.signal));
+            return [...a, ...b];
+        };
+        expect(feed(100)).toEqual(["swipe_right"]);
+        expect(feed(300)).toEqual([]);
     });
 });
 

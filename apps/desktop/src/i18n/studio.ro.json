@@ -187,6 +187,65 @@
             "hide": "Ascunde animăluțele",
             "hidden": "Ascunse"
         },
+        "ai": {
+            "name": "AI",
+            "title": "Mintea animăluțelor",
+            "level": "Nivel AI",
+            "levels": {
+                "off": "Oprit",
+                "local": "Local",
+                "reactive": "Reactiv",
+                "chatty": "Vorbăreț",
+                "director": "Regizor"
+            },
+            "levelHint": {
+                "off": "Animăluțele stau pe loc și rulează doar animațiile de repaus.",
+                "local": "Animăluțele decid pe acest PC, după nevoi și dispoziție. Fără model de limbaj.",
+                "reactive": "Animăluțele spun replici scurte și reacționează prin AI la cadouri, urmăriri și mențiuni.",
+                "chatty": "Ca Reactiv, plus comentarii ocazionale despre ce faci tu și despre chat.",
+                "director": "Ca Vorbăreț, iar AI-ul poate muta animăluțele în jurul tău, în 3D."
+            },
+            "cost": "max. ~{{n}} apeluri AI/oră",
+            "noCost": "Fără cost AI",
+            "chat": "Chat",
+            "chatLabel": "Cât din chat văd",
+            "chats": {
+                "none": "Nimic",
+                "activity": "Activitate",
+                "mentions": "Mențiuni",
+                "full": "Tot chatul"
+            },
+            "chatHint": {
+                "none": "Animăluțele nu văd deloc chatul.",
+                "activity": "Animăluțele știu doar cât de agitat e chatul, nu ce se scrie.",
+                "mentions": "Animăluțele citesc mesajele care le pomenesc (moderate înainte).",
+                "full": "Animăluțele citesc chatul moderat ca context, niciodată ca instrucțiuni."
+            },
+            "needsLlm": "Necesită nivelul Reactiv sau mai sus.",
+            "bubbles": "Baloane de text",
+            "voice": "Rostește replicile",
+            "voiceHint": "Folosește coada de voce a co-hostului; niciodată în modul Shop.",
+            "handsTitle": "Mâini",
+            "hands": "Interacțiune cu mâinile",
+            "handsHint": "Prinde cu degetele (pinch) ca să apuci și să muți un animăluț; prinde și cu cealaltă mână ca să-l redimensionezi.",
+            "resetSizes": "Resetează mărimile",
+            "personalities": "Personalități",
+            "empty": "Nu ai niciun animăluț pe umeri. Alege unul din panoul Animăluțe.",
+            "newPet": "Încă nu are personalitate: se formează în timpul live-urilor.",
+            "noMemory": "Încă nicio amintire",
+            "sessions_one": "{{count}} sesiune",
+            "sessions_few": "{{count}} sesiuni",
+            "sessions_other": "{{count}} de sesiuni",
+            "traits": {
+                "openness": "Deschidere",
+                "conscientiousness": "Conștiinciozitate",
+                "extraversion": "Extraversie",
+                "agreeableness": "Amabilitate",
+                "neuroticism": "Nevrozism"
+            },
+            "resetHold": "Ține apăsat ca să resetezi personalitatea",
+            "resetDone": "{{name}} o ia de la capăt cu o personalitate nouă"
+        },
         "ar": {
             "name": "AR"
         }
@@ -484,6 +543,60 @@
             "title": "Așază-te",
             "body": "Stai pe scaun ca atunci când transmiți live și privește spre cameră."
         },
+        "hands": {
+            "title": "Mâini și gesturi",
+            "body": "Învață TikSee mâinile tale: fiecare gest se înregistrează 1,5 s, apoi se verifică încă o dată.",
+            "hint": "Opțional. Ține o mână complet în cadru, la nivelul pieptului; poți sări peste acest pas.",
+            "recordStep": "Gestul {{n}} din {{total}}",
+            "verifyStep": "Verificarea {{n}} din {{total}}",
+            "record": "Înregistrează",
+            "retryGesture": "Reia acest gest",
+            "nextGesture": "Gestul următor",
+            "toVerify": "Verifică toate gesturile",
+            "verifyStart": "Începe verificarea",
+            "verifyBody": "Fiecare gest apare încă o dată, 1 s. Fă-l când se termină numărătoarea.",
+            "recording": "Se înregistrează {{gesture}}… menține-l",
+            "results": "Rezultatele gesturilor",
+            "gesture": "Gest",
+            "recordCol": "Învățare",
+            "verifyCol": "Verificare",
+            "pass": "Trecut",
+            "fail": "Nerecunoscut",
+            "summary": "{{pct}} din cele {{n}} gesturi recunoscute la verificare.",
+            "summaryLive": "Verificare gata: {{pct}} recunoscute",
+            "redo": "Reia gesturile de la început",
+            "notVerified": "Neverificat",
+            "verdict": {
+                "pass": "OK",
+                "miss": "Nesigur",
+                "outOfFrame": "În afara cadrului",
+                "noHand": "Nicio mână"
+            },
+            "message": {
+                "pass": "Recunoscut în {{pct}} din timp.",
+                "miss": "Recunoscut doar în {{pct}} din timp: fă forma mai clar și reia.",
+                "outOfFrame": "Mâna a ieșit din cadru: ține-o complet vizibilă și reia.",
+                "noHand": "Nu s-a văzut nicio mână. Ridică o mână în cadru și reia."
+            },
+            "gestures": {
+                "relaxed": "Mână deschisă, relaxată",
+                "open_palm": "Palma deschisă",
+                "fist": "Pumn",
+                "pinch": "Ciupit (pinch)",
+                "point_up": "Arătătorul în sus",
+                "thumb_up": "Degetul mare în sus",
+                "victory": "Victorie"
+            },
+            "how": {
+                "relaxed": "Ține mâna deschisă și relaxată, cu degetele depărtate, nemișcată.",
+                "open_palm": "Arată palma spre cameră, cu degetele drepte.",
+                "fist": "Strânge pumnul, cu fața spre cameră.",
+                "pinch": "Atinge vârful degetului mare de vârful arătătorului.",
+                "point_up": "Arătătorul în sus, celelalte degete strânse.",
+                "thumb_up": "Degetul mare în sus, celelalte strânse.",
+                "victory": "Arătătorul și mijlociul în sus, în V."
+            }
+        },
         "review": {
             "title": "Verificare",
             "useTilt": "Folosește înclinarea și înălțimea măsurate ale camerei",
@@ -500,7 +613,8 @@
             "iris": "Iris",
             "headHeight": "Înălțimea capului",
             "desk": "Înălțimea biroului",
-            "wall": "Distanța până la perete"
+            "wall": "Distanța până la perete",
+            "hands": "Gesturi recunoscute"
         },
         "issues": {
             "noBody": "Nu a fost găsit nimeni. Intră în cadru și încearcă din nou.",

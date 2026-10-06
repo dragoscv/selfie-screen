@@ -68,6 +68,8 @@ export interface PetBody {
     cy: number;
     /** Perched on a body part: that part is a SURFACE for it, not an obstacle (it sits on top). */
     perchedOn: "shoulder" | "head" | "hand" | null;
+    /** Held in the owner's hand: no body push (it is in the hand), the pet-pet gap still applies. */
+    ignoreBody?: boolean;
 }
 
 /** Minimum gap between two pets (m), on top of their radii. */
@@ -87,6 +89,7 @@ export function resolve(pets: PetBody[], capsules: readonly Capsule[], iteration
     const pushed = pets.map(() => 0);
     for (let it = 0; it < iterations; it++) {
         for (const [i, pet] of pets.entries()) {
+            if (pet.ignoreBody) continue;
             for (const c of capsules) {
                 if (pet.perchedOn === "head" && c.part === "head") continue;
                 if (pet.perchedOn === "shoulder" && (c.part === "torso" || c.part === "upperArmL" || c.part === "upperArmR")) continue;
@@ -116,11 +119,13 @@ export function resolve(pets: PetBody[], capsules: readonly Capsule[], iteration
                 if (dist >= min) continue;
                 // Deterministic split direction when exactly coincident: along X.
                 const n: Vec3 = dist > 1e-6 ? mul(d, 1 / dist) : [1, 0, 0];
-                const half = (min - dist) / 2;
-                a.p = sub(a.p, mul(n, half));
-                b.p = add(b.p, mul(n, half));
-                pushed[i] = (pushed[i] ?? 0) + half;
-                pushed[k] = (pushed[k] ?? 0) + half;
+                // A pet held in the hand stays put; the other one takes the whole correction.
+                const wa = a.ignoreBody && !b.ignoreBody ? 0 : !a.ignoreBody && b.ignoreBody ? 1 : 0.5;
+                const corr = min - dist;
+                a.p = sub(a.p, mul(n, corr * wa));
+                b.p = add(b.p, mul(n, corr * (1 - wa)));
+                pushed[i] = (pushed[i] ?? 0) + corr * wa;
+                pushed[k] = (pushed[k] ?? 0) + corr * (1 - wa);
             }
         }
     }

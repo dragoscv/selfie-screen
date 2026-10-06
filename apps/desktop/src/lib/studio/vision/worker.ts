@@ -43,6 +43,7 @@ scope.onmessage = (ev: MessageEvent<ToWorker>) => {
             }
             busy = true;
             pipeline.onPose = (early) => reply({ id: m.id, type: "pose", ...early });
+            pipeline.onHands = (early) => reply({ id: m.id, type: "hands", ...early });
             pipeline
                 .process(m.bitmap, m.tMs, m.rawW, m.rawH)
                 .then(
@@ -58,6 +59,9 @@ scope.onmessage = (ev: MessageEvent<ToWorker>) => {
             return;
         case "calibrate":
             pipeline.calibrate(m.ms).then((sample) => reply({ id: m.id, type: "calibration", sample }), (e: unknown) => fail(m.id, e));
+            return;
+        case "handSample":
+            pipeline.sampleHands(m.target, m.ms).then((sample) => reply({ id: m.id, type: "handSample", sample }), (e: unknown) => fail(m.id, e));
             return;
         case "enrol":
             pipeline.enrol(m.kind).then((sample) => reply({ id: m.id, type: "enrolment", sample }), (e: unknown) => fail(m.id, e));

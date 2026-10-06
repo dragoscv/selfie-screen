@@ -18,6 +18,8 @@ export interface MotionOptions {
     waveWindowMs: number;
     waveReversals: number;
     waveAmplitude: number;
+    /** Missing samples are tolerated this long before the trajectory is dropped, ms. */
+    graceMs: number;
 }
 
 export const DEFAULT_MOTION: MotionOptions = {
@@ -30,6 +32,7 @@ export const DEFAULT_MOTION: MotionOptions = {
     waveWindowMs: 1200,
     waveReversals: 3,
     waveAmplitude: 0.03,
+    graceMs: 150,
 };
 
 interface Sample {
@@ -43,6 +46,7 @@ export class MotionAnalyzer {
     readonly #side: Side | undefined;
     #buf: Sample[] = [];
     #lastFire = -Infinity;
+    #lastSeen = -Infinity;
 
     constructor(side?: Side, options: Partial<MotionOptions> = {}) {
         this.#o = { ...DEFAULT_MOTION, ...options };
@@ -50,15 +54,17 @@ export class MotionAnalyzer {
     }
 
     /**
-     * Feed one palm centre (null = hand lost, clears the trajectory).
+     * Feed one palm centre (null = hand not seen this frame). The trajectory survives gaps up to
+     * `graceMs` (time-based: one dropped detection does not reset a swipe) and is cleared after.
      * `open` = the hand is an open palm (waves need it; swipes and circles do not).
      */
     update(p: Pt | null, tMs: number, open = true): Pulse[] {
+        const o = this.#o;
+        if (tMs - this.#lastSeen > o.graceMs) this.#buf = [];
         if (!p) {
-            this.#buf = [];
             return [];
         }
-        const o = this.#o;
+        this.#lastSeen = tMs;
         this.#buf.push({ t: tMs, x: p.x, y: p.y });
         const keep = Math.max(o.swipeWindowMs, o.circleWindowMs, o.waveWindowMs);
         while (this.#buf.length > 0 && tMs - (this.#buf[0]?.t ?? tMs) > keep) this.#buf.shift();
@@ -141,5 +147,6 @@ export class MotionAnalyzer {
 
     reset(): void {
         this.#buf = [];
+        this.#lastSeen = -Infinity;
     }
 }

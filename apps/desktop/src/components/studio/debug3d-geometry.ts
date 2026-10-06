@@ -198,6 +198,39 @@ export function distanceLine(s: Debug3dState): string {
 }
 
 /* ------------------------------------------------------------------ *
+ * Hands
+ * ------------------------------------------------------------------ */
+
+/** MediaPipe 21-point hand skeleton as landmark index pairs. */
+export const HAND_BONES: readonly (readonly [number, number])[] = [
+    [0, 1], [1, 2], [2, 3], [3, 4],
+    [0, 5], [5, 6], [6, 7], [7, 8],
+    [9, 10], [10, 11], [11, 12], [5, 9],
+    [13, 14], [14, 15], [15, 16], [9, 13],
+    [17, 18], [18, 19], [19, 20], [13, 17], [0, 17],
+];
+
+type Hand = NonNullable<Debug3dState["hands"]>[number];
+
+/** Label beside a hand: `L pinch · 0.62 m · solve` (shape "—" when unclassified). */
+export function handLabel(h: Hand): string {
+    const shape = h.pinching ? "pinch" : (h.shape ?? "—");
+    return `${h.side === "left" ? "L" : "R"} ${shape} · ${metres(h.depthM)} · ${h.source}`;
+}
+
+/** Pinch ring fill 0..1 (solid when pinching). */
+export function pinchFill(h: Hand): number {
+    return h.pinching ? 1 : Math.min(1, Math.max(0, h.strength));
+}
+
+/** HUD line for the active grab, or null: `grab fox · resize · scale ×1.23`. */
+export function grabLine(s: Debug3dState): string | null {
+    const g = s.grab;
+    if (!g) return null;
+    return `grab ${g.pet} · ${g.mode} · scale ×${g.scale.toFixed(2)}`;
+}
+
+/* ------------------------------------------------------------------ *
  * Body capsules
  * ------------------------------------------------------------------ */
 

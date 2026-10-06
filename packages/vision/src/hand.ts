@@ -1,5 +1,6 @@
 import type { HandGesture } from "@tiksee/core";
 
+import { OneEuroFilter } from "./depth.js";
 import { at, dist, mean, type Pt } from "./geometry.js";
 import type { Obs, Side } from "./types.js";
 
@@ -71,6 +72,91 @@ export function palmSize(lm: readonly Pt[]): number {
     return Math.max(dist(at(lm, HAND.WRIST), at(lm, HAND.MIDDLE_MCP)), 1e-6);
 }
 
+/**
+ * Normalisation scale for shape thresholds: max(palm, half the hand extent). A palm tilted
+ * towards the camera foreshortens wrist -> middle MCP; the extent (largest distance between any
+ * two landmarks — a rotation-invariant stand-in for the bounding-box diagonal) keeps the scale.
+ */
+export function handScale(lm: readonly Pt[]): number {
+    let extent = 0;
+    for (let i = 0; i < lm.length; i++) for (let j = i + 1; j < lm.length; j++) extent = Math.max(extent, dist(at(lm, i), at(lm, j)));
+    return Math.max(palmSize(lm), 0.5 * extent);
+}
+
+/** 3D point (MediaPipe hand WORLD landmark, metres). */
+export interface Pt3 {
+    x: number;
+    y: number;
+    z: number;
+}
+
+const d3 = (a: Pt3 | undefined, b: Pt3 | undefined): number => (a && b ? Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) : NaN);
+
+/**
+ * Thumb tip - index tip distance / palm width (index MCP -> pinky MCP), from the 21 hand WORLD
+ * landmarks (3D, so independent of rotation and distance). NaN when the landmarks are missing.
+ */
+export function worldPinchRatio(world: readonly Pt3[]): number {
+    const palm = d3(world[HAND.INDEX_MCP], world[HAND.PINKY_MCP]);
+    if (!(palm > 1e-6)) return NaN;
+    return d3(world[HAND.THUMB_TIP], world[HAND.INDEX_TIP]) / palm;
+}
+
+const FINGERTIPS = [HAND.THUMB_TIP, HAND.INDEX_TIP, HAND.MIDDLE_TIP, HAND.RING_TIP, HAND.PINKY_TIP] as const;
+
+/**
+ * Off-frame gating on frame-normalised landmarks (0..1, any orientation): the wrist must lie in
+ * [margin, 1 - margin] on both axes and at most 2 fingertips may fall outside that range.
+ * Outside it MediaPipe still returns 21 points, but they are partly invented.
+ */
+export function handInFrame(lm: readonly Pt[], margin = 0.01): boolean {
+    if (lm.length < 21) return false;
+    const inside = (p: Pt) => p.x >= margin && p.x <= 1 - margin && p.y >= margin && p.y <= 1 - margin;
+    if (!inside(at(lm, HAND.WRIST))) return false;
+    return FINGERTIPS.filter((i) => !inside(at(lm, i))).length <= 2;
+}
+
+export interface HandSmootherOptions {
+    minCutoff: number;
+    beta: number;
+    dCutoff: number;
+    /** Gap after which the filter restarts from the next sample, ms. */
+    resetMs: number;
+}
+
+/**
+ * One-Euro filter on all landmarks of one hand (x and y independently). Units: frame-normalised
+ * coords (0..1), so beta is per (unit / s). minCutoff 1.5 Hz: a still hand with ±0.0025 detector
+ * jitter at 30 fps moves < 0.002 per frame (test); beta 0.5 opens the filter for real movement
+ * (a 2 frame/s swipe -> ~2.5 Hz) so swipes keep most of their speed.
+ */
+export class HandSmoother {
+    readonly #o: HandSmootherOptions;
+    #fx: OneEuroFilter[] = [];
+    #fy: OneEuroFilter[] = [];
+    #last = -Infinity;
+
+    constructor(options: Partial<HandSmootherOptions> = {}) {
+        this.#o = { minCutoff: 1.5, beta: 0.5, dCutoff: 1, resetMs: 200, ...options };
+    }
+
+    smooth(lm: readonly Pt[], tMs: number): Pt[] {
+        const o = this.#o;
+        if (tMs - this.#last > o.resetMs || this.#fx.length !== lm.length) {
+            this.#fx = lm.map(() => new OneEuroFilter(o.minCutoff, o.beta, o.dCutoff));
+            this.#fy = lm.map(() => new OneEuroFilter(o.minCutoff, o.beta, o.dCutoff));
+        }
+        this.#last = tMs;
+        return lm.map((p, i) => ({ ...p, x: this.#fx[i]?.filter(p.x, tMs) ?? p.x, y: this.#fy[i]?.filter(p.y, tMs) ?? p.y }));
+    }
+
+    reset(): void {
+        this.#fx = [];
+        this.#fy = [];
+        this.#last = -Infinity;
+    }
+}
+
 function angleAt(a: Pt, b: Pt, c: Pt): number {
     const v1x = a.x - b.x;
     const v1y = a.y - b.y;
@@ -89,7 +175,7 @@ function angleAt(a: Pt, b: Pt, c: Pt): number {
  */
 export function fingerExtension(lm: readonly Pt[]): FingerFlags {
     const wrist = at(lm, HAND.WRIST);
-    const palm = palmSize(lm);
+    const palm = handScale(lm);
     const long = (pip: number, tip: number): boolean => dist(at(lm, tip), wrist) > dist(at(lm, pip), wrist) * 1.12;
     const tTip = at(lm, HAND.THUMB_TIP);
     const straight = angleAt(at(lm, HAND.THUMB_MCP), at(lm, HAND.THUMB_IP), tTip) > (150 * Math.PI) / 180;
@@ -108,15 +194,32 @@ const pattern = (e: FingerFlags, want: string): boolean =>
     // want: 5 chars of 1 (extended), 0 (folded), ? (either), thumb first.
     [...want].every((c, i) => c === "?" || (c === "1") === e[i]);
 
-/** Classify one hand. `canned` = MediaPipe's top canned category (+score), when available. */
-export function classifyHand(lm: readonly Pt[], side: Side, canned?: { category: string; score: number }): HandShape {
+export interface ClassifyOptions {
+    /** Thumb-index / palm-width ratio from the hand WORLD landmarks (see worldPinchRatio). */
+    pinchRatio?: number;
+    /** Personal threshold for `pinchRatio` (calibration.hands.pinchOn, or pinchOff while pinching). Default 0.2. */
+    pinchOn?: number;
+}
+
+/**
+ * Classify one hand. `canned` = MediaPipe's top canned category (+score), when available.
+ * With `options.pinchRatio` the thumb-index closure uses that 3D ratio against `pinchOn`
+ * instead of the 2D image-distance rules (0.3 ok / 0.25 pinch).
+ */
+export function classifyHand(lm: readonly Pt[], side: Side, canned?: { category: string; score: number }, options: ClassifyOptions = {}): HandShape {
     const palm = palmSize(lm);
+    const scale = handScale(lm);
     const extended = fingerExtension(lm);
     const fingers = extended.filter(Boolean).length;
     const centre = mean([HAND.WRIST, HAND.INDEX_MCP, HAND.MIDDLE_MCP, HAND.RING_MCP, HAND.PINKY_MCP].map((i) => at(lm, i)));
-    const pinchD = dist(at(lm, HAND.THUMB_TIP), at(lm, HAND.INDEX_TIP)) / palm;
+    const pinchD = dist(at(lm, HAND.THUMB_TIP), at(lm, HAND.INDEX_TIP)) / scale;
     // In a fist the folded thumb tip rests next to the index base; in a pinch/ok it is out at the fingertip.
-    const thumbOut = dist(at(lm, HAND.THUMB_TIP), at(lm, HAND.INDEX_MCP)) / palm > 0.5;
+    const thumbOut = dist(at(lm, HAND.THUMB_TIP), at(lm, HAND.INDEX_MCP)) / scale > 0.5;
+    const ratio = options.pinchRatio;
+    const world = ratio !== undefined && Number.isFinite(ratio);
+    const on = options.pinchOn ?? 0.2;
+    const closedOk = thumbOut && (world ? ratio < on : pinchD < 0.3);
+    const closedPinch = thumbOut && (world ? ratio < on : pinchD < 0.25);
 
     let shape: HandGesture | null = null;
     let confidence = 0;
@@ -125,8 +228,9 @@ export function classifyHand(lm: readonly Pt[], side: Side, canned?: { category:
         confidence = c;
     };
 
-    if (thumbOut && pinchD < 0.3 && pattern(extended, "??111")) set("ok", 0.85);
-    else if (thumbOut && pinchD < 0.25 && !extended[2]) set("pinch", 0.8);
+    // ok and pinch are disjoint by the middle finger alone: ok = middle+ring+pinky extended, pinch = middle folded.
+    if (closedOk && pattern(extended, "??111")) set("ok", 0.85);
+    else if (closedPinch && !extended[2]) set("pinch", 0.8);
     else if (pattern(extended, "01001")) set("rock", 0.85);
     else if (pattern(extended, "11001")) set("i_love_you", 0.85);
     else if (pattern(extended, "10001")) set("call_me", 0.85);

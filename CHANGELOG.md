@@ -11,6 +11,10 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 - **3D debug view** (F3 in the Studio): your skeleton in metres, the floor, your shoulder height and where every pet is heading. Preview only.
 - **Smart pets**: each pet has its own needs, mood and personality and decides for itself what to do (perch, land on your open palm, listen to the co-host, play with the other pet, doze off when the stream is quiet, celebrate big gifts). Pets never pass through you or each other, take turns reacting, and move with breathing, springy tails and ears, gaze jumps and landing squash. Optional AI director nudges them from the chat mood (off by default).
 - **3D space calibration** (Studio → Camera → Calibrate 3D space): camera model and lens, your height, stand up and sit down for a few seconds; optional precise lens calibration with a printed board and a one-time scene analysis. Pets and effects are then sized correctly for your room.
+- **Touch the pets with your hands**: pinch a pet to pick it up and move it; while holding it, pinch with the other hand and spread or close your hands to resize it (the size is kept, the pet goes back to doing its own thing when you let go). Hand depth comes from the hand itself, checked against your arm.
+- **Talking pets**: pets say short things in speech bubbles that viewers see in the video, comment on what you do and on the chat, and can optionally speak (off by default, never in Shop mode). Studio dock → AI: AI level (Off / Local / Reactive / Chatty / Director), how much chat they read (None / Activity / Mentions / Full), bubbles, voice and an hourly call cap. At Director level the AI can also move pets around you.
+- **Pets grow a personality**: each pet has its own traits and memories (big gifts, being picked up, regular viewers) that change slowly over streams and are kept until you reset them (Studio dock → AI → hold to reset).
+- **Gesture calibration** (Calibrate 3D space → Hands & gestures): perform each gesture, then a check pass with a score per gesture; TikSee learns your pinch and your palm size.
 - **Camera mount**: tell TikSee how high your camera is and how much it looks down (or let it estimate the tilt), so the 3D space matches your room. Settings → Studio.
 
 ### Changed
@@ -20,6 +24,8 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 ### Fixed
 - Pets no longer flicker, jump between positions or disappear when your shoulders leave the frame.
 - The body skeleton moves smoothly (about 40× less jitter) and pets keep their size when you turn or move your arms.
+- Gestures: hands of other people no longer trigger your gestures, left/right no longer swap, hands partly out of the frame no longer fire false gestures, OK and pinch are told apart, swipes and waves survive a dropped frame, and hand points are smoothed.
+- Re-running the face calibration no longer resets other calibration values.
 
 ## [0.3.0] — 2026-10-06
 

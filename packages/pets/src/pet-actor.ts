@@ -185,6 +185,14 @@ export class PetActor {
         return this.#model;
     }
 
+    /** World metres per model unit (the stage's scaleM x the owner's resize); squash/stretch multiply it. */
+    setBaseScale(s: number): void {
+        if (!(s > 0) || !Number.isFinite(s)) return;
+        this.#baseScale.setScalar(s);
+        this.#baseScaleCaptured = true;
+        this.root.scale.setScalar(s);
+    }
+
     /** 0..1 excitement: faster, deeper breathing and shorter gaze holds. Default 0.3. */
     setArousal(v: number): void {
         this.#arousal = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0.3));

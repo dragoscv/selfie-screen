@@ -1,10 +1,4 @@
-import {
-    GUIDE_KINDS,
-    PEAKING_COLORS,
-    PET_CHOICES,
-    SCOPE_KINDS,
-    type StudioSettings,
-} from "@tiksee/core";
+import { GUIDE_KINDS, PEAKING_COLORS, PET_CHOICES, SCOPE_KINDS, type StudioSettings } from "@tiksee/core";
 import { ChipSelector, SliderRow, SwitchRow } from "@tiksee/ui";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import {
@@ -22,20 +16,24 @@ import {
     Ruler,
     ScanFace,
     Search,
+    Sparkles,
     SunMedium,
     X,
     ZoomIn,
     ZoomOut,
     type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { sidecarClient } from "../../lib/sidecar-client.js";
 import { FOCUS_RING, GLASS, INSTANT, SPRING, useFrame, useStudio } from "./context.js";
+import { ActionButton, Section } from "./controls-parts.js";
 import { HoldButton } from "./hold-button.js";
 
-const PANELS = ["zoom", "focus", "look", "framing", "monitor", "camera", "pets", "ar"] as const;
+const AiPanel = lazy(() => import("./ai-panel.js").then((m) => ({ default: m.AiPanel })));
+
+const PANELS = ["zoom", "focus", "look", "framing", "monitor", "camera", "pets", "ai", "ar"] as const;
 export type PanelId = (typeof PANELS)[number];
 
 const ICONS: Record<PanelId, LucideIcon> = {
@@ -46,6 +44,7 @@ const ICONS: Record<PanelId, LucideIcon> = {
     monitor: MonitorCog,
     camera: Camera,
     pets: PawPrint,
+    ai: Sparkles,
     ar: Box,
 };
 
@@ -53,31 +52,6 @@ const AF_INTERVALS = ["0", "5", "10", "30", "60"] as const;
 const SPEEDS = ["1", "2", "3"] as const;
 const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
 const signed = (v: number, digits = 1) => `${v > 0 ? "+" : ""}${v.toFixed(digits)}`;
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-    return (
-        <fieldset className="space-y-3 border-t border-white/10 pt-3 first:border-t-0 first:pt-0">
-            <legend className="mb-2 text-[0.6875rem] font-semibold uppercase tracking-wider text-white/70">{title}</legend>
-            {children}
-        </fieldset>
-    );
-}
-
-function ActionButton({ icon, label, onClick, active = false }: { icon: ReactNode; label: string; onClick: () => void; active?: boolean }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            aria-pressed={active}
-            className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${FOCUS_RING} ${
-                active ? "bg-red-500 text-white" : "bg-white/10 text-white hover:bg-white/20"
-            }`}
-        >
-            {icon}
-            {label}
-        </button>
-    );
-}
 
 /* ------------------------------------------------------------------ *
  * Panels
@@ -186,7 +160,6 @@ function LookPanel() {
         </Section>
     );
 }
-
 function FramingPanel() {
     const { studio, patchStudio } = useStudio();
     const { t } = useTranslation();
@@ -323,6 +296,8 @@ function usePillValue(id: PanelId): string {
             return recording ? "REC" : t("studio.controls.camera.ready");
         case "pets":
             return petsHidden ? t("studio.controls.pets.hidden") : [studio.leftPet, studio.rightPet].filter((p) => p !== "none").length.toString();
+        case "ai":
+            return t(`studio.controls.ai.levels.${studio.petAi.level}`);
         case "ar":
             return String(studio.arObjects.length);
     }
@@ -409,6 +384,11 @@ function Panel({ id, onClose, onLoupe, onSpace }: { id: PanelId; onClose: () => 
                 {id === "monitor" && <MonitorPanel />}
                 {id === "camera" && <CameraPanel onSpace={onSpace} />}
                 {id === "pets" && <PetsPanel />}
+                {id === "ai" && (
+                    <Suspense fallback={<div className="h-40" aria-busy />}>
+                        <AiPanel />
+                    </Suspense>
+                )}
             </motion.div>
         </motion.div>
     );

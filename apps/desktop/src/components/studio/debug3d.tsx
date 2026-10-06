@@ -18,11 +18,15 @@ import {
     facing,
     fadeAlpha,
     floorGrid,
+    grabLine,
+    HAND_BONES,
+    handLabel,
     hudLine,
     metres,
     moodDot,
     needBars,
     petBox,
+    pinchFill,
     pushBadge,
     scale3,
     utilityBars,
@@ -111,6 +115,7 @@ function draw(g: Ctx, s: Debug3dState, rect: Rect): void {
         drawBody(g, s, rect);
     }
     for (const pet of s.pets) drawPet(g, s.pin, rect, pet);
+    drawHands(g, s, rect);
     drawMindCards(g, s, rect);
     g.restore();
     drawHud(g, s, rect);
@@ -336,6 +341,58 @@ function drawPet(g: Ctx, pin: Pinhole, rect: Rect, pet: Debug3dState["pets"][num
     label(g, `occl ${Math.round(pet.personInFront * 100)}%`, bx + 66, by + 3, "#fdba74");
 }
 
+/** Owner hands as the pets see them: skeleton, pinch ring, shape / depth / source label. */
+function drawHands(g: Ctx, s: Debug3dState, rect: Rect): void {
+    for (const hand of s.hands ?? []) {
+        if (!hand.present || hand.landmarks.length < 21) continue;
+        const color = SIDE_COLOR[hand.side];
+        const pts = hand.landmarks.map((p) => worldToShell(s.pin, rect, p));
+        g.strokeStyle = color;
+        g.lineWidth = 2;
+        g.beginPath();
+        for (const [i, k] of HAND_BONES) {
+            const a = pts[i];
+            const b = pts[k];
+            if (!a || !b) continue;
+            g.moveTo(a.x, a.y);
+            g.lineTo(b.x, b.y);
+        }
+        g.stroke();
+        g.fillStyle = color;
+        for (const p of pts) {
+            if (!p) continue;
+            g.beginPath();
+            g.arc(p.x, p.y, Math.max(1.5, dotRadius(p.depthM) * 0.45), 0, Math.PI * 2);
+            g.fill();
+        }
+        // Pinch point: ring that fills clockwise with strength, solid when pinching.
+        const c = worldToShell(s.pin, rect, hand.point);
+        if (c) {
+            const fill = pinchFill(hand);
+            const r = 9;
+            g.lineWidth = 2;
+            g.strokeStyle = "rgb(255 255 255 / 0.4)";
+            g.beginPath();
+            g.arc(c.x, c.y, r, 0, Math.PI * 2);
+            g.stroke();
+            if (hand.pinching) {
+                g.fillStyle = color;
+                g.beginPath();
+                g.arc(c.x, c.y, r, 0, Math.PI * 2);
+                g.fill();
+            } else if (fill > 0) {
+                g.strokeStyle = color;
+                g.lineWidth = 3;
+                g.beginPath();
+                g.arc(c.x, c.y, r, -Math.PI / 2, -Math.PI / 2 + fill * Math.PI * 2);
+                g.stroke();
+            }
+        }
+        const wrist = pts[0];
+        if (wrist) label(g, handLabel(hand), wrist.x + 10, wrist.y + 14, color);
+    }
+}
+
 /** Owner collision volume the pets are kept out of (faint cyan wireframe). */
 function drawCapsules(g: Ctx, s: Debug3dState, rect: Rect): void {
     g.strokeStyle = CAPSULE_COLOR;
@@ -452,7 +509,8 @@ function drawMindCard(g: Ctx, x: number, y: number, pet: Debug3dState["pets"][nu
 }
 
 function drawHud(g: Ctx, s: Debug3dState, rect: Rect): void {
-    const lines = [hudLine(s), distanceLine(s)];
+    const grab = grabLine(s);
+    const lines = grab ? [hudLine(s), distanceLine(s), grab] : [hudLine(s), distanceLine(s)];
     g.font = FONT;
     const x = rect.left + 8;
     let y = rect.top + 8;

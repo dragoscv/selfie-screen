@@ -1,9 +1,10 @@
-import { studioSchema } from "@tiksee/core";
+import { studioSchema, visionSchema } from "@tiksee/core";
 import { describe, expect, it } from "vitest";
 
-import type { SpaceSample } from "../../lib/studio/controller.js";
+import type { HandSample, SpaceSample } from "../../lib/studio/controller.js";
 import {
     acceptMeasuredFov,
+    buildHandsCalibration,
     buildSpacePatch,
     cameraFromStudio,
     chooseLens,
@@ -13,9 +14,16 @@ import {
     formatDeg,
     formatMetres,
     formatMm,
+    formatPct,
+    gestureThreshold,
+    judgeHandSample,
+    median,
     parseHeightCm,
+    pinchOffFrom,
+    pinchOnFrom,
     presetNeedsLens,
     presetVfov,
+    summariseHands,
     worldScaleFrom,
 } from "./space-calibration-model.js";
 
@@ -121,5 +129,99 @@ describe("formatting", () => {
         expect(formatMetres(1.234)).toBe("1.23 m");
         expect(formatDeg(undefined)).toBe("—");
         expect(formatMetres(1.5, "ro")).toBe("1,50 m");
+    });
+});
+
+const hand = (target: string, p: Partial<HandSample> = {}): HandSample => ({
+    target,
+    frames: 45,
+    handFrames: 45,
+    hits: 40,
+    confidence: 0.8,
+    pinchP10: 0.5,
+    pinchP50: 0.7,
+    pinchP90: 0.9,
+    palmM: 0.085,
+    ...p,
+});
+
+describe("judgeHandSample", () => {
+    it("passes at >= 60 % hits with the hand in frame >= 70 %", () => {
+        expect(judgeHandSample(hand("fist", { hits: 27 })).verdict).toBe("pass");
+        expect(judgeHandSample(hand("fist", { hits: 26 })).verdict).toBe("miss");
+    });
+    it("flags a hand that left the frame before judging the shape", () => {
+        const j = judgeHandSample(hand("fist", { handFrames: 30, hits: 30 }));
+        expect(j.verdict).toBe("outOfFrame");
+        expect(j.inFrameRate).toBeCloseTo(30 / 45);
+    });
+    it("reports no hand and never divides by zero", () => {
+        expect(judgeHandSample(hand("fist", { frames: 0, handFrames: 0, hits: 0 }))).toEqual({ verdict: "noHand", hitRate: 0, inFrameRate: 0 });
+        expect(judgeHandSample(hand("fist", { handFrames: 0, hits: 0 })).verdict).toBe("noHand");
+    });
+    it("scores the relaxed hand by presence (no classifier shape)", () => {
+        expect(judgeHandSample(hand("relaxed", { hits: 0 })).verdict).toBe("pass");
+    });
+});
+
+describe("hand thresholds", () => {
+    it("median handles even, odd and empty input", () => {
+        expect(median([3, 1, 2])).toBe(2);
+        expect(median([4, 1, 3, 2])).toBe(2.5);
+        expect(median([])).toBeUndefined();
+    });
+    it("clamps the personal gesture threshold to 0.35..0.8", () => {
+        expect(gestureThreshold(0.75)).toBeCloseTo(0.6);
+        expect(gestureThreshold(0.2)).toBe(0.35);
+        expect(gestureThreshold(1)).toBe(0.8);
+    });
+    it("derives pinch on/off with hysteresis", () => {
+        expect(pinchOnFrom(0.16)).toBeCloseTo(0.2);
+        expect(pinchOnFrom(0.01)).toBe(0.1);
+        expect(pinchOnFrom(0.9)).toBe(0.35);
+        expect(pinchOffFrom(0.2, 0.6, 0.38)).toBeCloseTo(0.48);
+        expect(pinchOffFrom(0.3, 0.1, 0.38)).toBeCloseTo(0.42);
+        expect(pinchOffFrom(0.2, undefined, 0.38)).toBeCloseTo(0.38);
+    });
+});
+
+describe("summariseHands", () => {
+    it("rates the verify pass and keeps unrecorded rows", () => {
+        const s = summariseHands({ fist: hand("fist") }, { fist: hand("fist"), pinch: hand("pinch", { hits: 5 }) });
+        expect(s.verified).toBe(2);
+        expect(s.passRate).toBe(0.5);
+        expect(s.rows.find((r) => r.target === "fist")).toMatchObject({ pass: true });
+        expect(s.rows.find((r) => r.target === "victory")).toEqual({ target: "victory", pass: false });
+    });
+});
+
+describe("buildHandsCalibration", () => {
+    const prev = visionSchema.parse({}).calibration.hands;
+    it("builds a schema-valid patch from recordings + verify", () => {
+        const record = {
+            relaxed: hand("relaxed", { hits: 0, pinchP10: 0.6, palmM: 0.08 }),
+            open_palm: hand("open_palm", { palmM: 0.09 }),
+            pinch: hand("pinch", { pinchP90: 0.16, confidence: 0.7 }),
+            fist: hand("fist", { confidence: 0.75 }),
+        };
+        const verify = { fist: hand("fist", { confidence: 0.85, hits: 10 }), open_palm: hand("open_palm", { palmM: 0.1 }) };
+        const out = buildHandsCalibration(prev, record, verify, 1234.4);
+        expect(out.palmM).toBeCloseTo(0.09);
+        expect(out.pinchOn).toBeCloseTo(0.2);
+        expect(out.pinchOff).toBeCloseTo(0.48);
+        expect(out.gestures.fist).toBeCloseTo(0.64);
+        expect(out.gestures.pinch).toBeCloseTo(0.56);
+        expect(out.gestures.relaxed).toBeUndefined();
+        expect(out.verified.fist).toBeCloseTo(10 / 45, 3);
+        expect(out.calibratedAt).toBe(1234);
+        expect(visionSchema.parse({ calibration: { hands: out } }).calibration.hands).toEqual(out);
+    });
+    it("keeps stored pinch values and zero palm when nothing usable was recorded", () => {
+        const out = buildHandsCalibration({ ...prev, pinchOn: 0.22, pinchOff: 0.4, gestures: { fist: 0.5 } }, {}, {}, 1);
+        expect(out).toMatchObject({ palmM: 0, pinchOn: 0.22, pinchOff: 0.4, gestures: { fist: 0.5 } });
+    });
+    it("formats pass rates", () => {
+        expect(formatPct(0.876)).toBe("88%");
+        expect(formatPct(undefined)).toBe("—");
     });
 });

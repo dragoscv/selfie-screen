@@ -3,6 +3,10 @@ import {
     type ArObject,
     type ChatEvent,
     type IdentityProfile,
+    type PetCommand,
+    type PetObservation,
+    type PetPersonality,
+    type PetSay,
     type RuleAction,
     type SignalEvent,
     type StudioSettings,
@@ -29,6 +33,7 @@ import {
     type OutputLandmark,
     type PetClip,
     type PetId,
+    type PersonalityState,
     type Rotation,
     type ShoulderAnchor,
     type ShoulderTracker,
@@ -45,6 +50,8 @@ import { ClipRecorder, type ClipState, type SavedClip } from "./clips.js";
 import type {
     CalibrationSample,
     Debug3dState,
+    DebugHand,
+    HandSample,
     LensProgress,
     LensResult,
     SceneResult,
@@ -59,6 +66,7 @@ import type {
     VisionRuntime,
 } from "./controller.js";
 import { EffectLayer, effectOrigin } from "./effects.js";
+import { HandSpace } from "./hand-space.js";
 import { MetricDistance, type MetricConfig, type PoseForDistance } from "./metric-distance.js";
 import { DigitalFraming } from "./framing.js";
 import { PreviewPass } from "./monitor.js";
@@ -79,6 +87,24 @@ const CLIP_COMMANDS: Readonly<Record<string, PetClip>> = {
 };
 /** UI info rate. */
 const INFO_HZ = 15;
+/** Owner signals the pets may comment on (chatty level). */
+const OBSERVED_SIGNALS: ReadonlySet<string> = new Set([
+    "wave",
+    "heart",
+    "laughing",
+    "drinking",
+    "eating",
+    "phone",
+    "standing",
+    "away",
+    "thumb_up",
+    "thumb_down",
+    "victory",
+    "clap",
+    "yawning",
+    "dancing",
+    "owner_present",
+]);
 const DEFAULT_OWNER_M = 1;
 /** Gestures the pets answer, and how. */
 const PET_GESTURES: Readonly<Partial<Record<SignalEvent["signal"], "wave" | "heart" | "point_left" | "point_right" | "point_up">>> = {
@@ -214,6 +240,8 @@ export interface EngineCallbacks {
     onLoupe?(on: boolean): void;
     /** A clip was muxed from the rolling buffer (`saveClip`); the caller writes it to disk. */
     onClip?(clip: SavedClip): Promise<void>;
+    /** The owner moved / resized a pet with the hands (observation for chatty pets). */
+    onPetObservation?(o: PetObservation): void;
 }
 
 /** Two saves closer than this (a rule and a hotkey on the same moment) are one save. */
@@ -326,6 +354,14 @@ export class StudioEngine implements StudioController {
     #lastPoseAt = 0;
     #poseSeq = -1;
     readonly #metric = new MetricDistance();
+    readonly #hands = new HandSpace();
+    #handsSeq = -1;
+    #debugHands: readonly DebugHand[] = [];
+    readonly #personalitySubs = new Set<(pets: readonly PetPersonality[]) => void>();
+    #personalities: readonly PetPersonality[] = [];
+    /** Sidecar transport for personality list/reset (set by the studio window). */
+    sendToSidecar: ((m: { type: "petPersonalityList" } | { type: "petPersonalityReset"; pet: string }) => void) | null = null;
+    readonly #observations: PetObservation[] = [];
     /** Space calibration capture in progress (raw early poses). */
     #spaceCapture: PoseForDistance[] | null = null;
     #lastRender = 0;
@@ -422,6 +458,14 @@ export class StudioEngine implements StudioController {
         if (this.#stopped) return stage.dispose();
         this.#cb.onStep?.(`renderer ${stage.backend}`);
         this.#stage = stage;
+        stage.onInteraction = (e) => {
+            this.#observe(e.kind, e.pet);
+            if (e.kind === "resized" && e.scale !== undefined) {
+                const scale = { ...this.#settings.petHands.scale, [e.pet]: Math.round(e.scale * 100) / 100 };
+                void this.#patch({ petHands: { ...this.#settings.petHands, scale } });
+            }
+        };
+        for (const p of this.#personalities) stage.setPersonality(p.pet, { traits: p.traits, likes: p.likes as PersonalityState["likes"], sessions: p.sessions });
         this.#setupTargets(size.width, size.height);
         await this.#openCamera();
         if (this.#stopped) return this.#release();
@@ -639,6 +683,14 @@ export class StudioEngine implements StudioController {
                 await stage.setPet(side, pet).catch((e: unknown) => this.#cb.onError?.(`pet ${String(pet)}: ${String(e)}`));
             }
         }
+        // Hand-resized sizes persist per pet (positions do not).
+        stage.setAutonomous(settings.petAi.level !== "off");
+        if (settings.petAi.level === "off" || settings.petAi.level === "local" || !settings.petAi.bubbles) stage.clearSpeech();
+        for (const pet of [settings.leftPet, settings.rightPet]) {
+            if (pet === "none") continue;
+            const k = settings.petHands.scale[pet] ?? 1;
+            if (Math.abs(stage.petScale(pet) - k) > 1e-3) stage.setPetScale(pet, k);
+        }
     }
 
     async applyVision(settings: VisionSettings): Promise<void> {
@@ -663,7 +715,72 @@ export class StudioEngine implements StudioController {
 
     /** Director nudge (`petBias`): a utility multiplier with a TTL, never a command. */
     petBias(pet: string, action: Parameters<PetStage["bias"]>[1], k: number, ttlSec: number): void {
+        if (this.#settings.petAi.level === "off") return;
         this.#stage?.bias(pet as PetId | "all", action, k, ttlSec * 1000);
+    }
+
+    /** A pet line from the sidecar: speech bubble in the output (if enabled). */
+    petSay(m: PetSay): void {
+        const ai = this.#settings.petAi;
+        if (ai.level === "off" || ai.level === "local" || !ai.bubbles) return;
+        this.#stage?.say(m.pet, m.text, { emotion: m.emotion, ttlMs: m.ttlMs });
+    }
+
+    /** Director-level 3D command (validated by the sidecar, re-checked here). */
+    petCommand(m: PetCommand): void {
+        if (this.#settings.petAi.level !== "director") return;
+        this.#stage?.command(m.pet, { ...(m.anchor ? { anchor: m.anchor } : {}), ...(m.clip ? { clip: m.clip } : {}), ttlMs: m.ttlSec * 1000 });
+    }
+
+    /** Pets that chose "chatter" since the last call (the sidecar writes their line). */
+    petsWantingToTalk(): string[] {
+        return this.#stage?.wantsToTalk() ?? [];
+    }
+
+    /** Owner/interaction observations since the last call (sent with `petState`). */
+    drainObservations(): PetObservation[] {
+        return this.#observations.splice(0, this.#observations.length);
+    }
+
+    #observe(what: string, pet?: string): void {
+        const o: PetObservation = { at: Date.now(), what: what.slice(0, 40), ...(pet ? { pet } : {}) };
+        this.#observations.push(o);
+        if (this.#observations.length > 20) this.#observations.shift();
+        this.#cb.onPetObservation?.(o);
+    }
+
+    /** Stored personalities from the sidecar: apply to the minds, notify the UI. */
+    setPetPersonalities(pets: readonly PetPersonality[]): void {
+        this.#personalities = pets;
+        for (const p of pets) {
+            const state: PersonalityState = { traits: p.traits, likes: p.likes as PersonalityState["likes"], sessions: p.sessions };
+            this.#stage?.setPersonality(p.pet, state);
+        }
+        for (const cb of this.#personalitySubs) cb(pets);
+    }
+
+    onPetPersonalities(cb: (pets: readonly PetPersonality[]) => void): () => void {
+        this.#personalitySubs.add(cb);
+        cb(this.#personalities);
+        this.sendToSidecar?.({ type: "petPersonalityList" });
+        return () => this.#personalitySubs.delete(cb);
+    }
+
+    resetPetPersonality(pet: string): void {
+        this.sendToSidecar?.({ type: "petPersonalityReset", pet });
+    }
+
+    async sampleHands(target: string, ms: number): Promise<HandSample> {
+        const vision = this.#needVision() as VisionRuntime & { sampleHands?: (t: string, ms: number) => Promise<HandSample> };
+        if (!vision.sampleHands) throw new Error("hand sampling needs the vision worker");
+        this.#hands.startPalmSampling();
+        try {
+            const sample = await vision.sampleHands(target, ms);
+            return { ...sample, palmM: this.#hands.stopPalmSampling() };
+        } catch (e) {
+            this.#hands.stopPalmSampling();
+            throw e;
+        }
     }
 
     onChat(event: ChatEvent): void {
@@ -857,6 +974,8 @@ export class StudioEngine implements StudioController {
                 delayMs: this.#body.delayMs,
                 distanceSource: r ? "metric" : "detector",
             },
+            hands: this.#debugHands,
+            grab: stage.grabState,
             ...(r
                 ? {
                       metric: {
@@ -876,6 +995,8 @@ export class StudioEngine implements StudioController {
         if (!stage) return;
         for (const e of events) {
             if (!e.subject.owner) continue;
+            // Things worth a comment from chatty pets (rising edges only).
+            if (e.phase === "start" && OBSERVED_SIGNALS.has(e.signal)) this.#observe(e.signal);
             // Mind context: an open palm invites a pet onto the hand; talking/laughing draws attention.
             if (e.signal === "open_palm") stage.setContext({ palmUp: e.phase !== "end" });
             else if (e.signal === "talking") stage.setContext({ ownerTalking: e.phase !== "end" });
@@ -1056,6 +1177,22 @@ export class StudioEngine implements StudioController {
         const body = this.#body.sample(now, dt);
         this.#bodySnap = body;
         this.#placeAnchors(pose, f, rotation);
+        // Owner hands in the room (solve + wrist anchor) -> pets (pinch grab / two-hand resize).
+        const handsResult = this.#synthetic ? null : (this.#vision?.latestHands?.() ?? null);
+        const freshHands = handsResult && handsResult.seq !== this.#handsSeq ? handsResult : null;
+        if (freshHands) this.#handsSeq = freshHands.seq;
+        const cal = this.#visionSettings.calibration.hands;
+        this.#debugHands = this.#hands.update(now, freshHands, body.present ? body : null, pin, (x, y) => rawToOutput(f, rotation, x, y), {
+            cameraVfovDeg: this.#settings.vfovDeg,
+            palmM: cal.palmM,
+            pinchOn: cal.pinchOn,
+            pinchOff: cal.pinchOff,
+        });
+        stage.setHands(
+            this.#settings.petHands.enabled && this.#settings.petAi.level !== "off"
+                ? this.#debugHands.map((h) => ({ side: h.side, present: h.present, pinching: h.pinching, point: h.point, strength: h.strength }))
+                : [],
+        );
         this.#ar?.update(pin, this.#ownerM, this.#arAnchors, now / 1000, dt, this.#hidden);
         this.#effects?.update(dt);
         stage.update(body.present ? body : null, dt);

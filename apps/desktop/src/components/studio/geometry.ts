@@ -217,7 +217,8 @@ export function detectSwapEyes(s: Pick<CalibrationSet, "baseline" | "leftClosed"
     return other > own;
 }
 
-export function computeCalibration(s: CalibrationSet, referenceM: number, now: number): VisionCalibration {
+/** Face/posture part of the calibration; `hands` belongs to the space wizard and is merged by the caller. */
+export function computeCalibration(s: CalibrationSet, referenceM: number, now: number): Omit<VisionCalibration, "hands"> {
     const swapEyes = detectSwapEyes(s);
     // Each blendshape channel is thresholded against the prompt that actually closed it.
     const leftChannelClosed = swapEyes ? s.rightClosed.blinkLeft : s.leftClosed.blinkLeft;

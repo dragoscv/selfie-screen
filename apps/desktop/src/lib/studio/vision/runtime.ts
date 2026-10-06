@@ -1,8 +1,8 @@
 import type { IdentityProfile, VisionSettings } from "@tiksee/core";
 
-import type { CalibrationSample, EnrolSample, RawLandmark, VisionFrame, VisionRuntime } from "../controller.js";
+import type { CalibrationSample, EnrolSample, HandSample, OwnerHand, RawLandmark, VisionFrame, VisionRuntime } from "../controller.js";
 import type { VisionPipeline } from "./pipeline.js";
-import type { FromWorker, OptionalModel, PipelineConfig, PoseEarly, Rotation, ToWorker, WorldLandmark } from "./protocol.js";
+import type { FromWorker, HandsEarly, OptionalModel, PipelineConfig, PoseEarly, Rotation, ToWorker, WorldLandmark } from "./protocol.js";
 
 /**
  * Studio vision runtime.
@@ -55,11 +55,23 @@ export interface PoseResult {
     irisAgeMs: number;
 }
 
+/** Newest early owner-hands result (see HandsEarly); `seq` increments per result. */
+export interface HandsResult {
+    tMs: number;
+    arrivalMs: number;
+    seq: number;
+    hands: OwnerHand[];
+    rawW: number;
+    rawH: number;
+}
+
 export class StudioVision implements VisionRuntime {
     #backend: Backend | null = null;
     #latest: VisionFrame | null = null;
     #latestPose: PoseResult | null = null;
     #poseSeq = 0;
+    #latestHands: HandsResult | null = null;
+    #handsSeq = 0;
     #seq = 1;
     readonly #pending = new Map<number, Pending>();
     #inFlight = false;
@@ -101,6 +113,7 @@ export class StudioVision implements VisionRuntime {
         const { VisionPipeline } = await import("./pipeline.js");
         const pipeline = new VisionPipeline();
         pipeline.onPose = (early) => this.#onPose(early);
+        pipeline.onHands = (early) => this.#onHands(early);
         this.#config = { ...this.#config, stagger: true };
         await pipeline.init(this.#config);
         this.#backend = { kind: "main", pipeline };
@@ -218,6 +231,24 @@ export class StudioVision implements VisionRuntime {
         };
     }
 
+    /** Newest owner-hands result (arrives after pose, before the full frame). */
+    latestHands(): HandsResult | null {
+        return this.#latestHands;
+    }
+
+    #onHands(e: HandsEarly): void {
+        this.#latestHands = { tMs: e.tMs, arrivalMs: performance.now(), seq: ++this.#handsSeq, hands: e.hands, rawW: e.rawW, rawH: e.rawH };
+    }
+
+    /** Record `ms` of the owner's hands performing `target` (palmM is 0: filled in by the caller). */
+    async sampleHands(target: string, ms: number): Promise<HandSample> {
+        const b = this.#need();
+        if (b.kind === "main") return b.pipeline.sampleHands(target, ms);
+        const r = await this.#call({ id: 0, type: "handSample", target, ms });
+        if (r.type !== "handSample") throw new Error("unexpected hand sample reply");
+        return r.sample;
+    }
+
     async sampleCalibration(ms: number): Promise<CalibrationSample> {
         const b = this.#need();
         if (b.kind === "main") return b.pipeline.calibrate(ms);
@@ -282,6 +313,10 @@ export class StudioVision implements VisionRuntime {
         if (m.type === "pose") {
             // Extra message for an in-flight frame id; the "frame" reply still answers it.
             this.#onPose(m);
+            return;
+        }
+        if (m.type === "hands") {
+            this.#onHands(m);
             return;
         }
         const p = this.#pending.get(m.id);

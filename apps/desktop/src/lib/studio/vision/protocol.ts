@@ -1,6 +1,6 @@
 import type { IdentityProfile, VisionSettings } from "@tiksee/core";
 
-import type { CalibrationSample, EnrolSample, RawLandmark, VisionFrame } from "../controller.js";
+import type { CalibrationSample, EnrolSample, HandSample, OwnerHand, RawLandmark, VisionFrame } from "../controller.js";
 
 /** Optional ONNX models, downloaded on demand (see models.ts). */
 export type OptionalModel = "identity" | "dogIdentity" | "depth";
@@ -38,6 +38,19 @@ export interface PoseEarly {
     irisAgeMs: number;
 }
 
+/**
+ * Early owner-hands result: sent right after the gesture recognizer and hand grouping, before
+ * face/objects run. `hands` = at most one per side, same objects as VisionFrame.ownerHands
+ * (empty when no owner is tracked yet or the owner shows no hands; stale ones flagged).
+ */
+export interface HandsEarly {
+    tMs: number;
+    hands: OwnerHand[];
+    /** Raw camera frame size in px that the normalised `raw` landmarks refer to. */
+    rawW: number;
+    rawH: number;
+}
+
 export interface PipelineConfig {
     settings: VisionSettings;
     rotation: Rotation;
@@ -52,6 +65,7 @@ export type ToWorker =
     | { id: number; type: "apply"; config: PipelineConfig }
     | { id: number; type: "frame"; bitmap: ImageBitmap; tMs: number; rawW: number; rawH: number }
     | { id: number; type: "calibrate"; ms: number }
+    | { id: number; type: "handSample"; target: string; ms: number }
     | { id: number; type: "enrol"; kind: "person" | "dog" }
     | { id: number; type: "models"; which: OptionalModel[] }
     | { id: number; type: "profiles"; profiles: IdentityProfile[] }
@@ -64,6 +78,9 @@ export type FromWorker =
     | { id: number; type: "frame"; frame: VisionFrame }
     /** Early pose-only result for frame `id`, sent before hands/face/objects run (does not answer the request). */
     | ({ id: number; type: "pose" } & PoseEarly)
+    /** Early owner hands for frame `id`, sent after the gesture recognizer, before face/objects (does not answer the request). */
+    | ({ id: number; type: "hands" } & HandsEarly)
     | { id: number; type: "calibration"; sample: CalibrationSample }
+    | { id: number; type: "handSample"; sample: HandSample }
     | { id: number; type: "enrolment"; sample: EnrolSample | null }
     | { id: number; type: "progress"; progress: number };

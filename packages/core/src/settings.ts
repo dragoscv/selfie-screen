@@ -389,6 +389,10 @@ export const PET_CHOICES = ["none", "parrot", "cat", "dragon", "drone", "fox", "
 export type PetChoice = (typeof PET_CHOICES)[number];
 export const STUDIO_ORIENTATIONS = ["portrait", "landscape"] as const;
 export const PET_STYLES = ["pbr", "toon"] as const;
+export const PET_AI_LEVELS = ["off", "local", "reactive", "chatty", "director"] as const;
+export type PetAiLevel = (typeof PET_AI_LEVELS)[number];
+export const PET_CHAT_AWARENESS = ["none", "activity", "mentions", "full"] as const;
+export type PetChatAwareness = (typeof PET_CHAT_AWARENESS)[number];
 /** Degrees clockwise to turn the camera image upright (camera mounted in portrait). */
 export const CAMERA_ROTATIONS = [0, 90, 180, 270] as const;
 
@@ -484,11 +488,38 @@ export const studioSchema = z.object({
     leftPet: z.enum(PET_CHOICES).default("parrot"),
     rightPet: z.enum(PET_CHOICES).default("none"),
     petStyle: z.enum(PET_STYLES).default("pbr"),
-    /** Optional LLM director: codai nudges what pets feel like doing from chat (score bias with TTL, never commands). */
+    /** Legacy LLM director switch (superseded by `petAi.level`; kept so old configs parse). */
     petDirector: z
         .object({
             enabled: z.boolean().default(false),
             everySec: z.number().int().min(5).max(120).default(12),
+        })
+        .prefault({}),
+    /**
+     * Pet AI (decision Q53). `level`: off = pets stay on their perch; local = utility AI only
+     * (no LLM, no cost); reactive = LLM lines + nudges on big events (gift/follow/mention);
+     * chatty = + occasional comments on what the owner does and the chat; director = + the LLM
+     * may move pets in 3D (anchor / clip commands, validated). `chat`: how much of the live chat
+     * the pet LLM sees (always moderated, always data never instructions).
+     */
+    petAi: z
+        .object({
+            level: z.enum(PET_AI_LEVELS).default("local"),
+            chat: z.enum(PET_CHAT_AWARENESS).default("mentions"),
+            /** Speech bubbles drawn into the output video. */
+            bubbles: z.boolean().default(true),
+            /** Also speak pet lines with TTS (through the co-host queue; never in Shop mode). */
+            voice: z.boolean().default(false),
+            /** Cap on LLM calls per hour for pets (cost guard). */
+            maxCallsPerHour: z.number().int().min(10).max(1200).default(240),
+        })
+        .prefault({}),
+    /** Hand interaction with pets: pinch = grab/drag, second-hand pinch = resize. */
+    petHands: z
+        .object({
+            enabled: z.boolean().default(true),
+            /** Per-pet size multiplier set by two-hand resize (persisted; position is not). */
+            scale: z.record(z.string(), z.number().min(0.4).max(2.5)).default({}),
         })
         .prefault({}),
     /** 0..1 skin smoothing strength (bilateral). */
@@ -569,6 +600,23 @@ export const calibrationSchema = z.object({
     neckRatio: z.number().min(0).default(0),
     /** Image-left blendshape is the subject's right eye when the feed is mirrored; the wizard confirms. */
     swapEyes: z.boolean().default(false),
+    /**
+     * Hands (gesture calibration step). `palmM` = owner palm width (index MCP -> pinky MCP, metres)
+     * measured against the body depth; 0 = MediaPipe's average hand. `pinchOn/Off` = thumb-index
+     * distance / palm width that starts / ends a pinch. `gestures` = per-gesture personal score
+     * thresholds from the verify pass (0..1, absent = default).
+     */
+    hands: z
+        .object({
+            palmM: z.number().min(0).max(0.15).default(0),
+            pinchOn: z.number().min(0.08).max(0.6).default(0.2),
+            pinchOff: z.number().min(0.12).max(0.9).default(0.38),
+            gestures: z.record(z.string(), z.number().min(0).max(1)).default({}),
+            /** Verify pass: gesture -> pass rate 0..1 at calibration time. */
+            verified: z.record(z.string(), z.number().min(0).max(1)).default({}),
+            calibratedAt: z.number().int().default(0),
+        })
+        .prefault({}),
     calibratedAt: z.number().int().default(0),
 });
 export type VisionCalibration = z.infer<typeof calibrationSchema>;

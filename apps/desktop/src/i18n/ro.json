@@ -504,10 +504,8 @@
                 "pbr": "Realist",
                 "toon": "Desen animat"
             },
-            "petDirector": "Regizor AI pentru animăluțe",
-            "petDirectorHint": "Folosește modelul codai la ~12 s ca să încurajeze ce le vine animăluțelor să facă, după chat; consumă tokeni",
-            "petDirectorEvery": "Cât de des",
-            "petDirectorSeconds": "{{count}} s",
+            "petNudgeEvery": "Cât de des intervine regizorul",
+            "petNudgeSeconds": "{{count}} s",
             "filtersTitle": "Filtre",
             "filtersHint": "Aplicate pe GPU înainte de a desena animăluțele",
             "smoothing": "Netezire piele",

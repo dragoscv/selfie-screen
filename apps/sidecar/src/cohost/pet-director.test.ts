@@ -1,8 +1,8 @@
-import type { ChatEvent, PetBias, PetMindState } from "@tiksee/core";
+import type { ChatEvent, PetAiLevel, PetBias, PetMindState } from "@tiksee/core";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CodaiClient } from "../codai/client.js";
-import { buildPrompt, IDLE_SKIP_MS, mentionsPet, parseNudges, PetDirector, STATE_MAX_AGE_MS } from "./pet-director.js";
+import { buildPrompt, directorEnabled, IDLE_SKIP_MS, mentionsPet, parseNudges, PetDirector, STATE_MAX_AGE_MS } from "./pet-director.js";
 
 const parrot: PetMindState = {
     pet: "parrot",
@@ -15,7 +15,7 @@ function chat(text: string, kind: ChatEvent["kind"] = "chat", extra: Partial<Cha
     return { id: `e${Math.random()}`, kind, user: { id: "u", uniqueId: "u", nickname: "U" }, text, at: 0, streamId: "s", ...extra };
 }
 
-function setup(reply: string | null, enabled = true) {
+function setup(reply: string | null, level: PetAiLevel = "reactive") {
     let now = 1_000_000;
     const complete = vi.fn<CodaiClient["complete"]>(async () =>
         reply === null ? { ok: false, error: { kind: "timeout", message: "t" } } : { ok: true, value: reply },
@@ -26,7 +26,7 @@ function setup(reply: string | null, enabled = true) {
     const director = new PetDirector({
         client: { complete } as unknown as Pick<CodaiClient, "complete">,
         model: () => "codai-fast",
-        settings: () => ({ enabled, everySec: 12 }),
+        settings: () => ({ level, everySec: 12 }),
         quiet: () => quiet,
         emit: (b) => emitted.push(b),
         log: { info, debug: vi.fn() },
@@ -97,8 +97,25 @@ describe("prompt", () => {
 });
 
 describe("PetDirector", () => {
+    it("runs at the LLM levels only", async () => {
+        expect(["off", "local", "reactive", "chatty", "director"].map((l) => directorEnabled(l as PetAiLevel))).toEqual([false, false, true, true, true]);
+        for (const level of ["off", "local"] as const) {
+            const s = setup(GOOD, level);
+            s.director.onPetState([parrot]);
+            s.director.onEvent(chat("Lion", "gift", { giftName: "Lion", giftDiamonds: 29_999, giftCount: 1 }));
+            expect(await s.director.tick()).toBe(0);
+            expect(s.complete).not.toHaveBeenCalled();
+        }
+        for (const level of ["chatty", "director"] as const) {
+            const s = setup(GOOD, level);
+            s.director.onPetState([parrot]);
+            s.director.onEvent(chat("hi"));
+            expect(await s.director.tick()).toBe(1);
+        }
+    });
+
     it("does nothing when disabled, without pets, or with stale pet state", async () => {
-        const off = setup(GOOD, false);
+        const off = setup(GOOD, "off");
         off.director.onPetState([parrot]);
         off.director.onEvent(chat("hi"));
         expect(await off.director.tick()).toBe(0);

@@ -1,18 +1,23 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowLeft, ArrowRight, Check, RotateCcw, ScanSearch, Target, X } from "lucide-react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
+import { ArrowLeft, ArrowRight, Check, Hand, RotateCcw, ScanSearch, Target, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import type { LensProgress, LensResult, SceneResult, SpaceSample } from "../../lib/studio/controller.js";
+import type { HandSample, LensProgress, LensResult, SceneResult, SpaceSample } from "../../lib/studio/controller.js";
 import { FOCUS_RING, GLASS, INSTANT, SPRING, useStudio } from "./context.js";
 import {
     CAMERA_PRESET_IDS,
+    HAND_EMOJI,
+    HAND_RECORD_MS,
+    HAND_TARGETS,
+    HAND_VERIFY_MS,
     HEIGHT_MAX_CM,
     HEIGHT_MIN_CM,
     LENS_MAX_MM,
     LENS_MIN_MM,
     acceptMeasuredFov,
+    buildHandsCalibration,
     buildSpacePatch,
     cameraFromStudio,
     chooseLens,
@@ -22,13 +27,18 @@ import {
     formatDeg,
     formatMetres,
     formatMm,
+    formatPct,
+    judgeHandSample,
     parseHeightCm,
     presetNeedsLens,
+    summariseHands,
     type CameraChoice,
     type CameraPresetId,
+    type HandSamples,
+    type HandTarget,
 } from "./space-calibration-model.js";
 
-const STEPS = ["camera", "you", "standing", "seated", "review"] as const;
+const STEPS = ["camera", "you", "standing", "seated", "hands", "review"] as const;
 type Step = (typeof STEPS)[number];
 
 const COUNTDOWN_S = 3;
@@ -38,7 +48,8 @@ const SAMPLE_MS = 3000;
 // empty when the module is absent (the wizard then shows the text instructions only).
 const CHARUCO = import.meta.glob<{ renderCharucoBoard?: (canvas: HTMLCanvasElement) => unknown }>("../../lib/studio/calibration/charuco.ts");
 
-type Capture = { kind: "idle" } | { kind: "countdown"; n: number } | { kind: "sampling" };
+type Capture = { kind: "idle" } | { kind: "countdown"; n: number } | { kind: "sampling"; ms?: number };
+type HandPhase = "intro" | "record" | "verify" | "summary";
 type Lens = { kind: "idle" } | { kind: "running"; progress: LensProgress } | { kind: "done"; result: LensResult } | { kind: "error"; error: string };
 type Scene = { kind: "idle" } | { kind: "running"; progress: number } | { kind: "done"; result: SceneResult } | { kind: "error"; error: string };
 
@@ -68,9 +79,35 @@ function Rows({ rows }: { rows: readonly (readonly [string, string])[] }) {
     );
 }
 
+/** Recording progress ring (fills over `ms`); purely a visual for the sr-only live text. */
+function Ring({ ms, children }: { ms: number; children: ReactNode }) {
+    return (
+        <span className="relative grid size-20 shrink-0 place-items-center" aria-hidden>
+            <svg viewBox="0 0 40 40" className="absolute inset-0 size-full -rotate-90">
+                <circle cx="20" cy="20" r="17" fill="none" stroke="rgb(255 255 255 / 0.15)" strokeWidth="3" />
+                <motion.circle
+                    cx="20"
+                    cy="20"
+                    r="17"
+                    fill="none"
+                    stroke="rgb(125 211 252)"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: ms / 1000, ease: "linear" }}
+                />
+            </svg>
+            {children}
+        </span>
+    );
+}
+
+const VERDICT_TONE = { pass: "text-emerald-200", miss: "text-amber-200", outOfFrame: "text-amber-200", noHand: "text-amber-200" } as const;
+
 /** 3D space wizard: camera FOV, owner height, standing + seated samples, review and save. */
 export function SpaceCalibration({ onClose }: { onClose: () => void }) {
-    const { controller, studio, patchStudio } = useStudio();
+    const { controller, studio, vision, patchStudio, patchVision } = useStudio();
     const { t, i18n } = useTranslation();
     const lang = i18n.language;
     const reduced = useReducedMotion();
@@ -89,9 +126,14 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
     const [lens, setLens] = useState<Lens>({ kind: "idle" });
     const [boardState, setBoardState] = useState<"none" | "drawn" | "unavailable">("none");
     const [scene, setScene] = useState<Scene>({ kind: "idle" });
+    const [handPhase, setHandPhase] = useState<HandPhase>("intro");
+    const [handIdx, setHandIdx] = useState(0);
+    const [handRecord, setHandRecord] = useState<HandSamples>({});
+    const [handVerify, setHandVerify] = useState<HandSamples>({});
+    const [verifying, setVerifying] = useState(false);
 
     const step: Step = STEPS[index] ?? "review";
-    const busy = capture.kind !== "idle" || scene.kind === "running";
+    const busy = capture.kind !== "idle" || scene.kind === "running" || verifying;
     const heightCm = parseHeightCm(heightText);
     const heightInvalid = heightText.trim() !== "" && heightCm === null;
 
@@ -162,12 +204,18 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
 
     /* ----- sampling steps ----- */
 
-    const sample = async (kind: "standing" | "seated") => {
+    /** 3-2-1 countdown; false when the wizard closed meanwhile. */
+    const countdown = async (): Promise<boolean> => {
         for (let n = COUNTDOWN_S; n > 0; n--) {
             setCapture({ kind: "countdown", n });
             await new Promise((r) => window.setTimeout(r, 1000));
-            if (cancelled.current) return;
+            if (cancelled.current) return false;
         }
+        return true;
+    };
+
+    const sample = async (kind: "standing" | "seated") => {
+        if (!(await countdown())) return;
         setCapture({ kind: "sampling" });
         try {
             const s = await controller.sampleSpace(kind, SAMPLE_MS);
@@ -180,6 +228,65 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
         }
     };
 
+    /* ----- hands step ----- */
+
+    const recordHand = async (target: HandTarget, ms: number): Promise<HandSample | null> => {
+        if (!(await countdown())) return null;
+        setCapture({ kind: "sampling", ms });
+        try {
+            const s = await controller.sampleHands(target, ms);
+            return cancelled.current ? null : s;
+        } catch (e) {
+            if (!cancelled.current) toast.error(t("studio.space.failed", { error: String(e) }));
+            return null;
+        } finally {
+            if (!cancelled.current) setCapture({ kind: "idle" });
+        }
+    };
+
+    const recordCurrent = async () => {
+        const target = HAND_TARGETS[handIdx];
+        if (!target) return;
+        const s = await recordHand(target, HAND_RECORD_MS);
+        if (s) setHandRecord((prev) => ({ ...prev, [target]: s }));
+    };
+
+    const nextGesture = () => {
+        if (handIdx + 1 < HAND_TARGETS.length) setHandIdx(handIdx + 1);
+        else {
+            setHandIdx(0);
+            setHandPhase("verify");
+        }
+    };
+
+    const runVerify = async () => {
+        setHandVerify({});
+        setVerifying(true);
+        try {
+            for (let i = 0; i < HAND_TARGETS.length; i++) {
+                const target = HAND_TARGETS[i];
+                if (!target) continue;
+                setHandIdx(i);
+                const s = await recordHand(target, HAND_VERIFY_MS);
+                if (cancelled.current) return;
+                if (s) setHandVerify((prev) => ({ ...prev, [target]: s }));
+            }
+            setHandPhase("summary");
+        } finally {
+            if (!cancelled.current) setVerifying(false);
+        }
+    };
+
+    const restartHands = () => {
+        setHandRecord({});
+        setHandVerify({});
+        setHandIdx(0);
+        setHandPhase("record");
+    };
+
+    const handsSummary = summariseHands(handRecord, handVerify);
+    const handsRecorded = Object.keys(handRecord).length > 0;
+
     const measure = combineSamples(samples.standing, samples.seated);
 
     const save = () => {
@@ -191,6 +298,11 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
             useMeasuredTilt: useTilt,
         });
         patchStudio(patch);
+        if (handsRecorded) {
+            // Stamped with Date.now() inside the helper (default param) at save time.
+            const hands = buildHandsCalibration(vision.calibration.hands, handRecord, handVerify);
+            patchVision({ calibration: { ...vision.calibration, hands } });
+        }
         toast.success(t("studio.space.saved"));
         close();
     };
@@ -245,16 +357,194 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
         );
     };
 
+    const gestureName = (g: HandTarget) => t(`studio.space.hands.gestures.${g}`);
+
+    const gestureBox = (target: HandTarget) => (
+        <div className="relative grid size-20 shrink-0 place-items-center rounded-2xl bg-white/10 text-5xl" aria-hidden>
+            {capture.kind === "sampling" ? <Ring ms={capture.ms ?? HAND_RECORD_MS}>{HAND_EMOJI[target]}</Ring> : HAND_EMOJI[target]}
+            <AnimatePresence>
+                {capture.kind === "countdown" && (
+                    <motion.span
+                        key={capture.n}
+                        initial={reduced ? false : { scale: 1.6, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={reduced ? INSTANT : SPRING}
+                        className="absolute inset-0 grid place-items-center rounded-2xl bg-sky-500/85 text-3xl font-bold text-white"
+                    >
+                        {capture.n}
+                    </motion.span>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+
+    /** One row per gesture; the same layoutId morphs recording rows into the summary table. */
+    const handRows = (targets: readonly HandTarget[], summary: boolean) => (
+        <ul className="space-y-1 text-xs" aria-label={t("studio.space.hands.results")}>
+            <AnimatePresence initial={false}>
+                {targets.map((target) => {
+                    const rec = handRecord[target];
+                    const row = handsSummary.rows.find((r) => r.target === target);
+                    const verdict = rec ? judgeHandSample(rec).verdict : null;
+                    return (
+                        <motion.li
+                            key={target}
+                            layout={!reduced}
+                            layoutId={reduced ? undefined : `hand-row-${target}`}
+                            initial={reduced ? false : { opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                            transition={reduced ? INSTANT : SPRING}
+                            className={`grid items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 ${summary ? "grid-cols-[1.5rem_1fr_3rem_3rem_1.25rem]" : "grid-cols-[1.5rem_1fr_auto]"}`}
+                        >
+                            <span aria-hidden>{HAND_EMOJI[target]}</span>
+                            <span className="truncate">{gestureName(target)}</span>
+                            {summary ? (
+                                <>
+                                    <span className="text-right tabular-nums text-white/75">{formatPct(row?.record)}</span>
+                                    <span className="text-right font-semibold tabular-nums">{formatPct(row?.verify)}</span>
+                                    <span className={row?.pass ? "text-emerald-300" : "text-amber-300"}>
+                                        {row?.pass ? <Check className="size-3.5" aria-label={t("studio.space.hands.pass")} /> : <X className="size-3.5" aria-label={t("studio.space.hands.fail")} />}
+                                    </span>
+                                </>
+                            ) : (
+                                <span className={`tabular-nums ${verdict ? VERDICT_TONE[verdict] : ""}`}>
+                                    {verdict ? `${t(`studio.space.hands.verdict.${verdict}`)} · ${formatPct(rec ? judgeHandSample(rec).hitRate : undefined)}` : ""}
+                                </span>
+                            )}
+                        </motion.li>
+                    );
+                })}
+            </AnimatePresence>
+        </ul>
+    );
+
+    function handsBody(): ReactNode {
+        const target = HAND_TARGETS[handIdx] ?? "relaxed";
+        if (handPhase === "intro") {
+            return (
+                <div className="space-y-3">
+                    <div className="flex items-center gap-4">
+                        <div className="grid size-20 shrink-0 place-items-center rounded-2xl bg-white/10" aria-hidden>
+                            <motion.span
+                                animate={reduced ? undefined : { rotate: [0, 18, -10, 18, 0], y: [0, -3, 0, -3, 0] }}
+                                transition={reduced ? INSTANT : { duration: 1.8, repeat: Infinity, repeatDelay: 0.6, ease: "easeInOut" }}
+                                style={{ originX: 0.5, originY: 0.9 }}
+                                className="block"
+                            >
+                                <Hand className="size-10 text-sky-200" />
+                            </motion.span>
+                        </div>
+                        <p className="min-w-0 flex-1 text-sm leading-snug text-white/85">{t("studio.space.hands.body")}</p>
+                    </div>
+                    <p className="text-[0.6875rem] text-white/70">{t("studio.space.hands.hint")}</p>
+                    <div className="flex justify-end">
+                        <button type="button" onClick={() => setHandPhase("record")} className={PRIMARY}>
+                            {t("studio.space.start")}
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        if (handPhase === "summary") {
+            return (
+                <LayoutGroup id="hand-rows">
+                    <div className="space-y-3">
+                        <p className="text-sm text-white/85">{t("studio.space.hands.summary", { pct: formatPct(handsSummary.passRate), n: handsSummary.verified })}</p>
+                        <div className="grid grid-cols-[1.5rem_1fr_3rem_3rem_1.25rem] gap-2 px-2 text-[0.625rem] uppercase tracking-wide text-white/60" aria-hidden>
+                            <span />
+                            <span>{t("studio.space.hands.gesture")}</span>
+                            <span className="text-right">{t("studio.space.hands.recordCol")}</span>
+                            <span className="text-right">{t("studio.space.hands.verifyCol")}</span>
+                            <span />
+                        </div>
+                        {handRows(HAND_TARGETS, true)}
+                        <div className="flex justify-end">
+                            <button type="button" onClick={restartHands} className={BTN}>
+                                <RotateCcw className="size-3.5" aria-hidden />
+                                {t("studio.space.hands.redo")}
+                            </button>
+                        </div>
+                    </div>
+                </LayoutGroup>
+            );
+        }
+        const verify = handPhase === "verify";
+        const rec = handRecord[target];
+        const judged = rec ? judgeHandSample(rec) : null;
+        const done = HAND_TARGETS.filter((g) => handRecord[g]);
+        return (
+            <LayoutGroup id="hand-rows">
+                <div className="space-y-3">
+                    <div className="flex items-center gap-4">
+                        {gestureBox(target)}
+                        <div className="min-w-0 flex-1">
+                            <p className="text-[0.6875rem] uppercase tracking-wide text-white/60">
+                                {verify
+                                    ? t("studio.space.hands.verifyStep", { n: handIdx + 1, total: HAND_TARGETS.length })
+                                    : t("studio.space.hands.recordStep", { n: handIdx + 1, total: HAND_TARGETS.length })}
+                            </p>
+                            <AnimatePresence mode="popLayout" initial={false}>
+                                <motion.p
+                                    key={target}
+                                    initial={reduced ? false : { opacity: 0, y: 8 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -8 }}
+                                    transition={reduced ? INSTANT : SPRING}
+                                    className="text-base font-semibold"
+                                >
+                                    {gestureName(target)}
+                                </motion.p>
+                            </AnimatePresence>
+                            <p className="text-xs leading-snug text-white/75">{verify ? t("studio.space.hands.verifyBody") : t(`studio.space.hands.how.${target}`)}</p>
+                        </div>
+                    </div>
+                    {!verify && judged && (
+                        <p className={`rounded-xl bg-white/5 p-2 text-[0.6875rem] ${VERDICT_TONE[judged.verdict]}`} aria-live="polite">
+                            {t(`studio.space.hands.message.${judged.verdict}`, { pct: formatPct(judged.hitRate) })}
+                        </p>
+                    )}
+                    {done.length > 0 && handRows(done, false)}
+                    <div className="flex flex-wrap justify-end gap-2">
+                        {verify ? (
+                            <button type="button" disabled={busy} onClick={() => void runVerify()} className={PRIMARY}>
+                                {busy ? t("studio.space.capturing") : t("studio.space.hands.verifyStart")}
+                            </button>
+                        ) : (
+                            <>
+                                <button type="button" disabled={busy} onClick={() => void recordCurrent()} className={rec ? BTN : PRIMARY}>
+                                    {rec ? <RotateCcw className="size-3.5" aria-hidden /> : null}
+                                    {busy ? t("studio.space.capturing") : rec ? t("studio.space.hands.retryGesture") : t("studio.space.hands.record")}
+                                </button>
+                                {rec && (
+                                    <button type="button" disabled={busy} onClick={nextGesture} className={PRIMARY}>
+                                        {handIdx + 1 < HAND_TARGETS.length ? t("studio.space.hands.nextGesture") : t("studio.space.hands.toVerify")}
+                                        <ArrowRight className="size-3.5" aria-hidden />
+                                    </button>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </LayoutGroup>
+        );
+    }
+
     const live =
         capture.kind === "countdown"
             ? t("studio.space.countdown", { n: capture.n })
             : capture.kind === "sampling"
-              ? t("studio.space.hold")
+                            ? step === "hands"
+                                    ? t("studio.space.hands.recording", { gesture: t(`studio.space.hands.gestures.${HAND_TARGETS[handIdx] ?? "relaxed"}`) })
+                                    : t("studio.space.hold")
               : step === "standing" && samples.standing
                 ? t("studio.space.measured")
                 : step === "seated" && samples.seated
                   ? t("studio.space.measured")
-                  : "";
+                                    : step === "hands" && handPhase === "summary"
+                                        ? t("studio.space.hands.summaryLive", { pct: formatPct(handsSummary.passRate) })
+                                        : "";
 
     let body: ReactNode;
     if (step === "camera") {
@@ -447,6 +737,8 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
                 ]}
             />,
         );
+    } else if (step === "hands") {
+        body = handsBody();
     } else {
         body = (
             <div className="space-y-3">
@@ -460,6 +752,10 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
                         [t("studio.space.fields.shoulder"), formatCm(measure.shoulderM, lang)],
                         [t("studio.space.fields.iris"), formatMm(measure.irisM, lang)],
                         [t("studio.space.fields.headHeight"), formatMetres(measure.seatedHeadM, lang)],
+                        [
+                            t("studio.space.fields.hands"),
+                            handsRecorded ? (handsSummary.verified > 0 ? formatPct(handsSummary.passRate) : t("studio.space.hands.notVerified")) : "—",
+                        ],
                     ]}
                 />
                 <label className={`flex items-center gap-2 text-xs ${measure.tiltDeg === undefined ? "opacity-50" : ""}`}>
@@ -538,7 +834,10 @@ export function SpaceCalibration({ onClose }: { onClose: () => void }) {
                         </button>
                     ) : (
                         <button type="button" onClick={() => go(1)} disabled={busy || (step === "you" && heightInvalid)} className={BTN}>
-                            {(step === "standing" && !samples.standing) || (step === "seated" && !samples.seated) || (step === "you" && heightCm === null)
+                            {(step === "standing" && !samples.standing) ||
+                            (step === "seated" && !samples.seated) ||
+                            (step === "you" && heightCm === null) ||
+                            (step === "hands" && !handsRecorded)
                                 ? t("studio.space.skip")
                                 : t("studio.space.next")}
                             <ArrowRight className="size-3.5" aria-hidden />
