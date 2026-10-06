@@ -11,6 +11,7 @@ export * from "./roam.js";
 export * from "./occlusion.js";
 export * from "./metric.js";
 export * from "./jitter.js";
+export { bodyCapsules, type Capsule } from "./constraints.js";
 export { PetActor } from "./pet-actor.js";
 export { Backdrop, type BackdropDof, type BackdropLook } from "./backdrop.js";
 export { PetStage, inlineAces, toNodeMaterials, type LoadedModel, type PetDebug, type StageOptions } from "./stage.js";

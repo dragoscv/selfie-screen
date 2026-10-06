@@ -1,4 +1,4 @@
-import { focalPx, project, type BodyJoint, type Pinhole, type Vec3 } from "@tiksee/pets";
+import { focalPx, project, type BodyJoint, type Capsule, type PetDebug, type Pinhole, type Vec3 } from "@tiksee/pets";
 
 import type { Debug3dState } from "../../lib/studio/controller.js";
 import type { Rect } from "./geometry.js";
@@ -179,8 +179,141 @@ export function hudLine(s: Debug3dState): string {
     }
     parts.push(
         `pose ${Math.round(s.perf.poseHz)} Hz (age ${Math.round(s.perf.poseAgeMs)} ms)`,
+        `delay ${Math.round(s.perf.delayMs)} ms`,
         `render ${s.perf.renderMs.toFixed(1)} ms ${Math.round(s.perf.fps)} fps`,
         `pets ${s.perf.petsActive}`,
     );
     return parts.join(" · ");
+}
+
+/** Second HUD line: `dist 0.93 m ±4% (body 0.95 / iris 0.91)`, or the detector fallback. */
+export function distanceLine(s: Debug3dState): string {
+    const m = s.metric;
+    if (!m) return s.body?.present ? `dist ${metres(s.body.distanceM)} (detector)` : "dist —";
+    const parts: string[] = [];
+    if (m.body !== undefined) parts.push(`body ${m.body.toFixed(2)}`);
+    if (m.iris !== undefined) parts.push(`iris ${m.iris.toFixed(2)}`);
+    const detail = parts.length ? ` (${parts.join(" / ")})` : "";
+    return `dist ${metres(m.distanceM)} ±${Math.round(m.relSigma * 100)}%${detail}`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Body capsules
+ * ------------------------------------------------------------------ */
+
+export interface CapsuleOutline {
+    /** End circles (shell px); one circle when the capsule is a sphere (head). */
+    circles: { x: number; y: number; r: number }[];
+    /** Side lines tangent to both end circles (empty for a sphere). */
+    sides: [{ x: number; y: number }, { x: number; y: number }][];
+}
+
+/** Projected radius (shell px) of a sphere of `rM` metres at `depthM`. */
+export function projectedRadius(pin: Pinhole, rect: Rect, rM: number, depthM: number): number {
+    return ((rM * focalPx(pin)) / Math.max(depthM, 0.05)) * (rect.width / pin.width);
+}
+
+/** Wireframe of a capsule: two projected end circles + two side lines (null when an end is behind the camera). */
+export function capsuleOutline(pin: Pinhole, rect: Rect, c: Capsule): CapsuleOutline | null {
+    const a = worldToShell(pin, rect, c.a);
+    const b = worldToShell(pin, rect, c.b);
+    if (!a || !b) return null;
+    const ra = projectedRadius(pin, rect, c.r, a.depthM);
+    const rb = projectedRadius(pin, rect, c.r, b.depthM);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-3) return { circles: [{ x: a.x, y: a.y, r: Math.max(ra, rb) }], sides: [] };
+    const nx = -dy / len;
+    const ny = dx / len;
+    return {
+        circles: [
+            { x: a.x, y: a.y, r: ra },
+            { x: b.x, y: b.y, r: rb },
+        ],
+        sides: [
+            [
+                { x: a.x + nx * ra, y: a.y + ny * ra },
+                { x: b.x + nx * rb, y: b.y + ny * rb },
+            ],
+            [
+                { x: a.x - nx * ra, y: a.y - ny * ra },
+                { x: b.x - nx * rb, y: b.y - ny * rb },
+            ],
+        ],
+    };
+}
+
+/* ------------------------------------------------------------------ *
+ * Mind card
+ * ------------------------------------------------------------------ */
+
+export interface UtilityBar {
+    action: string;
+    score: number;
+    /** 0..1 of the best score shown. */
+    frac: number;
+    chosen: boolean;
+}
+
+/** Top `n` utility scores normalised to the max; the decided action is flagged. */
+export function utilityBars(ranking: readonly { action: string; score: number }[], chosen: string | null, n = 5): UtilityBar[] {
+    const top = [...ranking].sort((x, y) => y.score - x.score).slice(0, n);
+    const max = Math.max(0, ...top.map((r) => r.score));
+    return top.map((r) => ({
+        action: r.action,
+        score: r.score,
+        frac: max > 0 ? Math.min(1, Math.max(0, r.score / max)) : 0,
+        chosen: r.action === chosen,
+    }));
+}
+
+export const NEED_KEYS = ["energy", "curiosity", "attention", "affection", "play"] as const;
+export const NEED_LABELS: Readonly<Record<(typeof NEED_KEYS)[number], string>> = {
+    energy: "E",
+    curiosity: "C",
+    attention: "A",
+    affection: "Af",
+    play: "P",
+};
+
+/** Needs as five clamped 0..1 bars in a fixed order. */
+export function needBars(needs: PetDebug["mind"]["needs"]): { key: (typeof NEED_KEYS)[number]; label: string; frac: number }[] {
+    return NEED_KEYS.map((key) => ({ key, label: NEED_LABELS[key], frac: Math.min(1, Math.max(0, needs[key])) }));
+}
+
+/**
+ * Mood dot inside a `size` px square at (x, y): valence -1..1 -> left..right,
+ * arousal 0..1 -> bottom..top. Values are clamped to the square.
+ */
+export function moodDot(mood: PetDebug["mind"]["mood"], x: number, y: number, size: number): { x: number; y: number } {
+    const v = Math.min(1, Math.max(-1, mood.valence));
+    const a = Math.min(1, Math.max(0, mood.arousal));
+    return { x: x + ((v + 1) / 2) * size, y: y + (1 - a) * size };
+}
+
+/** Push badge text when the hard constraints moved the pet more than 5 mm, else null. */
+export function pushBadge(pushedM: number): string | null {
+    return pushedM > 0.005 ? `PUSH ${Math.round(pushedM * 100)} cm` : null;
+}
+
+export const CARD_W = 168;
+export const CARD_H = 132;
+
+/**
+ * Card top-left: beside the pet's contact point (`at`, shell px) when it fits
+ * in `rect`, otherwise stacked in the top-right corner by `slot`.
+ */
+export function cardPosition(rect: Rect, at: { x: number; y: number } | null, slot: number, w = CARD_W, h = CARD_H): { x: number; y: number } {
+    const right = rect.left + rect.width;
+    const bottom = rect.top + rect.height;
+    if (at && at.x >= rect.left && at.x <= right && at.y >= rect.top && at.y <= bottom) {
+        // Prefer the right of the pet; flip left near the edge; keep inside vertically.
+        let x = at.x + 70;
+        if (x + w > right - 4) x = at.x - 70 - w;
+        x = Math.min(right - w - 4, Math.max(rect.left + 4, x));
+        const y = Math.min(bottom - h - 4, Math.max(rect.top + 56, at.y - h / 2));
+        return { x, y };
+    }
+    return { x: right - w - 8, y: rect.top + 56 + slot * (h + 6) };
 }

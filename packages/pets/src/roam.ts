@@ -184,6 +184,34 @@ export class PetRoamer {
         this.#want = anchor;
     }
 
+    /**
+     * The mind's choice of anchor (utility AI). When set, it replaces the built-in
+     * preference list; the roamer still validates it (off-screen / missing anchors
+     * fall back with grace), and explicit `request()`s (gestures) still win.
+     */
+    direct(anchor: AnchorId | null): void {
+        this.#directed = anchor;
+    }
+
+    /** Positions of every anchor this frame (for the mind's availability check). */
+    get anchors(): Readonly<Record<AnchorId, Vec3 | null>> | null {
+        return this.#lastAnchors;
+    }
+
+    /** Apply a hard-constraint correction (metres) after `update`; keeps steering consistent. */
+    nudge(delta: Vec3): void {
+        if (!this.#p) return;
+        this.#p = [this.#p[0] + delta[0], this.#p[1] + delta[1], this.#p[2] + delta[2]];
+        if (this.#hopFrom) this.#hopFrom = [this.#hopFrom[0] + delta[0], this.#hopFrom[1] + delta[1], this.#hopFrom[2] + delta[2]];
+    }
+
+    get position(): Vec3 | null {
+        return this.#p;
+    }
+
+    #directed: AnchorId | null = null;
+    #lastAnchors: Record<AnchorId, Vec3 | null> | null = null;
+
     /** Ranked anchors this pet prefers, by locomotion and side. */
     #preferred(): AnchorId[] {
         const own = this.#o.side === "left" ? "shoulderL" : "shoulderR";
@@ -210,6 +238,12 @@ export class PetRoamer {
         const seen = this.#lastSeen.get(current);
         const currentOk = valid(current) || (!!seen && now - seen.at < ANCHOR_GRACE_MS);
         const ownSide = (id: AnchorId) => !id.endsWith(this.#o.side === "left" ? "R" : "L");
+        // Mind-directed: go where the utility AI decided, if that anchor exists now (or recently).
+        const d = this.#directed;
+        if (d) {
+            const dSeen = this.#lastSeen.get(d);
+            if (valid(d) || (d === current && !!dSeen && now - dSeen.at < ANCHOR_GRACE_MS)) return d;
+        }
         // Stay while the current anchor is valid and the dwell has not run out.
         if (currentOk && (now - this.#since < this.#dwell || current.startsWith("ledge"))) {
             if (!current.startsWith("ledge")) return current;
@@ -233,6 +267,7 @@ export class PetRoamer {
         const dt = Math.min(Math.max(dtSec, 0), 0.1);
         const tSec = nowMs / 1000;
         const a = anchorPoints(body, pin, this.#o.side, tSec, pointAt);
+        this.#lastAnchors = a;
         for (const id of ANCHORS) {
             const q = a[id];
             if (q) this.#lastSeen.set(id, { p: q, at: nowMs });

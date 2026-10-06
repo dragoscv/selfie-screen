@@ -86,6 +86,9 @@ import { useOpenStudio } from "../lib/vision/use-vision.js";
 import { useAppStore } from "../store/app-store.js";
 import { ChipToggleGroup, NumberField, SelectField } from "./settings-fields.js";
 
+/** Pet director cadence chips (seconds); the schema allows 5..120. */
+const PET_DIRECTOR_INTERVALS = ["8", "12", "20"] as const;
+
 const SECTIONS = [
     { id: "appearance", icon: Palette },
     { id: "voice", icon: Volume2 },
@@ -1401,6 +1404,23 @@ function StudioSection() {
                     display={(p) => t(`settings.studio.petStyles.${p}`)}
                     tint="var(--kind-like)"
                 />
+                <SwitchRow
+                    label={t("settings.studio.petDirector")}
+                    description={t("settings.studio.petDirectorHint")}
+                    checked={s.petDirector.enabled}
+                    onChange={(enabled) => update("studio", { petDirector: { ...s.petDirector, enabled } })}
+                    tint="var(--kind-like)"
+                />
+                <Reveal show={s.petDirector.enabled}>
+                    <ChipSelector
+                        label={t("settings.studio.petDirectorEvery")}
+                        options={PET_DIRECTOR_INTERVALS}
+                        value={String(s.petDirector.everySec)}
+                        onSelect={(v) => update("studio", { petDirector: { ...s.petDirector, everySec: Number(v) } })}
+                        display={(v) => t("settings.studio.petDirectorSeconds", { count: Number(v) })}
+                        tint="var(--kind-like)"
+                    />
+                </Reveal>
             </Card>
             <Card title={t("settings.studio.filtersTitle")} subtitle={t("settings.studio.filtersHint")} icon={<Palette />} tint="var(--kind-join)">
                 <SliderRow

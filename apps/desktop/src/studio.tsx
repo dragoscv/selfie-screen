@@ -24,6 +24,8 @@ type Stats = FrameStatsSnapshot & { backend: string; tracking: boolean; video: V
 
 const SIGNAL_FLUSH_MS = 100;
 const SNAPSHOT_MS = 500;
+/** Pet minds for the sidecar's LLM director, only while it is enabled. */
+const PET_STATE_MS = 5_000;
 
 /**
  * The studio window: camera + filters + pets composited in one WebGPU frame.
@@ -206,6 +208,11 @@ function Studio() {
             const info = frames.get();
             if (info && sidecarClient.connected) sidecarClient.send({ type: "visionSnapshot", snapshot: info.snapshot });
         }, SNAPSHOT_MS);
+        const petStateTimer = window.setInterval(() => {
+            const engine = engineRef.current;
+            if (!engine || !sidecarClient.connected || !studioRef.current?.petDirector.enabled) return;
+            sidecarClient.send({ type: "petState", pets: engine.petSummary() });
+        }, PET_STATE_MS);
         const offState = sidecarClient.onStateChange((connected) => {
             if (connected) sidecarClient.send({ type: "identityList" });
         });
@@ -231,7 +238,7 @@ function Studio() {
             } else if (m.type === "ruleAction") {
                 if (m.action.type === "studio" && m.action.action === "saveClip") saveClip();
                 else void engine.run(m.action).catch((e: unknown) => setError(`rule: ${String(e)}`));
-            }
+            } else if (m.type === "petBias") engine.petBias(m.pet, m.action, m.k, m.ttlSec);
         });
         if (isTauri()) {
             void listen<StudioSettings>("studio://settings", (e) => {
@@ -283,6 +290,7 @@ function Studio() {
             offState();
             offEngine.forEach((stop) => stop());
             window.clearInterval(snapshotTimer);
+            window.clearInterval(petStateTimer);
             window.clearTimeout(flushTimer);
             flushSignals();
             unlisten.forEach((stop) => stop());

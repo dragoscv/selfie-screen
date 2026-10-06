@@ -9,6 +9,8 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 - **New pets**: all seven pets rebuilt as proper models (parrot, cat, dragon, drone, fox, owl, red panda) with faces, blinking eyes, lip-sync and new moves (walk, hop, wave).
 - **Pets live in 3D around you**: they perch on your shoulders, head or a raised hand, fly around your head (passing behind you) and hop between spots; they wave back when you wave, hop to a heart and go where you point. When you leave the frame they wait at the bottom edge instead of vanishing.
 - **3D debug view** (F3 in the Studio): your skeleton in metres, the floor, your shoulder height and where every pet is heading. Preview only.
+- **Smart pets**: each pet has its own needs, mood and personality and decides for itself what to do (perch, land on your open palm, listen to the co-host, play with the other pet, doze off when the stream is quiet, celebrate big gifts). Pets never pass through you or each other, take turns reacting, and move with breathing, springy tails and ears, gaze jumps and landing squash. Optional AI director nudges them from the chat mood (off by default).
+- **3D space calibration** (Studio → Camera → Calibrate 3D space): camera model and lens, your height, stand up and sit down for a few seconds; optional precise lens calibration with a printed board and a one-time scene analysis. Pets and effects are then sized correctly for your room.
 - **Camera mount**: tell TikSee how high your camera is and how much it looks down (or let it estimate the tilt), so the 3D space matches your room. Settings → Studio.
 
 ### Changed
@@ -17,6 +19,7 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 
 ### Fixed
 - Pets no longer flicker, jump between positions or disappear when your shoulders leave the frame.
+- The body skeleton moves smoothly (about 40× less jitter) and pets keep their size when you turn or move your arms.
 
 ## [0.3.0] — 2026-10-06
 

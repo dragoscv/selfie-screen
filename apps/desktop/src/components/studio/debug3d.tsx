@@ -1,4 +1,4 @@
-import { ANCHORS, BODY_JOINTS, type Pinhole, type Vec3 } from "@tiksee/pets";
+import { ANCHORS, BODY_JOINTS, bodyCapsules, type Pinhole, type Vec3 } from "@tiksee/pets";
 import { useEffect, useRef } from "react";
 
 import type { Debug3dState } from "../../lib/studio/controller.js";
@@ -6,17 +6,26 @@ import { useStudio } from "./context.js";
 import {
     BONES,
     BOX_EDGES,
+    CARD_H,
+    CARD_W,
     DEPTH_MARKS_M,
     add3,
+    capsuleOutline,
+    cardPosition,
     depthColor,
+    distanceLine,
     dotRadius,
     facing,
     fadeAlpha,
     floorGrid,
     hudLine,
     metres,
+    moodDot,
+    needBars,
     petBox,
+    pushBadge,
     scale3,
+    utilityBars,
     wallGrid,
     worldToShell,
     type Segment,
@@ -30,6 +39,8 @@ const NEAR_FLOOR_M = 0.3;
 const FONT = "600 11px ui-sans-serif, system-ui, sans-serif";
 const SHADOW = "rgb(0 0 0 / 0.85)";
 const SIDE_COLOR = { left: "#f472b6", right: "#38bdf8" } as const;
+const SMALL_FONT = "600 10px ui-sans-serif, system-ui, sans-serif";
+const CAPSULE_COLOR = "rgb(103 232 249 / 0.45)";
 
 /**
  * Preview-only 3D debug overlay (F3): how the studio understands the scene in
@@ -95,8 +106,12 @@ function draw(g: Ctx, s: Debug3dState, rect: Rect): void {
     g.textBaseline = "middle";
     drawGrids(g, s, rect);
     drawAnchors(g, s, rect);
-    if (s.body?.present) drawBody(g, s, rect);
+    if (s.body?.present) {
+        drawCapsules(g, s, rect);
+        drawBody(g, s, rect);
+    }
     for (const pet of s.pets) drawPet(g, s.pin, rect, pet);
+    drawMindCards(g, s, rect);
     g.restore();
     drawHud(g, s, rect);
 }
@@ -321,17 +336,135 @@ function drawPet(g: Ctx, pin: Pinhole, rect: Rect, pet: Debug3dState["pets"][num
     label(g, `occl ${Math.round(pet.personInFront * 100)}%`, bx + 66, by + 3, "#fdba74");
 }
 
-function drawHud(g: Ctx, s: Debug3dState, rect: Rect): void {
-    const text = hudLine(s);
-    g.font = FONT;
-    const w = g.measureText(text).width + 16;
-    const x = rect.left + 8;
-    const y = rect.top + 8;
-    g.fillStyle = "rgb(0 0 0 / 0.65)";
+/** Owner collision volume the pets are kept out of (faint cyan wireframe). */
+function drawCapsules(g: Ctx, s: Debug3dState, rect: Rect): void {
+    g.strokeStyle = CAPSULE_COLOR;
+    g.lineWidth = 1;
     g.beginPath();
-    g.roundRect(x, y, Math.min(w, rect.width - 16), 22, 6);
+    for (const c of bodyCapsules(s.body)) {
+        const o = capsuleOutline(s.pin, rect, c);
+        if (!o) continue;
+        for (const k of o.circles) {
+            g.moveTo(k.x + k.r, k.y);
+            g.arc(k.x, k.y, k.r, 0, Math.PI * 2);
+        }
+        for (const [a, b] of o.sides) {
+            g.moveTo(a.x, a.y);
+            g.lineTo(b.x, b.y);
+        }
+    }
+    g.stroke();
+}
+
+/** Per pet: utility-AI decision, top-5 scores, needs, mood and constraint push. */
+function drawMindCards(g: Ctx, s: Debug3dState, rect: Rect): void {
+    let slot = 0;
+    for (const pet of s.pets) {
+        const onScreen = pet.screen.depthM > 0 && pet.screen.u >= 0 && pet.screen.u <= 1 && pet.screen.v >= 0 && pet.screen.v <= 1;
+        const at = onScreen ? { x: rect.left + pet.screen.u * rect.width, y: rect.top + pet.screen.v * rect.height } : null;
+        const pos = cardPosition(rect, at, slot);
+        if (!at) slot++;
+        drawMindCard(g, pos.x, pos.y, pet);
+    }
+}
+
+function drawMindCard(g: Ctx, x: number, y: number, pet: Debug3dState["pets"][number]): void {
+    const color = SIDE_COLOR[pet.side];
+    const { decision, needs, mood } = pet.mind;
+    g.fillStyle = "rgb(0 0 0 / 0.62)";
+    g.beginPath();
+    g.roundRect(x, y, CARD_W, CARD_H, 6);
     g.fill();
-    g.fillStyle = "#fff";
+    g.strokeStyle = color;
+    g.lineWidth = 1;
+    g.stroke();
     g.textBaseline = "middle";
-    g.fillText(text, x + 8, y + 11, rect.width - 32);
+    // Header: name + action, reason below.
+    g.font = FONT;
+    g.fillStyle = color;
+    g.fillText(pet.pet, x + 6, y + 9, 60);
+    g.fillStyle = "#fff";
+    g.fillText(decision?.action ?? "—", x + 60, y + 9, CARD_W - 66);
+    g.font = SMALL_FONT;
+    g.fillStyle = "rgb(226 232 240 / 0.85)";
+    g.fillText(decision?.reason ?? "no decision yet", x + 6, y + 22, CARD_W - 12);
+    // Utility bars (top 5, normalised to the best; chosen highlighted).
+    const bars = utilityBars(decision?.ranking ?? [], decision?.action ?? null);
+    const barX = x + 74;
+    const barW = CARD_W - 80 - 28;
+    for (let i = 0; i < bars.length; i++) {
+        const b = bars[i];
+        if (!b) continue;
+        const by = y + 32 + i * 11;
+        g.fillStyle = b.chosen ? color : "rgb(203 213 225 / 0.8)";
+        g.fillText(b.action, x + 6, by + 4, 66);
+        g.fillStyle = "rgb(255 255 255 / 0.12)";
+        g.fillRect(barX, by, barW, 7);
+        g.fillStyle = b.chosen ? color : "rgb(148 163 184)";
+        g.fillRect(barX, by, barW * b.frac, 7);
+        g.fillStyle = "rgb(226 232 240 / 0.85)";
+        g.fillText(b.score.toFixed(2), barX + barW + 3, by + 4, 26);
+    }
+    // Needs: five tiny vertical bars.
+    const ny = y + CARD_H - 34;
+    const needs5 = needBars(needs);
+    for (let i = 0; i < needs5.length; i++) {
+        const n = needs5[i];
+        if (!n) continue;
+        const nx = x + 8 + i * 18;
+        g.fillStyle = "rgb(255 255 255 / 0.12)";
+        g.fillRect(nx, ny, 8, 20);
+        g.fillStyle = "#a3e635";
+        g.fillRect(nx, ny + 20 * (1 - n.frac), 8, 20 * n.frac);
+        g.fillStyle = "rgb(226 232 240 / 0.85)";
+        g.fillText(n.label, nx - 1, ny + 27, 16);
+    }
+    // Mood: valence (x, -1..1) / arousal (y, 0..1) square.
+    const mx = x + 100;
+    const size = 26;
+    const my = y + CARD_H - 32;
+    g.strokeStyle = "rgb(255 255 255 / 0.35)";
+    g.strokeRect(mx, my, size, size);
+    g.beginPath();
+    g.moveTo(mx + size / 2, my);
+    g.lineTo(mx + size / 2, my + size);
+    g.stroke();
+    const dot = moodDot(mood, mx, my, size);
+    g.fillStyle = "#facc15";
+    g.beginPath();
+    g.arc(dot.x, dot.y, 3, 0, Math.PI * 2);
+    g.fill();
+    // Constraint push badge.
+    const push = pushBadge(pet.pushed);
+    if (push) {
+        g.font = SMALL_FONT;
+        const bw = g.measureText(push).width + 8;
+        const px = x + CARD_W - bw - 4;
+        const py = y - 8;
+        g.fillStyle = "#dc2626";
+        g.beginPath();
+        g.roundRect(px, py, bw, 14, 3);
+        g.fill();
+        g.fillStyle = "#fff";
+        g.fillText(push, px + 4, py + 7);
+    }
+    g.font = FONT;
+}
+
+function drawHud(g: Ctx, s: Debug3dState, rect: Rect): void {
+    const lines = [hudLine(s), distanceLine(s)];
+    g.font = FONT;
+    const x = rect.left + 8;
+    let y = rect.top + 8;
+    for (const text of lines) {
+        const w = g.measureText(text).width + 16;
+        g.fillStyle = "rgb(0 0 0 / 0.65)";
+        g.beginPath();
+        g.roundRect(x, y, Math.min(w, rect.width - 16), 20, 6);
+        g.fill();
+        g.fillStyle = "#fff";
+        g.textBaseline = "middle";
+        g.fillText(text, x + 8, y + 10, rect.width - 32);
+        y += 22;
+    }
 }

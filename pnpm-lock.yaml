@@ -388,7 +388,7 @@ catalogs:
       version: 5.0.15
 
 patchedDependencies:
-  js-aruco2@2.0.0: 2895a984368db0c1bc0a3f455c7c1cbf369f157e10021b47c4f2d5ae7746c0ae
+  js-aruco2@2.0.0: b061e63cadb8faa066c16e481d8e6ca93af92a812c801c891e1bae432d80934c
 
 importers:
 
@@ -483,7 +483,7 @@ importers:
         version: 26.4.2(@typescript/typescript6@6.0.2)
       js-aruco2:
         specifier: 'catalog:'
-        version: 2.0.0(patch_hash=2895a984368db0c1bc0a3f455c7c1cbf369f157e10021b47c4f2d5ae7746c0ae)
+        version: 2.0.0(patch_hash=b061e63cadb8faa066c16e481d8e6ca93af92a812c801c891e1bae432d80934c)
       lucide-react:
         specifier: 'catalog:'
         version: 1.51.0(@types/react@19.3.0)(react@19.3.0)
@@ -7216,7 +7216,7 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  js-aruco2@2.0.0(patch_hash=2895a984368db0c1bc0a3f455c7c1cbf369f157e10021b47c4f2d5ae7746c0ae): {}
+  js-aruco2@2.0.0(patch_hash=b061e63cadb8faa066c16e481d8e6ca93af92a812c801c891e1bae432d80934c): {}
 
   js-tokens@4.0.0: {}
 

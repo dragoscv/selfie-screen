@@ -656,13 +656,41 @@ export class StudioEngine implements StudioController {
         this.#stage?.setHidden(hidden);
     }
 
+    /** Pet minds for the sidecar's optional LLM director (`petState`). */
+    petSummary(): PetStage["mindSummary"] {
+        return this.#stage?.mindSummary ?? [];
+    }
+
+    /** Director nudge (`petBias`): a utility multiplier with a TTL, never a command. */
+    petBias(pet: string, action: Parameters<PetStage["bias"]>[1], k: number, ttlSec: number): void {
+        this.#stage?.bias(pet as PetId | "all", action, k, ttlSec * 1000);
+    }
+
     onChat(event: ChatEvent): void {
+        if (event.kind === "chat") this.#noteChat();
         const e = petEventFor(event);
         if (e) this.#stage?.send(e);
     }
 
     speak(visemes: readonly VisemeEvent[]): void {
         this.#stage?.speak(visemes);
+        // The co-host is speaking for the length of the utterance: pets turn to listen.
+        const last = visemes.at(-1);
+        const ms = (last?.offsetMs ?? 0) + 400;
+        this.#stage?.setContext({ cohostSpeaking: true });
+        window.clearTimeout(this.#cohostTimer);
+        this.#cohostTimer = window.setTimeout(() => this.#stage?.setContext({ cohostSpeaking: false }), ms);
+    }
+
+    #cohostTimer = 0;
+    readonly #chatTimes: number[] = [];
+
+    /** Chat activity 0..1 (messages per minute / 30) for the pet minds. */
+    #noteChat(): void {
+        const now = performance.now();
+        this.#chatTimes.push(now);
+        while (this.#chatTimes.length && (this.#chatTimes[0] ?? 0) < now - 60_000) this.#chatTimes.shift();
+        this.#stage?.setContext({ chatActivity: Math.min(1, this.#chatTimes.length / 30) });
     }
 
     onFrame(cb: (info: StudioFrameInfo) => void): () => void {
@@ -814,6 +842,7 @@ export class StudioEngine implements StudioController {
         const pin = stage.pinhole;
         const t = performance.now() / 1000;
         const body = this.#bodySnap;
+        const r = this.#metric.reading;
         return {
             pin,
             body,
@@ -825,7 +854,19 @@ export class StudioEngine implements StudioController {
                 poseHz: this.#poseHz,
                 poseAgeMs: body?.poseAgeMs ?? 0,
                 petsActive: stage.activeCount,
+                delayMs: this.#body.delayMs,
+                distanceSource: r ? "metric" : "detector",
             },
+            ...(r
+                ? {
+                      metric: {
+                          distanceM: r.distanceM,
+                          relSigma: r.relSigma,
+                          ...(r.body ? { body: r.body.distanceM } : {}),
+                          ...(r.iris ? { iris: r.iris.distanceM } : {}),
+                      },
+                  }
+                : {}),
         };
     }
 
@@ -834,7 +875,12 @@ export class StudioEngine implements StudioController {
         const stage = this.#stage;
         if (!stage) return;
         for (const e of events) {
-            if (e.phase === "end" || !e.subject.owner) continue;
+            if (!e.subject.owner) continue;
+            // Mind context: an open palm invites a pet onto the hand; talking/laughing draws attention.
+            if (e.signal === "open_palm") stage.setContext({ palmUp: e.phase !== "end" });
+            else if (e.signal === "talking") stage.setContext({ ownerTalking: e.phase !== "end" });
+            else if (e.signal === "laughing" && e.phase !== "end") stage.send({ type: "gesture", gesture: "heart" });
+            if (e.phase === "end") continue;
             const g = PET_GESTURES[e.signal];
             if (!g) continue;
             if (g === "wave" || g === "heart") {

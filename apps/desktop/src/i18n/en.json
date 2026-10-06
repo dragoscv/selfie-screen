@@ -503,6 +503,10 @@
                 "pbr": "Realistic",
                 "toon": "Cartoon"
             },
+            "petDirector": "AI director for pets",
+            "petDirectorHint": "Uses the codai model every ~12 s to nudge what pets feel like doing based on chat; costs tokens",
+            "petDirectorEvery": "How often",
+            "petDirectorSeconds": "{{count}} s",
             "filtersTitle": "Filters",
             "filtersHint": "Applied on the GPU before the pets are drawn",
             "smoothing": "Skin smoothing",

@@ -504,6 +504,49 @@ export const ruleFiredSchema = z.object({
 export type RuleFired = z.infer<typeof ruleFiredSchema>;
 
 /* ------------------------------------------------------------------ *
+ * Pet director: the studio reports pet minds, the sidecar nudges them.
+ * ------------------------------------------------------------------ */
+
+/** Mirror of `ACTION_KINDS` in `@tiksee/pets` mind.ts (core cannot depend on pets). */
+export const PET_ACTION_KINDS = [
+    "perchShoulder",
+    "perchHead",
+    "landOnHand",
+    "restOnLedge",
+    "orbit",
+    "watchOwner",
+    "watchCohost",
+    "visitPet",
+    "playWithPet",
+    "celebrate",
+    "sleep",
+    "inspectPoint",
+    "greetViewers",
+] as const;
+export type PetActionKind = (typeof PET_ACTION_KINDS)[number];
+
+const unit = z.number().min(-1).max(1);
+
+export const petMindStateSchema = z.object({
+    pet: z.string().min(1).max(32),
+    action: z.enum(PET_ACTION_KINDS).nullable(),
+    needs: z.object({ energy: unit, curiosity: unit, attention: unit, affection: unit, play: unit }),
+    mood: z.object({ valence: unit, arousal: unit }),
+});
+export type PetMindState = z.infer<typeof petMindStateSchema>;
+
+export const petBiasSchema = z.object({
+    /** A PetId present in the studio, or "all". */
+    pet: z.string().min(1).max(32),
+    action: z.enum(PET_ACTION_KINDS),
+    /** Score multiplier: < 1 discourages, > 1 encourages. */
+    k: z.number().min(0.3).max(2),
+    ttlSec: z.number().min(2).max(60),
+    why: z.string().max(120),
+});
+export type PetBias = z.infer<typeof petBiasSchema>;
+
+/* ------------------------------------------------------------------ *
  * Wire messages (merged into protocol.ts).
  * ------------------------------------------------------------------ */
 
@@ -525,6 +568,8 @@ export const visionClientMessages = [
     z.object({ type: z.literal("ruleTest"), ruleId: z.string() }),
     /** Gesture arming state from the studio (open palm 1 s -> armed for armTimeoutMs). */
     z.object({ type: z.literal("visionArm"), armed: z.boolean() }),
+    /** Pet minds from the studio (~every 5 s) for the optional LLM director. */
+    z.object({ type: z.literal("petState"), pets: z.array(petMindStateSchema).max(8) }),
 ] as const;
 
 export const visionServerMessages = [
@@ -539,4 +584,6 @@ export const visionServerMessages = [
     }),
     /** Latest studio snapshot, rebroadcast so the main window can show it. */
     z.object({ type: z.literal("visionSnapshot"), snapshot: visionSnapshotSchema }),
+    /** Director nudge: multiply one pet action's utility for `ttlSec` (never a command). */
+    z.object({ type: z.literal("petBias"), ...petBiasSchema.shape }),
 ] as const;

@@ -6,9 +6,11 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 
 import type { Backdrop } from "./backdrop.js";
 import { PETS, petUrl, type PetId } from "./catalogue.js";
+import { EXCLUSIVE_ANCHORS, Reservations, bodyCapsules, resolve, type PetBody } from "./constraints.js";
+import { PetMind, pickSpotlight, type ActionKind, type Decision, type MindContext, type Stimulus } from "./mind.js";
 import { fadeToward, personInFront } from "./occlusion.js";
 import { PetActor } from "./pet-actor.js";
-import { PetRoamer, type AnchorId, type PetPose } from "./roam.js";
+import { ANCHORS, PetRoamer, locomotionOf, onScreen, type AnchorId, type PetPose } from "./roam.js";
 import type { Side } from "./shoulders.js";
 import { DEFAULT_VFOV_DEG, project, type BodySnapshot, type Pinhole, type Vec3 } from "./space.js";
 import type { PetEvent } from "./state-machine.js";
@@ -54,6 +56,9 @@ interface Slot {
     shadowAlpha: FloatUniform;
     /** Last pose (debug overlay). */
     pose: PetPose | null;
+    mind: PetMind;
+    /** Hard-constraint correction applied this frame (m). */
+    pushed: number;
 }
 
 /** What the debug overlay reads per pet. */
@@ -65,7 +70,22 @@ export interface PetDebug {
     screen: { u: number; v: number; depthM: number };
     personInFront: number;
     animating: boolean;
+    /** Utility AI: current action, top scores, needs and mood (F3 overlay). */
+    mind: { decision: Decision | null; needs: PetMind["needs"]; mood: PetMind["mood"] };
+    /** Metres the hard constraints pushed the pet this frame (> 0 = it tried to enter the body / the other pet). */
+    pushed: number;
 }
+
+/** Live context the engine feeds the minds (cheap, set whenever it changes). */
+export interface StageContext {
+    palmUp: boolean;
+    cohostSpeaking: boolean;
+    ownerTalking: boolean;
+    /** 0..1 chat activity. */
+    chatActivity: number;
+}
+
+const MIND_TICK_MS = 200;
 
 /**
  * Replace classic materials under `root` with node materials (the same copy
@@ -145,6 +165,13 @@ export class PetStage {
     #backdrop: Backdrop | null = null;
     #pointAt: Vec3 | null = null;
     #debug: PetDebug[] = [];
+    readonly #reservations = new Reservations(1500);
+    #lastMindTick = 0;
+    #lastLeader: string | null = null;
+    #spotlight: string | null = null;
+    #spotlightUntil = 0;
+    #ctx: StageContext = { palmUp: false, cohostSpeaking: false, ownerTalking: false, chatActivity: 0 };
+    #seed = 1;
 
     constructor(options: StageOptions) {
         this.#o = options;
@@ -328,12 +355,14 @@ export class PetStage {
         shadow.frustumCulled = false;
         this.scene.add(actor.root, shadow);
         const roamer = new PetRoamer({ side, family: PETS[pet].family, heightM: PETS[pet].heightM });
-        this.#slots.set(side, { actor, roamer, scaleM, fade: 0, front, depth, alpha, inFront: false, shadow, shadowAlpha, pose: null });
+        const mind = new PetMind(pet, side, this.#seed++ * 7919);
+        this.#slots.set(side, { actor, roamer, scaleM, fade: 0, front, depth, alpha, inFront: false, shadow, shadowAlpha, pose: null, mind, pushed: 0 });
     }
 
     #remove(side: Side): void {
         const old = this.#slots.get(side);
         if (!old) return;
+        this.#reservations.release(old.actor.pet);
         old.actor.dispose();
         old.shadow.removeFromParent();
         old.shadow.geometry.dispose();
@@ -343,7 +372,40 @@ export class PetStage {
 
     send(event: PetEvent): void {
         const now = performance.now();
-        for (const s of this.#slots.values()) s.actor.send(event, now);
+        const stim = stimulusFor(event);
+        // Shared stimulus: one pet leads (spotlight), the other echoes after a personal delay.
+        if (stim && (stim.kind === "gift" || stim.kind === "follow" || stim.kind === "wave" || stim.kind === "heart")) {
+            const leader = pickSpotlight([...this.#slots.values()].map((s) => s.mind), this.#lastLeader);
+            this.#lastLeader = leader?.pet ?? null;
+            this.#spotlight = leader?.pet ?? null;
+            this.#spotlightUntil = now + 3000;
+        }
+        for (const s of this.#slots.values()) {
+            if (stim) s.mind.stimulus(stim);
+            const lead = !this.#spotlight || this.#spotlight === s.actor.pet;
+            if (lead) s.actor.send(event, now);
+            else {
+                const [lo, hi] = s.mind.personality.reactionMs;
+                const delay = 300 + lo + Math.random() * (hi - lo);
+                setTimeout(() => s.actor.send(event, performance.now()), delay);
+            }
+        }
+    }
+
+    /** Engine-fed context for the minds. */
+    setContext(ctx: Partial<StageContext>): void {
+        this.#ctx = { ...this.#ctx, ...ctx };
+    }
+
+    /** LLM director nudge (sidecar): bias an action for one pet (or both) for `ttlMs`. */
+    bias(pet: PetId | "all", action: ActionKind, k: number, ttlMs: number): void {
+        const now = performance.now();
+        for (const s of this.#slots.values()) if (pet === "all" || s.actor.pet === pet) s.mind.bias(action, k, now, ttlMs);
+    }
+
+    /** Short state summary for the director (compact JSON-able). */
+    get mindSummary(): { pet: PetId; action: ActionKind | null; needs: PetMind["needs"]; mood: PetMind["mood"] }[] {
+        return [...this.#slots.values()].map((s) => ({ pet: s.actor.pet, action: s.mind.decision?.action ?? null, needs: { ...s.mind.needs }, mood: { ...s.mind.mood } }));
     }
 
     /** Send pets to an anchor (gestures, gifts): "centre", "orbit", "crown", "point"... */
@@ -399,9 +461,72 @@ export class PetStage {
         const mouth = this.#mouth(now);
         const pin = this.pinhole;
         const debug: PetDebug[] = [];
+        const slots = [...this.#slots.entries()];
+        // 1) Minds at 5 Hz: pick actions; reservations keep perches exclusive.
+        if (now - this.#lastMindTick >= MIND_TICK_MS) {
+            this.#lastMindTick = now;
+            if (now > this.#spotlightUntil) this.#spotlight = null;
+            for (const [, slot] of slots) {
+                const anchors = slot.roamer.anchors;
+                const available = new Set<AnchorId>();
+                for (const id of ANCHORS) {
+                    const p = anchors?.[id];
+                    if (!p) continue;
+                    if (id !== "orbit" && !onScreen(pin, p)) continue;
+                    const holder = EXCLUSIVE_ANCHORS.has(id) ? this.#reservations.holder(id, now) : null;
+                    if (holder && holder !== slot.actor.pet) continue;
+                    available.add(id);
+                }
+                const other = slots.find(([, s]) => s !== slot)?.[1];
+                const ctx: MindContext = {
+                    nowMs: now,
+                    family: PETS[slot.actor.pet].family,
+                    available,
+                    ownerPresent: !!body?.present,
+                    palmUp: this.#ctx.palmUp,
+                    cohostSpeaking: this.#ctx.cohostSpeaking,
+                    ownerTalking: this.#ctx.ownerTalking,
+                    chatActivity: this.#ctx.chatActivity,
+                    otherPet: other?.mind.decision ? { action: other.mind.decision.action, settled: other.pose?.settled ?? false } : null,
+                    spotlight: this.#spotlight === slot.actor.pet,
+                    pointActive: this.#pointAt !== null,
+                };
+                const d = slot.mind.tick(ctx, locomotionOf(PETS[slot.actor.pet].family) !== "walk");
+                this.#reservations.release(slot.actor.pet);
+                if (d.anchor && EXCLUSIVE_ANCHORS.has(d.anchor)) this.#reservations.take(d.anchor, slot.actor.pet, now);
+                slot.roamer.direct(d.anchor);
+                // Behaviour clips the mind asks for (look, wave, dance, sleep...) go through the brain.
+                if (d.clip !== "idle" && slot.actor.brain.clip !== d.clip && d.action !== "perchShoulder") {
+                    slot.actor.send({ type: "command", clip: d.clip }, now);
+                }
+            }
+        }
+        // 2) Locomotion.
+        const poses = new Map<Side, PetPose>();
+        for (const [side, slot] of slots) poses.set(side, slot.roamer.update(body, pin, now, dtSec, this.#pointAt));
+        // 3) Hard constraints: out of the owner's body, apart from each other.
+        const capsules = bodyCapsules(body);
+        const bodies: PetBody[] = slots.map(([side, slot]) => {
+            const pose = poses.get(side) as PetPose;
+            const h = PETS[slot.actor.pet].heightM;
+            const a = pose.anchor;
+            const perchedOn: PetBody["perchedOn"] = !pose.settled ? null : a === "crown" ? "head" : a.startsWith("shoulder") ? "shoulder" : a.startsWith("hand") ? "hand" : null;
+            return { p: [...pose.p] as Vec3, r: h * 0.45, cy: h * 0.5, perchedOn };
+        });
+        const report = resolve(bodies, capsules);
+        for (const [i, [side, slot]] of slots.entries()) {
+            const b = bodies[i] as PetBody;
+            const pose = poses.get(side) as PetPose;
+            const delta: Vec3 = [b.p[0] - pose.p[0], b.p[1] - pose.p[1], b.p[2] - pose.p[2]];
+            if (delta[0] || delta[1] || delta[2]) {
+                slot.roamer.nudge(delta);
+                poses.set(side, { ...pose, p: b.p });
+            }
+            slot.pushed = report.pushed[i] ?? 0;
+        }
         for (const [side, slot] of this.#slots) {
             slot.fade = fadeToward(slot.fade, this.#hidden ? 0 : 1, dtSec * 1000, 300);
-            const pose = slot.roamer.update(body, pin, now, dtSec, this.#pointAt);
+            const pose = poses.get(side) as PetPose;
             slot.pose = pose;
             const visible = slot.fade > 0.001;
             slot.actor.visible = visible;
@@ -410,6 +535,7 @@ export class PetStage {
             const s = project(pin, pose.p);
             const px = (PETS[slot.actor.pet].heightM * (pin.height / 2 / Math.tan((pin.vfovDeg * Math.PI) / 360))) / Math.max(s.depthM, 0.05);
             const animate = visible && (px > 40 || Math.floor(now / 16) % 2 === 0);
+            slot.actor.setArousal(slot.mind.mood.arousal);
             slot.actor.tick(pose, now, animate ? dtSec * (px > 40 ? 1 : 2) : 0, mouth, animate);
             slot.alpha.value = slot.fade;
             const petM = s.depthM;
@@ -421,7 +547,16 @@ export class PetStage {
             slot.shadow.position.set(pose.p[0], pose.p[1] + 0.002, pose.p[2]);
             slot.shadow.scale.set(sw, sw * 0.6, 1);
             slot.shadowAlpha.value = slot.fade;
-            debug.push({ side, pet: slot.actor.pet, pose, screen: s, personInFront: slot.front.value, animating: animate });
+            debug.push({
+                side,
+                pet: slot.actor.pet,
+                pose,
+                screen: s,
+                personInFront: slot.front.value,
+                animating: animate,
+                mind: { decision: slot.mind.decision, needs: slot.mind.needs, mood: slot.mind.mood },
+                pushed: slot.pushed,
+            });
         }
         this.#debug = debug;
         if (this.#pointAt && [...this.#slots.values()].every((s) => s.roamer.anchor !== "point")) this.#pointAt = null;
@@ -441,5 +576,19 @@ export class PetStage {
     dispose(): void {
         for (const side of [...this.#slots.keys()]) this.#remove(side);
         this.renderer.dispose();
+    }
+}
+
+/** Pet events -> mind stimuli. */
+function stimulusFor(e: PetEvent): Stimulus | null {
+    switch (e.type) {
+        case "gift":
+            return { kind: "gift", big: e.tier === "big" };
+        case "chat":
+            return { kind: "chat" };
+        case "gesture":
+            return { kind: e.gesture === "wave" ? "wave" : "heart" };
+        default:
+            return null;
     }
 }

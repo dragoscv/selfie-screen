@@ -20,6 +20,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import { CodaiClient } from "./codai/client.js";
 import { CoHost } from "./cohost/engine.js";
+import { PetDirector } from "./cohost/pet-director.js";
 import { EffectsController } from "./effects/controller.js";
 import { VmuiClient } from "./effects/vmui.js";
 import { GameManager } from "./games/manager.js";
@@ -86,7 +87,8 @@ type VisionClientMessage = Extract<
             | "identityDelete"
             | "visionLogQuery"
             | "visionLogClear"
-            | "ruleTest";
+            | "ruleTest"
+            | "petState";
     }
 >;
 
@@ -126,6 +128,7 @@ class Sidecar {
     #translator: Translator;
     #summaries: SummaryService;
     #rules: RulesEngine;
+    #petDirector: PetDirector;
     #visionLog: VisionLog | null = null;
     #identities: IdentityStore | null = null;
     #snapshot: VisionSnapshot | null = null;
@@ -227,6 +230,18 @@ class Sidecar {
         });
         this.#applyVisionSettings(null);
 
+        this.#petDirector = new PetDirector({
+            client: this.#codai,
+            model: () => this.#settings.codai.replyModel,
+            settings: () => ({ ...this.#settings.studio.petDirector, enabled: this.#settings.studio.enabled && this.#settings.studio.petDirector.enabled }),
+            quiet: () => {
+                const c = this.#control.state;
+                return c.muted || c.repliesPaused || c.petsHidden;
+            },
+            emit: (bias) => this.#broadcast({ type: "petBias", ...bias }),
+            log: logger.scoped("[pets]"),
+        });
+
         this.#streams = new StreamManager(this.#settings, {
             onEvents: (events) => this.#broadcast({ type: "events", events }),
             onStatus: (status, stats) => {
@@ -255,6 +270,7 @@ class Sidecar {
             this.#games.onEvent(event);
             if (event.kind === "gift") this.#lastGift = { diamonds: eventDiamonds(event), at: event.at };
             this.#rules.onChat(event);
+            this.#petDirector.onEvent(event);
             if (event.kind === "chat") this.#translator.offer({ eventId: event.id, text: event.text });
         });
 
@@ -271,6 +287,7 @@ class Sidecar {
             log.warn(`identity seed failed: ${describeError(error)}`);
         }
         this.#cohost.start();
+        this.#petDirector.start();
         await this.#configureTrigger();
 
         if (OverlayServer.wanted(this.#settings)) {
@@ -456,6 +473,7 @@ class Sidecar {
                 case "visionLogQuery":
                 case "visionLogClear":
                 case "ruleTest":
+                case "petState":
                     await this.#handleVision(socket, message);
                     break;
 
@@ -559,6 +577,9 @@ class Sidecar {
                 break;
             case "visionArm":
                 this.#rules.onArm(message.armed);
+                break;
+            case "petState":
+                this.#petDirector.onPetState(message.pets);
                 break;
             case "identityList":
                 this.#send(socket, { type: "identities", profiles: this.#requireIdentities().list() });
@@ -862,6 +883,7 @@ class Sidecar {
         this.#games.dispose();
         this.#translator.dispose();
         this.#rules.dispose();
+        this.#petDirector.dispose();
         if (this.#snapshotTimer) clearTimeout(this.#snapshotTimer);
         try {
             this.#visionLog?.close();

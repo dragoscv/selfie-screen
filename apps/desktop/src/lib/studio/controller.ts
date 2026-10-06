@@ -143,7 +143,19 @@ export interface Debug3dState {
     /** Anchor points per side, world metres (null = unavailable). */
     anchors: Readonly<Record<"left" | "right", Readonly<Record<AnchorId, Vec3 | null>>>>;
     /** Render timings ms (EMA) and rates. */
-    perf: { renderMs: number; fps: number; poseHz: number; poseAgeMs: number; petsActive: number };
+    perf: {
+        renderMs: number;
+        fps: number;
+        poseHz: number;
+        poseAgeMs: number;
+        petsActive: number;
+        /** Body interpolation delay (ms): the skeleton is drawn this far in the past. */
+        delayMs: number;
+        /** Where the owner distance comes from: fused metric solve, or the raw detector estimate. */
+        distanceSource: "metric" | "detector";
+    };
+    /** Fused metric owner distance (whole-body solve + iris + Kalman); absent before the first reading. */
+    metric?: { distanceM: number; relSigma: number; body?: number; iris?: number };
 }
 
 export interface StudioController {

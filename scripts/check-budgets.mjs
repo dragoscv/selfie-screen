@@ -19,9 +19,11 @@ const budgets = [
     // tutorial / calibration / enrol / AR editor are lazy chunks.
     // 0.4.0: + clip buffer (42.4) + 3D pets runtime (BodyModel, PetRoamer, PetActor, metre space) = 48.3 KB;
     // the 3D debug overlay (8.5 KB raw) and the MP4 muxer stay lazy.
-    // + metric owner distance (body solve, iris, Kalman) and the fluid-skeleton interpolation: 51.6 KB
-    // measured; space calibration, ChArUco and MoGe-2 are lazy chunks.
-    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 55 * KB],
+    // + metric owner distance (body solve, iris, Kalman) and the fluid-skeleton interpolation: 51.6 KB;
+    // + per-frame pet runtime (utility AI minds, body capsules + constraint pass, procedural
+    //   animation: saccades, springs, squash) and the director wiring: 58.3 KB measured.
+    // Space calibration, ChArUco, MoGe-2, the F3 overlay and the MP4 muxer are lazy chunks.
+    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 62 * KB],
     ["desktop studio vendor", /^studio-vendor-.*\.js$/, "apps/desktop/dist/assets", 380 * KB],
     // Vision worker (MediaPipe + ONNX glue) and its main-thread fallback pipeline; measured 211 / 113 KB.
     ["studio vision worker", /^worker-.*\.js$/, "apps/desktop/dist/assets", 230 * KB],

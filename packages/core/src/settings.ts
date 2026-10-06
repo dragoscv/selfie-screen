@@ -484,6 +484,13 @@ export const studioSchema = z.object({
     leftPet: z.enum(PET_CHOICES).default("parrot"),
     rightPet: z.enum(PET_CHOICES).default("none"),
     petStyle: z.enum(PET_STYLES).default("pbr"),
+    /** Optional LLM director: codai nudges what pets feel like doing from chat (score bias with TTL, never commands). */
+    petDirector: z
+        .object({
+            enabled: z.boolean().default(false),
+            everySec: z.number().int().min(5).max(120).default(12),
+        })
+        .prefault({}),
     /** 0..1 skin smoothing strength (bilateral). */
     smoothing: z.number().min(0).max(1).default(0.35),
     /** 0..1 background blur, needs the person segmentation mask. */
