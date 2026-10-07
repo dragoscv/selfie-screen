@@ -1,6 +1,6 @@
 [package]
 name = "tiksee"
-version = "0.5.0"
+version = "0.5.1"
 description = "TikSee — TikTok LIVE streamer companion"
 authors = ["Dragos Catalin Vladulescu"]
 edition = "2024"

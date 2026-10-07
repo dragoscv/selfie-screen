@@ -4,6 +4,15 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-10-07
+
+### Added
+- **Microphone & transcription panel** in the Studio (F4, preview only): live microphone level against the speech threshold and noise floor, clipping, your words as you speak, the last lines understood, connection state, the device, how long each sentence took to come back as text, and a plain-language hint when something is wrong (too quiet, too loud, noisy, push-to-talk, offline, no text coming back).
+
+### Fixed
+- Microphone transcription returned no text: the transcription session is now configured when it opens, sentences the server already finished are no longer sent twice, and very short sounds no longer cause "buffer too small" errors.
+- Pets now notice when you call them by name in Romanian forms like "Vulpițo" or "papagalule".
+
 ## [0.5.0] — 2026-10-07
 
 ### Added
