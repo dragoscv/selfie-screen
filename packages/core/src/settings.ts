@@ -448,7 +448,9 @@ export const captionsSchema = z.object({
     scale: z.number().min(0.5).max(2.5).default(1),
     style: z.enum(CAPTION_STYLES).default("glass"),
     /** Final lines kept on screen (1 = only the newest sentence). */
-    lines: z.number().int().min(1).max(3).default(2),
+    lines: z.number().int().min(1).max(5).default(2),
+    /** Wrapped rows for the newest sentence; longer text scrolls up so the newest words stay visible. */
+    rows: z.number().int().min(1).max(8).default(3),
 });
 export type CaptionSettings = z.infer<typeof captionsSchema>;
 

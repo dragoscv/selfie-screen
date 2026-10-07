@@ -54,7 +54,8 @@ const budgets = [
     ["studio aruco detector (lazy)", /^aruco-.*\.js$/, "apps/desktop/dist/assets", 13 * KB],
     // 0.3.0 adds the rules engine, vision log and identities: 85.1 KB measured.
     // 0.4.0: + pet director, pet voice (levels, chat awareness, moderation) and the personality store: 100.5 KB.
-    ["sidecar bundle", /^index\.js$/, "apps/sidecar/dist", 105 * KB],
+    // 0.5.2: + petPins roll, caption rows and the shared settings schema growth: 105.0 KB.
+    ["sidecar bundle", /^index\.js$/, "apps/sidecar/dist", 108 * KB],
 ];
 
 let failed = 0;

@@ -729,7 +729,11 @@
             "solid": "Plin",
             "minimal": "Minimal"
         },
-        "lines": "Rânduri pe ecran",
+        "lines": "Fraze pe ecran",
+        "rows": "Rânduri pe frază (textul mai lung derulează)",
+        "rowsValue_one": "{{count}} rând",
+        "rowsValue_few": "{{count}} rânduri",
+        "rowsValue_other": "{{count}} de rânduri",
         "size": "Mărime",
         "editHint": "În previzualizare: trage ca s-o muți, colțul sau rotița mouse-ului pentru mărime, dublu-click pentru resetare.",
         "editLabel": "Subtitrare pe live: trage ca s-o muți, colțul pentru mărime",

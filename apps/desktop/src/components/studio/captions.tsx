@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { INSTANT, SPRING, useStudio } from "./context.js";
@@ -16,8 +17,15 @@ export function Captions() {
     const { studio } = useStudio();
     const { lines, partial, state } = useCaptionSnapshot(studio.captions.lines);
     const translate = studio.captions.translate;
+    const rows = studio.captions.rows;
     const hint = state === "off" ? t("studio.captions.off") : state === "offline" ? t("studio.captions.offline") : null;
     const empty = lines.length === 0 && partial === "";
+    // The sentence being spoken shows at most `rows` rows and scrolls so the newest words stay visible.
+    const live = useRef<HTMLParagraphElement>(null);
+    useEffect(() => {
+        const el = live.current;
+        if (el) el.scrollTo({ top: el.scrollHeight, behavior: reduced ? "auto" : "smooth" });
+    }, [partial, reduced]);
 
     return (
         <motion.div
@@ -49,7 +57,12 @@ export function Captions() {
                 ))}
             </AnimatePresence>
             {partial !== "" && (
-                <motion.p layout={!reduced} className="text-[0.9375rem] font-semibold leading-snug text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">
+                <motion.p
+                    ref={live}
+                    layout={!reduced}
+                    style={{ maxHeight: `${rows * 1.375}em` }}
+                    className="overflow-y-auto text-[0.9375rem] font-semibold leading-snug text-white [scrollbar-width:none] [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]"
+                >
                     {partial}
                 </motion.p>
             )}

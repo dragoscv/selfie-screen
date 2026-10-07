@@ -22,12 +22,26 @@ describe("caption layout", () => {
         expect(clampCentre(0.1, 0.5, 1.2, 0.1).u).toBeCloseTo(0.5, 9);
     });
 
-    it("wraps long sentences to two lines and history to one", () => {
+    it("wraps the newest sentence to the chosen rows and history to one", () => {
         const long = "Salut tuturor, mulțumesc că sunteți aici în seara asta, avem multe surprize pentru voi";
-        const w = wrapCaption({ history: [long], main: long, translated: "" }, 30);
+        const w = wrapCaption({ history: [long], main: long, translated: "" }, 30, 2);
         expect(w.main.length).toBe(2);
         expect(w.history.length).toBe(1);
         expect(w.translated).toEqual([]);
+        expect(wrapCaption({ history: [], main: long, translated: "" }, 30, 6).main.join(" ")).toBe(long);
+    });
+
+    it("a sentence longer than the rows scrolls: the newest words stay, … marks the cut", () => {
+        const long = "unu doi trei patru cinci șase șapte opt nouă zece unsprezece doisprezece treisprezece paisprezece";
+        const w = wrapCaption({ history: [], main: long, translated: "" }, 16, 2);
+        expect(w.main).toHaveLength(2);
+        expect(w.main[0]?.startsWith("…")).toBe(true);
+        expect(w.main[1]?.endsWith("paisprezece")).toBe(true);
+    });
+
+    it("schema allows up to 5 sentences and 8 rows, default 3 rows", () => {
+        expect(captionsSchema.parse({}).rows).toBe(3);
+        expect(captionsSchema.parse({ lines: 5, rows: 8 })).toMatchObject({ lines: 5, rows: 8 });
     });
 
     it("a wider frame fits more characters per line, a bigger scale fewer", () => {

@@ -725,7 +725,10 @@
             "solid": "Solid",
             "minimal": "Minimal"
         },
-        "lines": "Lines on screen",
+        "lines": "Sentences on screen",
+        "rows": "Lines per sentence (longer text scrolls)",
+        "rowsValue_one": "{{count}} line",
+        "rowsValue_other": "{{count}} lines",
         "size": "Size",
         "editHint": "In the preview: drag to move, corner or mouse wheel to resize, double-click to reset.",
         "editLabel": "Live captions: drag to move, corner to resize",

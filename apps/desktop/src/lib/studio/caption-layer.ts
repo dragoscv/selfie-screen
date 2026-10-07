@@ -120,7 +120,7 @@ export class CaptionLayer {
         this.#lastNow = nowMs;
         const s = this.#settings;
         const lineH = LINE_FRAC * H * s.scale;
-        const wrapped = wrapCaption(this.#text, charsPerLine(W / H, s.scale));
+        const wrapped = wrapCaption(this.#text, charsPerLine(W / H, s.scale), s.rows);
         const empty = wrapped.main.length === 0 && wrapped.translated.length === 0 && wrapped.history.length === 0;
         const ctx = this.#ctx;
 

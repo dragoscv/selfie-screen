@@ -98,7 +98,8 @@ export function MonitorPanel() {
                         <LanguageSelect value={cap.lang} onChange={(lang) => setCap({ lang })} />
                     </Reveal>
                     <ChipSelector label={t("studio.captions.style")} options={CAPTION_STYLES} value={cap.style} onSelect={(style) => setCap({ style })} display={(v) => t(`studio.captions.styles.${v}`)} />
-                    <ChipSelector label={t("studio.captions.lines")} options={["1", "2", "3"] as const} value={String(cap.lines) as "1" | "2" | "3"} onSelect={(v) => setCap({ lines: Number(v) })} />
+                    <ChipSelector label={t("studio.captions.lines")} options={["1", "2", "3", "4", "5"] as const} value={String(cap.lines) as "1"} onSelect={(v) => setCap({ lines: Number(v) })} />
+                    <SliderRow label={t("studio.captions.rows")} value={cap.rows} min={1} max={8} step={1} format={(v) => t("studio.captions.rowsValue", { count: Math.round(v) })} onCommit={(rows) => setCap({ rows: Math.round(rows) })} />
                     {cap.output && <SliderRow label={t("studio.captions.size")} value={cap.scale} min={0.5} max={2.5} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onCommit={(scale) => setCap({ scale })} />}
                     {cap.output && <p className="text-[0.6875rem] text-white/70">{t("studio.captions.editHint")}</p>}
                 </Reveal>

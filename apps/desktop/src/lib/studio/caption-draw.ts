@@ -30,13 +30,29 @@ export function charsPerLine(frameAspect: number, scale: number): number {
     return Math.max(14, Math.min(64, Math.floor(widthPx / (em * 0.55))));
 }
 
-/** Wrap each part to at most `maxLines` lines (code-point safe, emoji kept). */
-export function wrapCaption(text: CaptionText, chars: number): { history: string[]; main: string[]; translated: string[] } {
-    const wrap = (s: string, n: number) => (s.trim() ? layoutBubble(sanitizeBubbleText(s), chars, n) : []);
+/** Every wrapped row of `s` (no limit), code-point safe, emoji kept. */
+function wrapAll(s: string, chars: number): string[] {
+    return s.trim() ? layoutBubble(sanitizeBubbleText(s), chars, 1000) : [];
+}
+
+/**
+ * The last `rows` rows of `s`: a long sentence scrolls up like a teleprompter so the newest
+ * words are always on screen (a leading … marks the part that scrolled away).
+ */
+export function tailRows(s: string, chars: number, rows: number): string[] {
+    const all = wrapAll(s, chars);
+    if (all.length <= rows) return all;
+    const out = all.slice(all.length - rows);
+    out[0] = `… ${out[0] ?? ""}`;
+    return out;
+}
+
+/** Wrap the strip: history one row each, the newest sentence and its translation as a scrolling tail. */
+export function wrapCaption(text: CaptionText, chars: number, rows = 3): { history: string[]; main: string[]; translated: string[] } {
     return {
-        history: text.history.flatMap((h) => wrap(h, 1)),
-        main: wrap(text.main, 2),
-        translated: wrap(text.translated, 2),
+        history: text.history.flatMap((h) => (h.trim() ? layoutBubble(sanitizeBubbleText(h), chars, 1) : [])),
+        main: tailRows(text.main, chars, rows),
+        translated: tailRows(text.translated, chars, rows),
     };
 }
 
