@@ -33,7 +33,7 @@ describe("ViewerMemory", () => {
     });
 
     it("migrates to the latest schema and is idempotent on reopen", () => {
-        expect(SCHEMA_VERSION).toBe(4);
+        expect(SCHEMA_VERSION).toBe(5);
         expect(memory.version).toBe(SCHEMA_VERSION);
         memory.addHighlight("moment");
         memory.close();

@@ -47,6 +47,8 @@ export interface CoHostDeps {
     now?: () => number;
     /** A live session was closed in viewer memory (post-live summary trigger). */
     onSessionEnded?: (sessionId: number) => void;
+    /** An utterance started playing (entry id, text, kind) — the pet agents' shared log. */
+    onUtterance?: (entryId: string, text: string, kind: EntryKind) => void;
 }
 
 interface CurrentSay {
@@ -116,6 +118,16 @@ export class CoHost {
         this.#s1.enabled = settings.assistant.aiReplies && settings.assistant.useSystemOne;
         if (this.#deps.memory) this.#deps.memory.persistHistory = settings.data.persistHistory;
         this.pump();
+    }
+
+    /** Something is being voiced now (co-host or a voiced pet line). */
+    get speaking(): boolean {
+        return this.#current !== null;
+    }
+
+    /** When the streamer last spoke (transcript), epoch ms; 0 = never. */
+    get lastStreamerAt(): number {
+        return this.#transcript.lastAt;
     }
 
     snapshot(): ReplyItem[] {
@@ -232,8 +244,11 @@ export class CoHost {
         return true;
     }
 
-    /** `speak` from the UI: manual announcement, bypasses the reply bucket. */
-    speak(text: string): void {
+    /**
+     * `speak` from the UI (or a pet line): manual announcement, bypasses the reply bucket.
+     * Returns the queue entry id; its utterances are `<id>:<part>`.
+     */
+    speak(text: string, voice?: string): string {
         const now = this.#now();
         const id = this.#queue.nextId();
         this.#queue.add(
@@ -244,10 +259,12 @@ export class CoHost {
                 parts: splitSentences(text),
                 streaming: false,
                 expiresAt: now + TEMPLATE_TTL_MS,
+                ...(voice ? { voice } : {}),
             },
             now,
         );
         this.pump();
+        return id;
     }
 
     skipCurrent(): void {
@@ -451,11 +468,12 @@ export class CoHost {
         this.#lastActivity = now;
         if (candidate.item.status !== "speaking") this.#queue.update(candidate.item.id, { status: "speaking" });
         this.#deps.control.setSpeaking(sayId);
+        this.#deps.onUtterance?.(candidate.item.id, text, candidate.kind);
         this.#deps.send({
             type: "say",
             id: sayId,
             text,
-            voice: settings.voice.voice,
+            voice: candidate.voice ?? settings.voice.voice,
             ...(candidate.item.eventId ? { eventId: candidate.item.eventId } : {}),
         });
     }

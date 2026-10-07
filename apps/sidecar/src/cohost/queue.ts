@@ -17,6 +17,8 @@ export interface QueueEntry {
     streaming: boolean;
     /** Unspoken items are skipped after this epoch ms. */
     expiresAt?: number;
+    /** TTS voice for this entry (a pet's own voice); absent = settings.voice.voice. */
+    voice?: string;
 }
 
 const ACTIVE: ReadonlySet<ReplyStatus> = new Set(["pending", "drafting", "ready", "speaking"]);

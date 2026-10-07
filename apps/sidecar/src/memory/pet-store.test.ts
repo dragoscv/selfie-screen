@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ViewerMemory } from "./db.js";
-import { bioFor, capMemories, DRIFT_PER_SESSION, MAX_MEMORIES, PetStore, SESSION_MS, SPECIES_TRAITS } from "./pet-store.js";
+import { bioFor, capMemories, DRIFT_PER_SESSION, MAX_MEMORIES, MAX_TURNS_PER_PET, PetStore, SESSION_MS, SPECIES_TRAITS } from "./pet-store.js";
 
 describe("PetStore", () => {
     let memory: ViewerMemory;
@@ -14,6 +14,20 @@ describe("PetStore", () => {
         store = new PetStore(memory.raw, () => now);
     });
     afterEach(() => memory.close());
+
+    it("keeps each pet's agent turns as a resumable session, pruned and erased on reset", () => {
+        for (let i = 0; i < MAX_TURNS_PER_PET + 5; i++) store.addTurn("fox", { at: 1000 + i, cue: `cue ${i}`, said: i % 2 ? `line ${i}` : "" });
+        store.addTurn("cat", { at: 5000, cue: "x", said: "meow" });
+        const last = store.turns("fox", 3);
+        expect(last.map((t) => t.cue)).toEqual([`cue ${MAX_TURNS_PER_PET + 2}`, `cue ${MAX_TURNS_PER_PET + 3}`, `cue ${MAX_TURNS_PER_PET + 4}`]);
+        expect(store.turns("fox", 1000)).toHaveLength(MAX_TURNS_PER_PET);
+        expect(store.turns("fox", 1000, 1000 + MAX_TURNS_PER_PET)).toHaveLength(5);
+        store.reset("fox");
+        expect(store.turns("fox", 10)).toEqual([]);
+        expect(store.turns("cat", 10)).toHaveLength(1);
+        store.reset("all");
+        expect(store.turns("cat", 10)).toEqual([]);
+    });
 
     it("creates species defaults with a code-written bio", () => {
         const parrot = store.ensure("parrot");

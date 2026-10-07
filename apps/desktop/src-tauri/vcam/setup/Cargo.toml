@@ -1,6 +1,6 @@
 [package]
 name = "tiksee-vcam-setup"
-version = "0.4.0"
+version = "0.5.0"
 description = "TikSee Camera: elevated install / uninstall / status helper"
 authors = ["Dragos Catalin Vladulescu"]
 edition = "2024"

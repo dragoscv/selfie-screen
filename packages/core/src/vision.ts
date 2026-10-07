@@ -565,7 +565,7 @@ export const petTraitsSchema = z.object({
 });
 export type PetTraits = z.infer<typeof petTraitsSchema>;
 
-/** One remembered moment (importance 0..1); the newest/most important feed the pet prompt. */
+/** One remembered moment (importance 0..1); the newest/most important feed the pet agent. */
 export const petMemorySchema = z.object({
     at: z.number().int(),
     text: z.string().min(1).max(160),
@@ -579,7 +579,7 @@ export const petPersonalitySchema = z.object({
     traits: petTraitsSchema,
     /** Learned action preferences: multiplier per action (0.6..1.6), drift from what it enjoys. */
     likes: z.record(z.string(), z.number().min(0.6).max(1.6)),
-    /** Short self-description the LLM keeps consistent (written by code from traits + memories). */
+    /** Short self-description the agent keeps consistent (written by code from traits, never by the LLM). */
     bio: z.string().max(240),
     memories: z.array(petMemorySchema).max(40),
     sessions: z.number().int().min(0),
@@ -604,7 +604,10 @@ export const petSaySchema = z.object({
     emotion: z.enum(PET_EMOTIONS).default("neutral"),
     /** Bubble time on screen; the studio caps it from the text length. */
     ttlMs: z.number().int().min(1500).max(9000),
-    /** Id of the matching TTS utterance when voiced (lip-sync only this pet). */
+    /**
+     * When voiced: the co-host queue entry id of this line. Its utterances arrive as `say` /
+     * `speech` with id `<sayId>:<part>`; the studio lip-syncs only this pet for them.
+     */
     sayId: z.string().optional(),
 });
 export type PetSay = z.infer<typeof petSaySchema>;
@@ -647,6 +650,8 @@ export const visionClientMessages = [
         /** Recent owner/interaction observations since the last petState. */
         observations: z.array(petObservationSchema).max(20).default([]),
     }),
+    /** A pet's mind chose to talk (sent at once, not on the 5 s petState tick). */
+    z.object({ type: z.literal("petTalk"), pet: z.string().min(1).max(32) }),
     /** Ask for the stored personalities (answer: `petPersonalities`). */
     z.object({ type: z.literal("petPersonalityList") }),
     /** Forget one pet's personality and memories (or every pet with "all"). */

@@ -10,8 +10,19 @@ import type { Db } from "./sqlite.js";
  *
  * Traits drift from experience here, deterministically and slowly: at most
  * `DRIFT_PER_SESSION` per trait per session (a session = this process's
- * lifetime, or 4 h of it). The LLM never writes traits, bios or memories.
+ * lifetime, or 4 h of it). The LLM never writes traits or bios; since Q54 a pet's
+ * agent may add memories (validated and moderated by the caller), and each pet's
+ * own turns (`pet_turns`) are its resumable session.
  */
+
+export interface PetTurn {
+    at: number;
+    cue: string;
+    said: string;
+}
+
+/** Turns kept per pet on disk (older ones are pruned). */
+export const MAX_TURNS_PER_PET = 200;
 
 export const MAX_MEMORIES = 40;
 export const DRIFT_PER_SESSION = 0.02;
@@ -173,10 +184,30 @@ export class PetStore {
     reset(pet: string): number {
         if (pet === "all") {
             this.#sessions.clear();
+            this.#db.prepare("DELETE FROM pet_turns").run();
             return Number(this.#db.prepare("DELETE FROM pet_personality").run().changes);
         }
         this.#sessions.delete(pet);
+        this.#db.prepare("DELETE FROM pet_turns WHERE pet = ?").run(pet);
         return Number(this.#db.prepare("DELETE FROM pet_personality WHERE pet = ?").run(pet).changes);
+    }
+
+    /** Append one agent turn (cue -> line; "" = it chose silence) and prune old ones. */
+    addTurn(pet: string, turn: PetTurn): void {
+        this.#db.prepare("INSERT INTO pet_turns (pet, at, cue, said) VALUES (?, ?, ?, ?)").run(pet, Math.round(turn.at), turn.cue.slice(0, 300), turn.said.slice(0, 200));
+        this.#db
+            .prepare("DELETE FROM pet_turns WHERE pet = ? AND id NOT IN (SELECT id FROM pet_turns WHERE pet = ? ORDER BY at DESC, id DESC LIMIT ?)")
+            .run(pet, pet, MAX_TURNS_PER_PET);
+    }
+
+    /** The pet's newest turns, oldest first (optionally only since `sinceAt`). */
+    turns(pet: string, limit: number, sinceAt = 0): PetTurn[] {
+        const rows = this.#db
+            .prepare("SELECT at, cue, said FROM pet_turns WHERE pet = ? AND at >= ? ORDER BY at DESC, id DESC LIMIT ?")
+            .all(pet, sinceAt, limit) as Row[];
+        return rows
+            .map((r) => ({ at: Number(r.at), cue: String(r.cue), said: String(r.said) }))
+            .reverse();
     }
 
     /** The stored personality, or a fresh species default (persisted). */

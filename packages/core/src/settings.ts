@@ -496,11 +496,13 @@ export const studioSchema = z.object({
         })
         .prefault({}),
     /**
-     * Pet AI (decision Q53). `level`: off = pets stay on their perch; local = utility AI only
-     * (no LLM, no cost); reactive = LLM lines + nudges on big events (gift/follow/mention);
-     * chatty = + occasional comments on what the owner does and the chat; director = + the LLM
-     * may move pets in 3D (anchor / clip commands, validated). `chat`: how much of the live chat
-     * the pet LLM sees (always moderated, always data never instructions).
+     * Pet AI (decisions Q53, Q54). Each pet is its own continuous agent (persona, memories,
+     * session history) reading one shared stream log; deterministic floor control picks who
+     * speaks. `level`: off = pets stay on their perch; local = utility AI only (no LLM, no
+     * cost); reactive = a pet speaks only when something matters to it (gift, follow, its
+     * name, being handled); chatty = + comments on the chat, the streamer and each other;
+     * director = + the agent may move its pet in 3D (anchor / clip, validated). `chat`: how
+     * much of the live chat the agents see (always moderated, always data never instructions).
      */
     petAi: z
         .object({
@@ -510,6 +512,10 @@ export const studioSchema = z.object({
             bubbles: z.boolean().default(true),
             /** Also speak pet lines with TTS (through the co-host queue; never in Shop mode). */
             voice: z.boolean().default(false),
+            /** TTS voice per pet id (absent = the co-host voice). */
+            voices: z.record(z.string(), z.enum(VOICES)).default({}),
+            /** After a stream each pet reflects on it and keeps up to 3 memories (one call per pet). */
+            reflection: z.boolean().default(true),
             /** Cap on LLM calls per hour for pets (cost guard). */
             maxCallsPerHour: z.number().int().min(10).max(1200).default(240),
         })

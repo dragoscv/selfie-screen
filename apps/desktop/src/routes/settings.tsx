@@ -1443,6 +1443,33 @@ function StudioSection() {
                     onChange={(voice) => update("studio", { petAi: { ...s.petAi, voice } })}
                     tint="var(--kind-like)"
                 />
+                <Reveal show={s.petAi.voice}>
+                    {[s.leftPet, s.rightPet]
+                        .filter((pet, i, all) => pet !== "none" && all.indexOf(pet) === i)
+                        .map((pet) => (
+                            <ChipSelector
+                                key={pet}
+                                label={t("studio.controls.ai.petVoice", { name: t(`settings.studio.pets.${pet}`) })}
+                                options={["default", ...VOICES] as const}
+                                value={s.petAi.voices[pet] ?? "default"}
+                                onSelect={(v) => {
+                                    const voices = Object.fromEntries(Object.entries(s.petAi.voices).filter(([k]) => k !== pet));
+                                    update("studio", { petAi: { ...s.petAi, voices: v === "default" ? voices : { ...voices, [pet]: v } } });
+                                }}
+                                display={(v) => (v === "default" ? t("studio.controls.ai.petVoiceDefault") : t(`settings.voice.voices.${v}`))}
+                                tint="var(--kind-like)"
+                                disabled={s.petAi.level === "off" || s.petAi.level === "local"}
+                            />
+                        ))}
+                </Reveal>
+                <SwitchRow
+                    label={t("studio.controls.ai.reflection")}
+                    description={t("studio.controls.ai.reflectionHint")}
+                    checked={s.petAi.reflection}
+                    disabled={s.petAi.level === "off" || s.petAi.level === "local"}
+                    onChange={(reflection) => update("studio", { petAi: { ...s.petAi, reflection } })}
+                    tint="var(--kind-like)"
+                />
                 <Reveal show={s.petAi.level === "reactive" || s.petAi.level === "chatty" || s.petAi.level === "director"}>
                     <ChipSelector
                         label={t("settings.studio.petNudgeEvery")}

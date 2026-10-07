@@ -200,9 +200,9 @@
             "levelHint": {
                 "off": "Pets stay on their perch and only play their idle animations.",
                 "local": "Pets decide on this PC from their needs and mood. No language model.",
-                "reactive": "Pets say short lines and react with the AI model on gifts, follows and mentions.",
-                "chatty": "Like Reactive, plus occasional comments on what you do and on the chat.",
-                "director": "Like Chatty, and the AI may also move the pets around you in 3D."
+                "reactive": "Each pet is its own AI agent with its own memory and speaks when something matters to it: gifts, follows, its name, being picked up.",
+                "chatty": "Like Reactive, and the pets also comment on the chat, on what you say and on each other.",
+                "director": "Like Chatty, and each agent may also move its pet around you in 3D."
             },
             "cost": "~{{n}} AI calls/hour max",
             "noCost": "No AI cost",
@@ -223,7 +223,11 @@
             "needsLlm": "Needs the Reactive level or higher.",
             "bubbles": "Speech bubbles",
             "voice": "Speak pet lines",
-            "voiceHint": "Uses the co-host voice queue; never in Shop mode.",
+            "voiceHint": "Each pet can have its own voice. Never over you or the co-host; never in Shop mode.",
+            "petVoice": "{{name}} voice",
+            "petVoiceDefault": "Co-host voice",
+            "reflection": "Reflect after the stream",
+            "reflectionHint": "When the stream ends, each pet looks back on it and updates its memory.",
             "handsTitle": "Hands",
             "hands": "Hand interaction",
             "handsHint": "Pinch to grab and drag a pet; pinch with the other hand too to resize it.",

@@ -98,6 +98,16 @@ const MIGRATIONS: readonly string[] = [
         json TEXT NOT NULL,
         updated_at INTEGER NOT NULL
     );`,
+    // 5 — pet agent sessions (Q54): each pet's own turns (cue -> line), so an agent resumes
+    // its conversation after a restart and reflects on the stream afterwards.
+    `CREATE TABLE pet_turns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pet TEXT NOT NULL,
+        at INTEGER NOT NULL,
+        cue TEXT NOT NULL,
+        said TEXT NOT NULL
+    );
+    CREATE INDEX pet_turns_pet_at ON pet_turns(pet, at);`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

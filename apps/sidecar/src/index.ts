@@ -21,8 +21,6 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import { CodaiClient } from "./codai/client.js";
 import { CoHost } from "./cohost/engine.js";
-import { PetDirector } from "./cohost/pet-director.js";
-import { PetVoice } from "./cohost/pet-voice.js";
 import { EffectsController } from "./effects/controller.js";
 import { VmuiClient } from "./effects/vmui.js";
 import { GameManager } from "./games/manager.js";
@@ -34,6 +32,7 @@ import { LiveControl } from "./live-control.js";
 import { logger } from "./logger.js";
 import { ViewerMemory } from "./memory/db.js";
 import { PetStore } from "./memory/pet-store.js";
+import { PetAgents } from "./pets/agents.js";
 import { ObsController } from "./obs.js";
 import { OverlayServer } from "./overlay/server.js";
 import { PanelService } from "./panel/service.js";
@@ -92,6 +91,7 @@ type VisionClientMessage = Extract<
             | "visionLogClear"
             | "ruleTest"
             | "petState"
+            | "petTalk"
             | "petPersonalityList"
             | "petPersonalityReset";
     }
@@ -136,8 +136,7 @@ class Sidecar {
     #translator: Translator;
     #summaries: SummaryService;
     #rules: RulesEngine;
-    #petDirector: PetDirector;
-    #petVoice: PetVoice;
+    #petAgents: PetAgents;
     #petStore: PetStore | null = null;
     #petPersonalityTimer: ReturnType<typeof setTimeout> | null = null;
     #lastPetIds: string[] = [];
@@ -187,6 +186,7 @@ class Sidecar {
             memory: this.#memory,
             log: logger.scoped("[cohost]"),
             onSessionEnded: (sessionId) => this.#pushSummary(sessionId, true),
+            onUtterance: (entryId, text, kind) => this.#petAgents.onUtterance(entryId, text, kind),
         });
 
         this.#summaries = new SummaryService(this.#memory);
@@ -243,32 +243,20 @@ class Sidecar {
         });
         this.#applyVisionSettings(null);
 
-        this.#petDirector = new PetDirector({
-            client: this.#codai,
-            model: () => this.#settings.codai.replyModel,
-            settings: () => ({
-                level: this.#settings.studio.enabled ? this.#settings.studio.petAi.level : "off",
-                everySec: this.#settings.studio.petDirector.everySec,
-            }),
-            quiet: () => this.#petsQuiet(),
-            emit: (bias) => this.#broadcast({ type: "petBias", ...bias }),
-            log: logger.scoped("[pets]"),
-        });
-
-        this.#petVoice = new PetVoice({
+        this.#petAgents = new PetAgents({
             client: this.#codai,
             model: () => this.#settings.codai.replyModel,
             settings: () => this.#settings,
             quiet: () => this.#petsQuiet(),
             shopMode: () => this.#control.state.shopMode,
+            speaking: () => this.#cohost.speaking,
+            lastStreamerAt: () => this.#cohost.lastStreamerAt,
             emitSay: (say) => this.#broadcast({ type: "petSay", ...say }),
             emitCommand: (command) => this.#broadcast({ type: "petCommand", ...command }),
             // Same path as the UI `speak` message: queued behind the co-host, through the speaking gate.
-            speak: (text) => {
-                this.#cohost.speak(text);
-                return undefined;
-            },
+            speak: (text, voice) => this.#cohost.speak(text, voice),
             store: this.#petStore,
+            viewerFacts: (uniqueId) => this.#memory?.facts(uniqueId) ?? [],
             onPersonalityChanged: () => this.#schedulePetPersonalities(),
             log: logger.scoped("[pets]"),
         });
@@ -280,6 +268,7 @@ class Sidecar {
                 this.#broadcast({ type: "status", status });
                 this.#cohost.onStatus(status.streamId, status.username, status.state, stats ?? this.#streams.stats(status.streamId));
                 this.#autoRecord(status.username, status.state);
+                this.#petAgents.onStreamState(this.#streams.statuses().some((s) => s.state === "live"));
                 if (status.state === "error" && status.error) {
                     this.#broadcast({ type: "error", message: status.error, fatal: false });
                 }
@@ -301,8 +290,7 @@ class Sidecar {
             this.#games.onEvent(event);
             if (event.kind === "gift") this.#lastGift = { diamonds: eventDiamonds(event), at: event.at };
             this.#rules.onChat(event);
-            this.#petDirector.onEvent(event);
-            this.#petVoice.onEvent(event);
+            this.#petAgents.onEvent(event);
             if (event.kind === "chat") this.#translator.offer({ eventId: event.id, text: event.text });
         });
 
@@ -319,8 +307,7 @@ class Sidecar {
             log.warn(`identity seed failed: ${describeError(error)}`);
         }
         this.#cohost.start();
-        this.#petDirector.start();
-        this.#petVoice.start();
+        this.#petAgents.start();
         await this.#configureTrigger();
 
         if (OverlayServer.wanted(this.#settings)) {
@@ -507,6 +494,7 @@ class Sidecar {
                 case "visionLogClear":
                 case "ruleTest":
                 case "petState":
+                case "petTalk":
                 case "petPersonalityList":
                 case "petPersonalityReset":
                     await this.#handleVision(socket, message);
@@ -541,6 +529,7 @@ class Sidecar {
                 break;
             case "transcript":
                 this.#cohost.onTranscript(message.itemId, message.text, message.final, message.at);
+                if (this.#settings.assistant.transcribe) this.#petAgents.onTranscript(message.itemId, message.text, message.final, message.at);
                 break;
             case "sayState":
                 this.#cohost.onSayState(message.id, message.state, message.error);
@@ -614,9 +603,11 @@ class Sidecar {
                 this.#rules.onArm(message.armed);
                 break;
             case "petState":
-                this.#petDirector.onPetState(message.pets);
-                this.#petVoice.onPetState(message.pets, message.observations);
+                this.#petAgents.onPetState(message.pets, message.observations);
                 this.#lastPetIds = message.pets.map((p) => p.pet);
+                break;
+            case "petTalk":
+                this.#petAgents.onPetTalk(message.pet);
                 break;
             case "petPersonalityList":
                 this.#send(socket, { type: "petPersonalities", pets: this.#petPersonalities() });
@@ -732,7 +723,9 @@ class Sidecar {
         return {
             control: (action) => this.#applyControl(action),
             // Same path as the UI `speak`: the speaking gate still refuses while muted or in Shop LIVE.
-            speak: (text) => this.#cohost.speak(text),
+            speak: (text) => {
+                this.#cohost.speak(text);
+            },
             vmuiFlash: async (color) => {
                 if (!this.#settings.effects.enabled) return;
                 await this.#effects.test("flash", color);
@@ -962,8 +955,7 @@ class Sidecar {
         this.#games.dispose();
         this.#translator.dispose();
         this.#rules.dispose();
-        this.#petDirector.dispose();
-        this.#petVoice.dispose();
+        this.#petAgents.dispose();
         if (this.#petPersonalityTimer) clearTimeout(this.#petPersonalityTimer);
         this.#petPersonalityTimer = null;
         if (this.#snapshotTimer) clearTimeout(this.#snapshotTimer);

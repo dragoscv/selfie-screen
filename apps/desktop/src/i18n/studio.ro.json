@@ -201,9 +201,9 @@
             "levelHint": {
                 "off": "Animăluțele stau pe loc și rulează doar animațiile de repaus.",
                 "local": "Animăluțele decid pe acest PC, după nevoi și dispoziție. Fără model de limbaj.",
-                "reactive": "Animăluțele spun replici scurte și reacționează prin AI la cadouri, urmăriri și mențiuni.",
-                "chatty": "Ca Reactiv, plus comentarii ocazionale despre ce faci tu și despre chat.",
-                "director": "Ca Vorbăreț, iar AI-ul poate muta animăluțele în jurul tău, în 3D."
+                "reactive": "Fiecare animăluț e un agent AI separat, cu memoria lui, și vorbește când ceva contează pentru el: cadouri, urmăriri, numele lui, când e luat în mână.",
+                "chatty": "Ca Reactiv, iar animăluțele comentează și chatul, ce spui tu și unul despre celălalt.",
+                "director": "Ca Vorbăreț, iar fiecare agent își poate muta și animăluțul în jurul tău, în 3D."
             },
             "cost": "max. ~{{n}} apeluri AI/oră",
             "noCost": "Fără cost AI",
@@ -224,7 +224,11 @@
             "needsLlm": "Necesită nivelul Reactiv sau mai sus.",
             "bubbles": "Baloane de text",
             "voice": "Rostește replicile",
-            "voiceHint": "Folosește coada de voce a co-hostului; niciodată în modul Shop.",
+            "voiceHint": "Fiecare animăluț poate avea vocea lui. Niciodată peste tine sau peste co-host; niciodată în modul Shop.",
+            "petVoice": "Vocea: {{name}}",
+            "petVoiceDefault": "Vocea co-hostului",
+            "reflection": "Reflecție după live",
+            "reflectionHint": "La finalul liveului, fiecare animăluț se gândește la ce s-a întâmplat și își actualizează memoria.",
             "handsTitle": "Mâini",
             "hands": "Interacțiune cu mâinile",
             "handsHint": "Prinde cu degetele (pinch) ca să apuci și să muți un animăluț; prinde și cu cealaltă mână ca să-l redimensionezi.",

@@ -736,10 +736,17 @@ export class StudioEngine implements StudioController {
 
     /** A pet line from the sidecar: speech bubble in the output (if enabled). */
     petSay(m: PetSay): void {
+        if (m.sayId) {
+            this.#petSays.set(m.sayId, m.pet);
+            if (this.#petSays.size > 20) this.#petSays.delete(this.#petSays.keys().next().value!);
+        }
         const ai = this.#settings.petAi;
         if (ai.level === "off" || ai.level === "local" || !ai.bubbles) return;
         this.#stage?.say(m.pet, m.text, { emotion: m.emotion, ttlMs: m.ttlMs });
     }
+
+    /** Voiced pet lines: co-host queue id -> pet, so their `speech` moves only that pet's mouth. */
+    readonly #petSays = new Map<string, string>();
 
     /** Director-level 3D command (validated by the sidecar, re-checked here). */
     petCommand(m: PetCommand): void {
@@ -804,7 +811,12 @@ export class StudioEngine implements StudioController {
         if (e) this.#stage?.send(e);
     }
 
-    speak(visemes: readonly VisemeEvent[]): void {
+    speak(visemes: readonly VisemeEvent[], id?: string): void {
+        const pet = id ? this.#petSays.get(id.slice(0, id.indexOf(":"))) : undefined;
+        if (pet) {
+            this.#stage?.speakPet(pet, visemes);
+            return;
+        }
         this.#stage?.speak(visemes);
         // The co-host is speaking for the length of the utterance: pets turn to listen.
         const last = visemes.at(-1);

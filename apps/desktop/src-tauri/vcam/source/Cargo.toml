@@ -1,6 +1,6 @@
 [package]
 name = "tiksee-vcam-source"
-version = "0.4.0"
+version = "0.5.0"
 description = "TikSee Camera: Frame Server custom media source (tiksee_vcam.dll)"
 authors = ["Dragos Catalin Vladulescu"]
 edition = "2024"

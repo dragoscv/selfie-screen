@@ -4,6 +4,22 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-07
+
+### Added
+- **Pets are AI characters now**: every pet is its own continuous AI agent with its own memory and conversation. They all follow the same stream (chat, what you say, what the co-host says and what the other pets say), answer each other and the viewers by name, and remember what they said a minute ago and in earlier streams. No ready-made phrases: when a pet has nothing fresh to say, it stays quiet.
+- **Fair turn-taking**: TikSee decides who talks, so pets never talk over you, the co-host or each other, the most concerned pet speaks first (its name in the chat, being picked up, a big gift), a busy chat makes them quieter, and two pets never get stuck chatting only with each other.
+- **Pets remember**: a pet can keep something worth remembering (a viewer who always cheers, a running joke), and after each stream every pet that took part looks back and keeps up to three memories. Settings → Studio → Pet brain → Reflect after the stream.
+- **A voice for each pet**: with "Speak pet lines" on, choose Alina, Emil or the co-host voice per pet; only the pet that talks moves its mouth.
+
+### Changed
+- Pets react to your speech and to being handled within about a second (they used to wait up to 5 seconds).
+
+### Fixed
+- The 🤟 gesture now really makes the pets dance (their own mood no longer cancels the dance after a moment).
+- Speech bubbles near the edge of the frame slide inside it at full size, with the tail still pointing at the pet, instead of shrinking.
+- The thresholds learned in Hands & gestures calibration are now actually used for fist, point, thumb up and victory.
+
 ## [0.4.0] — 2026-10-06
 
 ### Added

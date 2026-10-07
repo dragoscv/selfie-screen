@@ -216,11 +216,15 @@ function Studio() {
             const level = studioRef.current?.petAi.level ?? "off";
             if (!engine || !sidecarClient.connected || level === "off" || level === "local") return;
             const observations = engine.drainObservations();
-            // A pet that chose "chatter" is reported now even between ticks (petsWantingToTalk consumes it).
-            const talk = engine.petsWantingToTalk();
-            const pets = engine.petSummary().map((p) => (talk.includes(p.pet) ? { ...p, action: "chatter" as const } : p));
-            sidecarClient.send({ type: "petState", pets, observations });
+            sidecarClient.send({ type: "petState", pets: engine.petSummary(), observations });
         }, PET_STATE_MS);
+        // A pet's mind chose to talk: tell the sidecar now, not on the next petState tick.
+        const petTalkTimer = window.setInterval(() => {
+            const engine = engineRef.current;
+            const level = studioRef.current?.petAi.level ?? "off";
+            if (!engine || !sidecarClient.connected || level === "off" || level === "local") return;
+            for (const pet of engine.petsWantingToTalk()) sidecarClient.send({ type: "petTalk", pet });
+        }, 1000);
         const offState = sidecarClient.onStateChange((connected) => {
             if (connected) {
                 sidecarClient.send({ type: "identityList" });
@@ -245,7 +249,7 @@ function Studio() {
             const engine = engineRef.current;
             if (!engine) return;
             if (m.type === "events") for (const ev of m.events) engine.onChat(ev);
-            else if (m.type === "speech") engine.speak(m.visemes);
+            else if (m.type === "speech") engine.speak(m.visemes, m.id);
             else if (m.type === "liveControl") {
                 engine.setHidden(m.state.petsHidden);
                 setPetsHidden(m.state.petsHidden);
@@ -308,6 +312,7 @@ function Studio() {
             offEngine.forEach((stop) => stop());
             window.clearInterval(snapshotTimer);
             window.clearInterval(petStateTimer);
+            window.clearInterval(petTalkTimer);
             window.clearTimeout(flushTimer);
             flushSignals();
             unlisten.forEach((stop) => stop());
