@@ -285,15 +285,16 @@ export class ArLayer {
             p.root.position.set(wx, wy + anim.dy * o.size, wz);
             const roll = (o.rotation * Math.PI) / 180;
             const yaw = ((o.yaw ?? 0) * Math.PI) / 180;
+            const tilt = ((o.pitch ?? 0) * Math.PI) / 180;
             if (o.kind === "model") {
                 // glTF model: Y up, facing +Z (towards the camera), feet at the origin.
                 const s = sizeM / Math.max(p.height, 1e-6);
                 p.root.scale.set(s, s, s);
-                p.root.rotation.set(0, anim.rot + yaw, roll);
+                p.root.rotation.set(tilt, anim.rot + yaw, roll, "YXZ");
             } else {
                     // Billboard: parallel to the image plane (the camera's pitch), then roll on screen.
                 p.root.scale.set(sizeM * p.aspect, sizeM, 1);
-                    p.root.rotation.set((-(pin.tiltDeg ?? 0) * Math.PI) / 180, yaw, roll + anim.rot, "YXZ");
+                    p.root.rotation.set((-(pin.tiltDeg ?? 0) * Math.PI) / 180 + tilt, yaw, roll + anim.rot, "YXZ");
             }
             // Depth test handles correctness; this only sorts transparent draws.
             p.root.renderOrder = 100 - o.z * 10;

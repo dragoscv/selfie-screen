@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { Z_MAX, Z_MIN, gizmoDrag, wrapDeg, type GizmoStart } from "./scene-gizmo-math.js";
 
-const S: GizmoStart = { x: 0.5, y: 0.5, z: 1.5, size: 0.3, yaw: 0, roll: 0, sizeMin: 0.02, sizeMax: 3, px: 100, py: 100, cx: 100, cy: 100, dist: 50 };
+const S: GizmoStart = { x: 0.5, y: 0.5, z: 1.5, size: 0.3, yaw: 0, pitch: 0, pitchMax: 90, roll: 0, sizeMin: 0.02, sizeMax: 3, px: 100, py: 100, cx: 100, cy: 100, dist: 50 };
 const W = 400;
 const H = 800;
 
@@ -35,10 +35,21 @@ describe("in-view gizmo drag", () => {
 
     it("the ring turns yaw (wrapped) or, with Shift on AR objects, roll", () => {
         expect(gizmoDrag({ ...S, mode: "rotate" }, 250, 100, W, H).yaw).toBe(90);
+        // The other way too: drag left = negative yaw, and it wraps through -180.
+        expect(gizmoDrag({ ...S, mode: "rotate" }, -50, 100, W, H).yaw).toBe(-90);
+        expect(gizmoDrag({ ...S, mode: "rotate", yaw: -170 }, 50, 100, W, H).yaw).toBe(160);
         expect(gizmoDrag({ ...S, mode: "rotate", yaw: 170 }, 150, 100, W, H).yaw).toBe(-160);
         const roll = gizmoDrag({ ...S, mode: "rotate" }, 150, 100, W, H, true);
         expect(roll.roll).toBe(30);
         expect(roll.yaw).toBe(0);
+    });
+
+    it("dragging the ring up / down tilts (pitch) both ways, within the object's limit", () => {
+        expect(gizmoDrag({ ...S, mode: "rotate" }, 100, 150, W, H).pitch).toBe(30);
+        expect(gizmoDrag({ ...S, mode: "rotate" }, 100, 50, W, H).pitch).toBe(-30);
+        expect(gizmoDrag({ ...S, mode: "rotate", pitchMax: 60 }, 100, 1000, W, H).pitch).toBe(60);
+        // Diagonal: both axes at once (orbit feel).
+        expect(gizmoDrag({ ...S, mode: "rotate" }, 150, 150, W, H)).toMatchObject({ yaw: 30, pitch: 30 });
     });
 
     it("wrapDeg keeps angles in [-180, 180]", () => {

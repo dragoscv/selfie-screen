@@ -487,6 +487,8 @@ export const arObjectSchema = z.object({
     rotation: z.number().min(-180).max(180).default(0),
     /** Turn around the vertical axis, degrees (0 = facing the camera); roll is `rotation`. */
     yaw: z.number().min(-180).max(180).default(0),
+    /** Tilt forward / back, degrees (+ = top towards the camera). */
+    pitch: z.number().min(-90).max(90).default(0),
     /** Turn slowly / bob for life. */
     animate: z.enum(["none", "spin", "bob", "pulse"]).default("bob"),
     /** Pin to a body anchor instead of the world. */
@@ -619,7 +621,16 @@ export const studioSchema = z.object({
      * A pinned pet stays there (still animates, talks, can be grabbed) until released.
      */
     petPins: z
-        .record(z.string(), z.object({ x: z.number().min(-0.5).max(1.5), y: z.number().min(-0.5).max(1.5), z: z.number().min(0.3).max(6), yaw: z.number().min(-180).max(180).default(0) }))
+        .record(
+            z.string(),
+            z.object({
+                x: z.number().min(-0.5).max(1.5),
+                y: z.number().min(-0.5).max(1.5),
+                z: z.number().min(0.3).max(6),
+                yaw: z.number().min(-180).max(180).default(0),
+                pitch: z.number().min(-60).max(60).default(0),
+            }),
+        )
         .default({}),
     /** Rolling clip buffer (WS28-07). */
     clips: clipsSchema.prefault({}),

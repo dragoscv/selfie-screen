@@ -190,7 +190,7 @@ export function ArEditor({ onClose }: { onClose: () => void }) {
         setSelected(id);
         setPicker(false);
     };
-    const base = (name: string): Omit<Draft, "kind" | "content"> => ({ name, visible: true, x: 0.5, y: 0.45, z: 1.5, size: 0.3, rotation: 0, yaw: 0, animate: "bob", anchor: "world" });
+    const base = (name: string): Omit<Draft, "kind" | "content"> => ({ name, visible: true, x: 0.5, y: 0.45, z: 1.5, size: 0.3, rotation: 0, yaw: 0, pitch: 0, animate: "bob", anchor: "world" });
 
     const onFile = async (file: File | undefined) => {
         if (!file) return;
@@ -523,6 +523,7 @@ function Properties({ o, onChange }: { o: ArObject; onChange: (p: Partial<ArObje
             <SliderRow label={t("studio.ar.size")} value={o.size} min={0.02} max={3} step={0.01} format={(v) => `${v.toFixed(2)} m`} onCommit={(size) => onChange({ size })} />
             <SliderRow label={t("studio.ar.rotation")} value={o.rotation} min={-180} max={180} step={1} format={(v) => `${Math.round(v)}°`} onCommit={(rotation) => onChange({ rotation: Math.round(rotation) })} />
             <SliderRow label={t("studio.ar.yaw")} value={o.yaw} min={-180} max={180} step={1} format={(v) => `${Math.round(v)}°`} onCommit={(yaw) => onChange({ yaw: Math.round(yaw) })} />
+            <SliderRow label={t("studio.ar.pitch")} value={o.pitch} min={-90} max={90} step={1} format={(v) => `${Math.round(v)}°`} onCommit={(pitch) => onChange({ pitch: Math.round(pitch) })} />
             <Select label={t("studio.ar.animate")} value={o.animate} options={ANIMATIONS} display={(v) => t(`studio.ar.animations.${v}`)} onChange={(animate) => onChange({ animate })} />
             <Select label={t("studio.ar.anchor")} value={o.anchor} options={ANCHORS} display={(v) => t(`studio.ar.anchors.${v}`)} onChange={(anchor) => onChange({ anchor })} />
         </section>

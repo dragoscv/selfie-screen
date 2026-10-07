@@ -9,7 +9,10 @@ export interface GizmoStart {
     z: number;
     size: number;
     yaw: number;
+    pitch: number;
     roll: number;
+    /** Pitch limit for this object (AR 90°, pets 60°). */
+    pitchMax: number;
     sizeMin: number;
     sizeMax: number;
     /** Pointer and object centre at drag start (shell px), and pointer->centre distance. */
@@ -26,6 +29,7 @@ export interface GizmoResult {
     z: number;
     size: number;
     yaw: number;
+    pitch: number;
     roll: number;
 }
 
@@ -43,13 +47,17 @@ export const PET_SCALE_MAX = 2.5;
 
 /** Editable state of a scene object (AR: its settings; pet: its pin, else where it is now). */
 export function startOf(
-    s: { arObjects: readonly { id: string; x: number; y: number; z: number; size: number; yaw: number; rotation: number }[]; petPins: Readonly<Record<string, { x: number; y: number; z: number; yaw: number }>>; petHands: { scale: Readonly<Record<string, number>> } },
+    s: {
+        arObjects: readonly { id: string; x: number; y: number; z: number; size: number; yaw: number; pitch: number; rotation: number }[];
+        petPins: Readonly<Record<string, { x: number; y: number; z: number; yaw: number; pitch: number }>>;
+        petHands: { scale: Readonly<Record<string, number>> };
+    },
     o: { kind: "ar" | "pet"; id: string; box: { x: number; y: number; w: number; h: number }; z: number },
 ): GizmoStart | null {
     if (o.kind === "ar") {
         const a = s.arObjects.find((x) => x.id === o.id);
         if (!a) return null;
-        return { x: a.x, y: a.y, z: a.z, size: a.size, yaw: a.yaw, roll: a.rotation, sizeMin: 0.02, sizeMax: 3 };
+        return { x: a.x, y: a.y, z: a.z, size: a.size, yaw: a.yaw, pitch: a.pitch, pitchMax: 90, roll: a.rotation, sizeMin: 0.02, sizeMax: 3 };
     }
     const pin = s.petPins[o.id];
     return {
@@ -58,6 +66,8 @@ export function startOf(
         z: pin?.z ?? o.z,
         size: s.petHands.scale[o.id] ?? 1,
         yaw: pin?.yaw ?? 0,
+        pitch: pin?.pitch ?? 0,
+        pitchMax: 60,
         roll: 0,
         sizeMin: PET_SCALE_MIN,
         sizeMax: PET_SCALE_MAX,
@@ -79,7 +89,7 @@ export function wrapDeg(d: number): number {
 export function gizmoDrag(s: GizmoStart & { mode: GizmoMode }, px: number, py: number, w: number, h: number, roll = false): GizmoResult {
     const dx = px - (s.px ?? px);
     const dy = py - (s.py ?? py);
-    const out: GizmoResult = { x: s.x, y: s.y, z: s.z, size: s.size, yaw: s.yaw, roll: s.roll };
+    const out: GizmoResult = { x: s.x, y: s.y, z: s.z, size: s.size, yaw: s.yaw, pitch: s.pitch, roll: s.roll };
     switch (s.mode) {
         case "move":
             out.x = clamp(s.x + dx / w, -0.5, 1.5);
@@ -102,8 +112,13 @@ export function gizmoDrag(s: GizmoStart & { mode: GizmoMode }, px: number, py: n
             break;
         }
         case "rotate":
+            // Like orbiting a model: left/right turns (yaw, both ways, wraps), up/down tilts
+            // (pitch: drag down = top comes towards you). Shift = roll on screen instead.
             if (roll) out.roll = clamp(Math.round(s.roll + dx * DEG_PER_PX), -180, 180);
-            else out.yaw = Math.round(wrapDeg(s.yaw + dx * DEG_PER_PX));
+            else {
+                out.yaw = Math.round(wrapDeg(s.yaw + dx * DEG_PER_PX));
+                out.pitch = clamp(Math.round(s.pitch + dy * DEG_PER_PX), -s.pitchMax, s.pitchMax);
+            }
             break;
     }
     return out;

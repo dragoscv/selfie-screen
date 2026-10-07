@@ -63,7 +63,7 @@ export function SceneGizmo({ sel, onSel }: { sel: SceneSel; onSel: (s: SceneSel)
         });
     };
     const setAr = (id: string, p: Partial<ArObject>) => apply({ arObjects: latest.current.arObjects.map((o) => (o.id === id ? { ...o, ...p } : o)) });
-    const setPet = (id: string, pin: { x: number; y: number; z: number; yaw: number }, scale?: number) => {
+    const setPet = (id: string, pin: { x: number; y: number; z: number; yaw: number; pitch: number }, scale?: number) => {
         const cur = latest.current;
         apply({
             petPins: { ...cur.petPins, [id]: pin },
@@ -97,8 +97,8 @@ export function SceneGizmo({ sel, onSel }: { sel: SceneSel; onSel: (s: SceneSel)
         const d = drag.current;
         if (!d || rect.width <= 0) return;
         const r = gizmoDrag(d, e.clientX, e.clientY, rect.width, rect.height, e.shiftKey && d.kind === "ar");
-        if (d.kind === "ar") setAr(d.id, { x: r.x, y: r.y, z: r.z, size: r.size, yaw: r.yaw, rotation: r.roll });
-        else setPet(d.id, { x: r.x, y: r.y, z: r.z, yaw: r.yaw }, r.size);
+        if (d.kind === "ar") setAr(d.id, { x: r.x, y: r.y, z: r.z, size: r.size, yaw: r.yaw, pitch: r.pitch, rotation: r.roll });
+        else setPet(d.id, { x: r.x, y: r.y, z: r.z, yaw: r.yaw, pitch: r.pitch }, r.size);
     };
     const end = () => {
         drag.current = null;
@@ -119,7 +119,7 @@ export function SceneGizmo({ sel, onSel }: { sel: SceneSel; onSel: (s: SceneSel)
             const size = Math.min(st.sizeMax, Math.max(st.sizeMin, st.size * (1 + n * 0.08)));
             const z = Math.min(6, Math.max(0.3, st.z * (1 + n * 0.06)));
             if (o.kind === "ar") setAr(o.id, e.altKey ? { size } : { z });
-            else setPet(o.id, { x: st.x, y: st.y, z: e.altKey ? st.z : z, yaw: st.yaw }, e.altKey ? size : undefined);
+            else setPet(o.id, { x: st.x, y: st.y, z: e.altKey ? st.z : z, yaw: st.yaw, pitch: st.pitch }, e.altKey ? size : undefined);
         };
         el.addEventListener("wheel", onWheel, { passive: false });
         return () => el.removeEventListener("wheel", onWheel);
@@ -141,14 +141,16 @@ export function SceneGizmo({ sel, onSel }: { sel: SceneSel; onSel: (s: SceneSel)
         else if (e.key === "-") next.size = Math.max(st.sizeMin, st.size / 1.08);
         else if (e.key === "[") next.yaw = wrapDeg(st.yaw - 15);
         else if (e.key === "]") next.yaw = wrapDeg(st.yaw + 15);
+        else if (e.key === ",") next.pitch = Math.max(-st.pitchMax, st.pitch - 10);
+        else if (e.key === ".") next.pitch = Math.min(st.pitchMax, st.pitch + 10);
         else if (e.key === "Escape") {
             onSel(null);
             return;
         } else return;
         e.preventDefault();
         e.stopPropagation();
-        if (selObj.kind === "ar") setAr(selObj.id, { x: next.x, y: next.y, z: next.z, size: next.size, yaw: next.yaw });
-        else setPet(selObj.id, { x: next.x, y: next.y, z: next.z, yaw: next.yaw }, next.size);
+        if (selObj.kind === "ar") setAr(selObj.id, { x: next.x, y: next.y, z: next.z, size: next.size, yaw: next.yaw, pitch: next.pitch });
+        else setPet(selObj.id, { x: next.x, y: next.y, z: next.z, yaw: next.yaw, pitch: next.pitch }, next.size);
     };
 
     if (rect.width <= 0) return null;
@@ -253,7 +255,7 @@ export function SceneGizmo({ sel, onSel }: { sel: SceneSel; onSel: (s: SceneSel)
                             type="button"
                             aria-label={t("studio.ar.gizmo.rotate")}
                             title={t("studio.ar.gizmo.rotateHint")}
-                            className="pointer-events-auto absolute grid size-7 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize touch-none place-items-center rounded-full border-2 border-amber-200 bg-neutral-950/70 text-[0.75rem] text-amber-100 shadow-md"
+                            className="pointer-events-auto absolute grid size-7 -translate-x-1/2 -translate-y-1/2 cursor-all-scroll touch-none place-items-center rounded-full border-2 border-amber-200 bg-neutral-950/70 text-[0.75rem] text-amber-100 shadow-md"
                             style={{ left: cx, top: sb.top - 22 }}
                             onPointerDown={(e) => begin(e, selObj, "rotate")}
                             onPointerMove={move}
@@ -284,7 +286,7 @@ export function SceneGizmo({ sel, onSel }: { sel: SceneSel; onSel: (s: SceneSel)
                             <span className="text-white/75">
                                 {dragging === "z" || dragging === null ? `${st.z.toFixed(2)} m` : ""}
                                 {dragging === "scale" ? `${selObj.kind === "pet" ? `${Math.round(st.size * 100)}%` : `${st.size.toFixed(2)} m`}` : ""}
-                                {dragging === "rotate" ? `${Math.round(st.yaw)}°` : ""}
+                                {dragging === "rotate" ? `↔ ${Math.round(st.yaw)}° · ↕ ${Math.round(st.pitch)}°` : ""}
                                 {dragging === "move" || dragging === "x" || dragging === "y" ? `x ${st.x.toFixed(2)} · y ${st.y.toFixed(2)}` : ""}
                             </span>
                             {selObj.kind === "pet" &&
