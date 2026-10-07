@@ -695,6 +695,20 @@
         "title": "Gestures and what they do",
         "enabled": "Gesture actions on",
         "enabledHint": "Turn every gesture rule on or off at once.",
+        "zones": {
+            "title": "Ignore hands in TikTok zones",
+            "enabled": "No gestures inside safe zones",
+            "hint": "A hand gesture (or two-hand pinch zoom) does not start while that hand is in one of the marked zones, so a hand resting under the comments fires nothing. A gesture started outside keeps going if the hand drifts in.",
+            "which": "Zones that block gestures",
+            "ids": {
+                "top": "Top bar",
+                "comments": "Comments",
+                "rail": "Likes & gifts",
+                "bottom": "Bottom bar",
+                "crop": "Side crop",
+                "title": "Outside title-safe"
+            }
+        },
         "add": "New gesture",
         "newName": "My gesture",
         "list": "Gesture rules",

@@ -156,7 +156,7 @@ function RuleEditor({ rule, onChange }: { rule: Rule; onChange: (r: Rule) => voi
  * through patchVision (applied live, persisted, synced to the sidecar's rule engine).
  */
 export function GesturesPanel() {
-    const { vision, patchVision } = useStudio();
+    const { vision, patchVision, studio } = useStudio();
     const { t } = useTranslation();
     const reduced = useReducedMotion();
     const labels = useVisionLabels();
@@ -164,6 +164,9 @@ export function GesturesPanel() {
     const rules = vision.rules;
     const setRules = (next: Rule[]) => patchVision({ rules: next });
     const update = (r: Rule) => setRules(rules.map((x) => (x.id === r.id ? r : x)));
+    const gz = vision.gestureZones;
+    const zoneIds = studio.orientation === "portrait" ? (["top", "comments", "rail", "bottom", "crop"] as const) : (["title"] as const);
+    const setZones = (p: Partial<typeof gz>) => patchVision({ gestureZones: { ...gz, ...p } });
 
     const add = () => {
         const name = t("studio.gestures.newName");
@@ -181,6 +184,24 @@ export function GesturesPanel() {
                     <Plus className="size-4" aria-hidden />
                     {t("studio.gestures.add")}
                 </button>
+            </Section>
+            <Section title={t("studio.gestures.zones.title")}>
+                <SwitchRow label={t("studio.gestures.zones.enabled")} description={t("studio.gestures.zones.hint")} checked={gz.enabled} onChange={(enabled) => setZones({ enabled })} />
+                {gz.enabled && (
+                    <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("studio.gestures.zones.which")}>
+                        {zoneIds.map((id) => (
+                            <button
+                                key={id}
+                                type="button"
+                                aria-pressed={gz.zones[id]}
+                                onClick={() => setZones({ zones: { ...gz.zones, [id]: !gz.zones[id] } })}
+                                className={`rounded-full px-2.5 py-1 text-[0.6875rem] font-medium ${FOCUS_RING} ${gz.zones[id] ? "bg-rose-400/30 text-rose-50 ring-1 ring-rose-300/60" : "bg-white/10 text-white/80 hover:bg-white/20"}`}
+                            >
+                                {t(`studio.gestures.zones.ids.${id}`)}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </Section>
             <ul className="space-y-1.5" aria-label={t("studio.gestures.list")}>
                 {rules.map((r) => {

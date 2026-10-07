@@ -717,6 +717,25 @@ export const visionSchema = z.object({
     armWindowMs: z.number().int().min(1000).max(30_000).default(5000),
     /** Show the recognised gesture with a hold ring in the studio preview. */
     showGestureHud: z.boolean().default(true),
+    /**
+     * Hand gestures (and pinch zoom) do not START while the hand is inside these TikTok LIVE
+     * safe zones (portrait) or outside the title-safe area (landscape, `title`).
+     */
+    gestureZones: z
+        .object({
+            enabled: z.boolean().default(true),
+            zones: z
+                .object({
+                    top: z.boolean().default(true),
+                    comments: z.boolean().default(true),
+                    rail: z.boolean().default(true),
+                    bottom: z.boolean().default(true),
+                    crop: z.boolean().default(false),
+                    title: z.boolean().default(false),
+                })
+                .prefault({}),
+        })
+        .prefault({}),
     /** Keep a timeline of state changes and durations in SQLite. */
     logEnabled: z.boolean().default(true),
     logRetentionDays: z.number().int().min(1).max(365).default(30),

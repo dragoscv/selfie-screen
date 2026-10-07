@@ -72,6 +72,7 @@ import { HandSpace, palmPerches } from "./hand-space.js";
 import { MetricDistance, type MetricConfig, type PoseForDistance } from "./metric-distance.js";
 import { DigitalFraming } from "./framing.js";
 import { PinchZoom } from "./pinch-zoom.js";
+import { ZoneGate, handCentre, inGateZone, type HandZones } from "./zone-gate.js";
 import { PreviewPass } from "./monitor.js";
 import { VcamPump } from "./output.js";
 import { ScopeSampler } from "./scopes.js";
@@ -376,6 +377,9 @@ export class StudioEngine implements StudioController {
     #handsSeq = -1;
     #debugHands: readonly DebugHand[] = [];
     readonly #pinchZoom = new PinchZoom();
+    readonly #zoneGate = new ZoneGate();
+    /** Which owner hands are inside a gesture-blocking safe zone right now. */
+    #handZones: HandZones = {};
     /** Lens hold the pinch zoom is driving right now (so it only releases its own hold). */
     #pinchLens: string | null = null;
     readonly #personalitySubs = new Set<(pets: readonly PetPersonality[]) => void>();
@@ -1199,9 +1203,10 @@ export class StudioEngine implements StudioController {
             backdrop.setDepth(frame.depth.data, frame.depth.width, frame.depth.height, inv * (frame.ownerDistanceM ?? DEFAULT_OWNER_M), inv);
         } else backdrop.setDepth(null, 0, 0);
         if (frame.events.length > 0) this.#petGestures(frame.events);
+        const events = this.#zoneGate.filter(frame.events, this.#handZones, this.#visionSettings.gestureZones.enabled);
         const armedChanged = frame.armed !== this.#armed;
         this.#armed = frame.armed;
-        if (frame.events.length > 0 || armedChanged) for (const cb of this.#signalSubs) cb(frame.events, frame.armed);
+        if (events.length > 0 || armedChanged) for (const cb of this.#signalSubs) cb(events, frame.armed);
     }
 
     #placeAnchors(pose: readonly { x: number; y: number; visibility?: number }[] | null, f: Framing, rotation: Rotation): void {
@@ -1326,6 +1331,17 @@ export class StudioEngine implements StudioController {
         const handsResult = this.#synthetic ? null : (this.#vision?.latestHands?.() ?? null);
         const freshHands = handsResult && handsResult.seq !== this.#handsSeq ? handsResult : null;
         if (freshHands) this.#handsSeq = freshHands.seq;
+        const zones = this.#visionSettings.gestureZones;
+        const handZones: HandZones = {};
+        if (zones.enabled && handsResult) {
+            for (const h of handsResult.hands) {
+                const c = handCentre(h.raw);
+                if (!c) continue;
+                const [u, v] = rawToOutput(f, rotation, c.x, c.y);
+                if (inGateZone(u, v, this.#settings.orientation, zones)) handZones[h.side] = true;
+            }
+        }
+        this.#handZones = handZones;
         const cal = this.#visionSettings.calibration.hands;
         this.#debugHands = this.#hands.update(now, freshHands, body.present ? body : null, pin, (x, y) => rawToOutput(f, rotation, x, y), {
             cameraVfovDeg: cameraVfov(this.#settings),
@@ -1333,7 +1349,7 @@ export class StudioEngine implements StudioController {
             pinchOn: cal.pinchOn,
             pinchOff: cal.pinchOff,
         });
-        const zooming = this.#updatePinchZoom(now, stage.grabState !== null);
+        const zooming = this.#updatePinchZoom(now, stage.grabState !== null || handZones.left === true || handZones.right === true);
         stage.setHands(
             this.#settings.petHands.enabled && this.#settings.petAi.level !== "off" && !zooming
                 ? this.#debugHands.map((h) => ({ side: h.side, present: h.present, pinching: h.pinching, point: h.point, strength: h.strength, sizePx: h.sizePx }))

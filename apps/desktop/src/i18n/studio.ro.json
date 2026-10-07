@@ -699,6 +699,20 @@
         "title": "Gesturile și ce fac",
         "enabled": "Acțiuni la gesturi pornite",
         "enabledHint": "Pornește sau oprește toate regulile de gesturi deodată.",
+        "zones": {
+            "title": "Ignoră mâinile din zonele TikTok",
+            "enabled": "Fără gesturi în zonele sigure",
+            "hint": "Un gest de mână (sau zoomul cu ambele mâini) nu pornește cât timp mâna e într-una din zonele marcate, deci o mână sprijinită sub comentarii nu declanșează nimic. Un gest început în afară continuă dacă mâna intră în zonă.",
+            "which": "Zone care blochează gesturile",
+            "ids": {
+                "top": "Bara de sus",
+                "comments": "Comentarii",
+                "rail": "Like-uri și cadouri",
+                "bottom": "Bara de jos",
+                "crop": "Margini tăiate",
+                "title": "În afara zonei title-safe"
+            }
+        },
         "add": "Gest nou",
         "newName": "Gestul meu",
         "list": "Reguli pentru gesturi",
