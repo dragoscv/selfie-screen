@@ -685,7 +685,7 @@
             "off": "Transcrierea e oprită: Setări → Co-host AI → Transcrie microfonul.",
             "starting": "Pornesc microfonul…",
             "noSignal": "Nu vine sunet din microfon: verifică dispozitivul de intrare în Setări → Dispozitive audio și setările de confidențialitate Windows.",
-            "tooQuiet": "Prea încet: vorbește mai aproape de microfon sau mărește volumul lui în Windows.",
+            "tooQuiet": "Nicio vorbire în ultimele 15 s. Dacă vorbești, apropie-te de microfon sau mărește-i volumul în Windows.",
             "clipping": "Prea tare, sunetul se distorsionează: scade amplificarea microfonului.",
             "noisy": "Mult zgomot de fundal: pragul de vorbire a crescut; redu zgomotul sau apropie microfonul.",
             "waitingKey": "Push to talk e pornit: ține apăsată tasta cât vorbești.",

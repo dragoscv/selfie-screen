@@ -36,7 +36,8 @@ function advise(p: Payload | null, quietFrames: number, peaks: number): Advice {
     if (d.waitingForKey) return "waitingKey";
     if (peaks > 3) return "clipping";
     if (d.floor * 3 > 0.05) return "noisy";
-    if (quietFrames > 40 && !d.speaking) return "tooQuiet";
+    // Silence is normal between sentences: only after 15 s without speech suggest the mic is too quiet.
+    if (quietFrames > 150 && !d.speaking) return "tooQuiet";
     if (d.commits > 0 && d.finals === 0) return "noText";
     return "ok";
 }

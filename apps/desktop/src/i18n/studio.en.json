@@ -681,7 +681,7 @@
             "off": "Transcription is off: Settings → AI co-host → Transcribe my microphone.",
             "starting": "Starting the microphone…",
             "noSignal": "No audio from the microphone: check the input device in Settings → Audio devices and the Windows privacy settings.",
-            "tooQuiet": "Too quiet: speak closer to the microphone or raise its volume in Windows.",
+            "tooQuiet": "No speech heard for 15 s. If you are talking, speak closer to the microphone or raise its volume in Windows.",
             "clipping": "Too loud, the sound is distorting: lower the microphone gain.",
             "noisy": "Lots of background noise: the speech threshold went up; reduce the noise or move the microphone closer.",
             "waitingKey": "Push to talk is on: hold the hotkey while you speak.",
