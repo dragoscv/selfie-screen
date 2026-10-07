@@ -468,6 +468,14 @@ export const framingSchema = z.object({
     dofStrength: z.number().min(0).max(1).default(0.5),
     /** Auto AF (BLE half-press) when the face returns or every N s while it moves; 0 = off. */
     afIntervalS: z.number().int().min(0).max(120).default(0),
+    /** Both hands pinched: pull apart = zoom in, together = zoom out. */
+    pinchZoom: z.boolean().default(true),
+    /** Pinch zoom drives the optical zoom (BLE remote) first, then crops digitally. */
+    pinchOptical: z.boolean().default(true),
+    /** Lens zoom range (tele / wide focal length): 16-50 mm = 3.1. */
+    opticalRange: z.number().min(1).max(10).default(3.1),
+    /** Seconds the lens takes wide -> tele at remote speed 2 (calibrates the position estimate). */
+    opticalTravelS: z.number().min(0.5).max(15).default(3),
 });
 export type FramingSettings = z.infer<typeof framingSchema>;
 

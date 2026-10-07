@@ -93,7 +93,20 @@
             "wide": "Larg",
             "tele": "Tele",
             "digital": "Zoom digital",
-            "digitalLabel": "Decupaj"
+            "digitalLabel": "Decupaj",
+            "pinch": {
+                "title": "Zoom cu ambele mâini (pinch)",
+                "label": "Zoom cu ambele mâini",
+                "hint": "Fă pinch cu ambele mâini, apoi depărtează-le ca să mărești sau apropie-le ca să micșorezi. Ține-le nemișcate ca să oprești.",
+                "optical": "Întâi zoom optic",
+                "opticalHint": "Mișcă obiectivul (telecomanda Bluetooth) până la capătul tele înainte de decupaj; la micșorare scoate întâi decupajul, apoi obiectivul.",
+                "range": "Plaja de zoom a obiectivului",
+                "travel": "Timp obiectiv larg → tele",
+                "travelHint": "Cât îi ia obiectivului de la larg la tele cu butonul Tele la viteza 2. TikSee îl folosește ca să știe unde e obiectivul; un zoom complet înapoi îl resincronizează.",
+                "readout": "Zoom {{zoom}}×",
+                "lens": "obiectiv",
+                "crop": "decupaj {{zoom}}×"
+            }
         },
         "focus": {
             "name": "Focus",

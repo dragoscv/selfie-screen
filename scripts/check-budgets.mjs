@@ -39,7 +39,9 @@ const budgets = [
     //   resize, in-video speech bubbles, personality learner and the EN+RO strings for them: 67.2 KB.
     //   The AI dock panel (2.2 KB) is a lazy chunk.
     // Space calibration, ChArUco, MoGe-2, the F3 overlay and the MP4 muxer are lazy chunks.
-    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 70 * KB],
+    // 0.5.2: + two-hand pinch zoom (per-frame controller + lens estimate, cannot be lazy), roll
+    //   pins, gestures/captions strings: 71.2 KB. Gestures panel and scene gizmo are lazy chunks.
+    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 72 * KB],
     ["desktop studio vendor", /^studio-vendor-.*\.js$/, "apps/desktop/dist/assets", 380 * KB],
     // Vision worker (MediaPipe + ONNX glue) and its main-thread fallback pipeline; measured 211 / 113 KB.
     ["studio vision worker", /^worker-.*\.js$/, "apps/desktop/dist/assets", 230 * KB],

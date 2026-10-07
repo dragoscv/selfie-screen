@@ -2,6 +2,8 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CAMERA_ACTIONS } from "@tiksee/core";
 
+import { OpticalEstimate } from "./pinch-zoom.js";
+
 export type CameraAction = (typeof CAMERA_ACTIONS)[number];
 export type HoldAction = Extract<CameraAction, "zoomIn" | "zoomOut" | "focusNear" | "focusFar">;
 
@@ -73,6 +75,8 @@ export class CameraRemote {
     #state: BleState | null = null;
     #unlisten: (() => void) | null = null;
     #onError: (message: string) => void;
+    /** Estimated lens position from every zoom hold (the remote reports none). */
+    readonly optical = new OpticalEstimate();
 
     constructor(onError: (message: string) => void = () => undefined, send: Send = tauriSend) {
         this.#send = send;
@@ -112,6 +116,7 @@ export class CameraRemote {
     hold(action: HoldAction, speed: 1 | 2 | 3): void {
         if (this.#held && this.#held !== action) this.release();
         this.#held = action;
+        if (action === "zoomIn" || action === "zoomOut") this.optical.hold(action === "zoomIn" ? 1 : -1, speed, performance.now());
         void this.#fire(bleCommand(action, speed));
     }
 
@@ -120,6 +125,7 @@ export class CameraRemote {
         this.#holdTimer = null;
         const held = this.#held;
         this.#held = null;
+        if (held === "zoomIn" || held === "zoomOut") this.optical.release(performance.now());
         const cmd = held ? bleRelease(held) : null;
         if (cmd) void this.#fire(cmd);
     }

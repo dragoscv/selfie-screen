@@ -54,6 +54,47 @@ export function ZoomPanel() {
                     onCommit={(zoom) => patchStudio({ framing: { ...studio.framing, zoom } })}
                 />
             </Section>
+            <Section title={t("studio.controls.zoom.pinch.title")}>
+                <SwitchRow
+                    label={t("studio.controls.zoom.pinch.label")}
+                    description={t("studio.controls.zoom.pinch.hint")}
+                    checked={studio.framing.pinchZoom}
+                    onChange={(pinchZoom) => patchStudio({ framing: { ...studio.framing, pinchZoom } })}
+                />
+                {studio.framing.pinchZoom && (
+                    <>
+                        <SwitchRow
+                            label={t("studio.controls.zoom.pinch.optical")}
+                            description={t("studio.controls.zoom.pinch.opticalHint")}
+                            checked={studio.framing.pinchOptical}
+                            onChange={(pinchOptical) => patchStudio({ framing: { ...studio.framing, pinchOptical } })}
+                        />
+                        {studio.framing.pinchOptical && (
+                            <>
+                                <SliderRow
+                                    label={t("studio.controls.zoom.pinch.range")}
+                                    value={studio.framing.opticalRange}
+                                    min={1}
+                                    max={10}
+                                    step={0.1}
+                                    format={(v) => `${v.toFixed(1)}×`}
+                                    onCommit={(opticalRange) => patchStudio({ framing: { ...studio.framing, opticalRange } })}
+                                />
+                                <SliderRow
+                                    label={t("studio.controls.zoom.pinch.travel")}
+                                    value={studio.framing.opticalTravelS}
+                                    min={0.5}
+                                    max={15}
+                                    step={0.1}
+                                    format={(v) => `${v.toFixed(1)} s`}
+                                    onCommit={(opticalTravelS) => patchStudio({ framing: { ...studio.framing, opticalTravelS } })}
+                                />
+                                <p className="text-[0.6875rem] text-white/70">{t("studio.controls.zoom.pinch.travelHint")}</p>
+                            </>
+                        )}
+                    </>
+                )}
+            </Section>
         </>
     );
 }

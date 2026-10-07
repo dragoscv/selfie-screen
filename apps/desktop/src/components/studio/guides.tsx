@@ -19,7 +19,9 @@ export function Guides() {
     const lines = guideLines(m.guides);
     const tilted = useSettledFrame(frames, (i) => (i ? Math.abs(i.horizonDeg) > 2.5 : false), false, 500, 900);
     const showHorizon = m.horizon && tilted;
+    const pinch = useFrame(frames, (i) => (i?.pinchZoom ? `${i.pinchZoom.target.toFixed(1)}|${i.pinchZoom.optical ? 1 : 0}|${i.pinchZoom.digital.toFixed(1)}` : ""));
     if (rect.width <= 0) return null;
+    const [pz, pzLens, pzCrop] = pinch.split("|");
 
     return (
         <div
@@ -83,6 +85,21 @@ export function Guides() {
             )}
 
             <AnimatePresence>
+                {pinch !== "" && (
+                    <motion.div
+                        key="pinch-zoom"
+                        role="status"
+                        initial={reduced ? false : { opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={reduced ? INSTANT : SPRING}
+                        className={`${GLASS} absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold tabular-nums`}
+                    >
+                        <span>{t("studio.controls.zoom.pinch.readout", { zoom: pz })}</span>
+                        {pzLens === "1" && <span className="rounded-full bg-sky-400/25 px-2 text-[0.6875rem] text-sky-100">{t("studio.controls.zoom.pinch.lens")}</span>}
+                        {Number(pzCrop) > 1.01 && <span className="rounded-full bg-amber-300/25 px-2 text-[0.6875rem] text-amber-100">{t("studio.controls.zoom.pinch.crop", { zoom: pzCrop })}</span>}
+                    </motion.div>
+                )}
                 {guardian && (
                     <motion.div
                         key="guardian"

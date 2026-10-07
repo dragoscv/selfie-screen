@@ -93,7 +93,20 @@
             "wide": "Wide",
             "tele": "Tele",
             "digital": "Digital zoom",
-            "digitalLabel": "Crop"
+            "digitalLabel": "Crop",
+            "pinch": {
+                "title": "Two-hand pinch zoom",
+                "label": "Zoom with both hands",
+                "hint": "Pinch with both hands, then pull them apart to zoom in or bring them together to zoom out. Hold still to stop.",
+                "optical": "Optical zoom first",
+                "opticalHint": "Moves the lens (Bluetooth remote) to its tele end before cropping; zooming out removes the crop first, then the lens.",
+                "range": "Lens zoom range",
+                "travel": "Lens wide → tele time",
+                "travelHint": "How long your lens takes from wide to tele with the Tele button at speed 2. TikSee uses it to know where the lens is; zooming all the way out re-syncs it.",
+                "readout": "Zoom {{zoom}}×",
+                "lens": "lens",
+                "crop": "crop {{zoom}}×"
+            }
         },
         "focus": {
             "name": "Focus",

@@ -71,6 +71,7 @@ import { cameraVfov, uprightVfov } from "./camera-fov.js";
 import { HandSpace, palmPerches } from "./hand-space.js";
 import { MetricDistance, type MetricConfig, type PoseForDistance } from "./metric-distance.js";
 import { DigitalFraming } from "./framing.js";
+import { PinchZoom } from "./pinch-zoom.js";
 import { PreviewPass } from "./monitor.js";
 import { VcamPump } from "./output.js";
 import { ScopeSampler } from "./scopes.js";
@@ -374,6 +375,9 @@ export class StudioEngine implements StudioController {
     readonly #hands = new HandSpace();
     #handsSeq = -1;
     #debugHands: readonly DebugHand[] = [];
+    readonly #pinchZoom = new PinchZoom();
+    /** Lens hold the pinch zoom is driving right now (so it only releases its own hold). */
+    #pinchLens: string | null = null;
     readonly #personalitySubs = new Set<(pets: readonly PetPersonality[]) => void>();
     #personalities: readonly PetPersonality[] = [];
     /** Sidecar transport for personality list/reset (set by the studio window). */
@@ -922,6 +926,9 @@ export class StudioEngine implements StudioController {
         const s = this.#settings;
         const framing = (p: Partial<StudioSettings["framing"]>) => this.#patch({ framing: { ...s.framing, ...p } });
         const monitor = (p: Partial<StudioSettings["monitor"]>) => this.#patch({ monitor: { ...s.monitor, ...p } });
+        // Pinching both hands moves them apart/together too: the stepwise spread/squeeze rules
+        // must not add zoom steps on top of the continuous pinch zoom (or right after it).
+        if ((a === "digitalZoomIn" || a === "digitalZoomOut") && (this.#pinchZoom.active || performance.now() - this.#pinchEndedAt < 400)) return;
         switch (a) {
             case "digitalZoomIn":
                 return framing({ zoom: this.#framing.stepZoom(1) });
@@ -1089,6 +1096,55 @@ export class StudioEngine implements StudioController {
     cameraHold(action: HoldAction, speed: 1 | 2 | 3): void {
         this.#remote.hold(action, speed);
     }
+
+    /**
+     * Both hands pinched: apart = zoom in, together = zoom out. Optical first (BLE lens hold
+     * until its estimated tele end), then the digital crop; out unwinds the crop first.
+     * Returns whether the gesture owns the hands this frame (pets must not grab then).
+     */
+    #updatePinchZoom(now: number, petHeld: boolean): boolean {
+        const f = this.#settings.framing;
+        const remote = this.#remote;
+        remote.optical.travelMs = f.opticalTravelS * 1000;
+        if (!f.pinchZoom) {
+            if (this.#pinchZoom.active) this.#endPinchZoom();
+            return false;
+        }
+        const r = this.#pinchZoom.update(
+            now,
+            this.#debugHands,
+            { opticalPos: remote.optical.position(now), opticalReady: remote.status.connected, digital: this.#framing.targetZoom, blocked: petHeld },
+            { optical: f.pinchOptical, opticalMax: f.opticalRange, digitalMax: 2.5, gain: 1.5 },
+        );
+        this.#pinchTarget = r.active ? r.target : null;
+        if (r.ended) {
+            this.#endPinchZoom();
+            return false;
+        }
+        if (!r.active) return false;
+        const key = r.optical ? `${r.optical.action}${r.optical.speed}` : null;
+        if (key !== this.#pinchLens) {
+            if (r.optical) remote.hold(r.optical.action, r.optical.speed);
+            else if (this.#pinchLens) remote.release();
+            this.#pinchLens = key;
+        }
+        if (r.digital !== null) this.#framing.setZoom(r.digital);
+        return true;
+    }
+
+    #endPinchZoom(): void {
+        if (this.#pinchLens) this.#remote.release();
+        this.#pinchLens = null;
+        this.#pinchTarget = null;
+        this.#pinchEndedAt = performance.now();
+        this.#pinchZoom.reset();
+        const zoom = Math.round(this.#framing.targetZoom * 100) / 100;
+        if (zoom !== this.#settings.framing.zoom) void this.#patch({ framing: { ...this.#settings.framing, zoom } });
+    }
+
+    /** Total zoom the hands ask for while pinch-zooming (readout), else null. */
+    #pinchTarget: number | null = null;
+    #pinchEndedAt = -Infinity;
 
     cameraRelease(): void {
         this.#remote.release();
@@ -1277,8 +1333,9 @@ export class StudioEngine implements StudioController {
             pinchOn: cal.pinchOn,
             pinchOff: cal.pinchOff,
         });
+        const zooming = this.#updatePinchZoom(now, stage.grabState !== null);
         stage.setHands(
-            this.#settings.petHands.enabled && this.#settings.petAi.level !== "off"
+            this.#settings.petHands.enabled && this.#settings.petAi.level !== "off" && !zooming
                 ? this.#debugHands.map((h) => ({ side: h.side, present: h.present, pinching: h.pinching, point: h.point, strength: h.strength, sizePx: h.sizePx }))
                 : [],
         );
@@ -1367,6 +1424,9 @@ export class StudioEngine implements StudioController {
             ...(this.#ownerM !== undefined ? { ownerDistanceM: this.#ownerM } : {}),
             armed: this.#armed,
             camera: this.#remote.status,
+            ...(this.#pinchTarget !== null
+                ? { pinchZoom: { target: this.#pinchTarget, optical: this.#pinchLens !== null, digital: this.#framing.targetZoom } }
+                : {}),
             vcam: { ...vcam, fps: vcam.fps || (this.#pump?.timings.vcamFps ?? 0) },
         };
     }

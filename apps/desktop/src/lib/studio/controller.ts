@@ -71,6 +71,8 @@ export interface StudioFrameInfo {
     armed: boolean;
     /** Camera remote status from BLE notifications. */
     camera: { focused: boolean; recording: boolean; connected: boolean };
+    /** Two-hand pinch zoom in progress: total zoom asked for, lens moving, digital crop. */
+    pinchZoom?: { target: number; optical: boolean; digital: number };
     vcam: { state: "off" | "waiting" | "streaming" | "unregistered" | "error"; fps: number; consumerSize?: [number, number] };
 }
 

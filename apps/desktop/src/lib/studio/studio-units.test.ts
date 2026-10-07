@@ -9,7 +9,19 @@ import { FALSE_COLOR, bandBounds, falseColorFor, monitorActive } from "./monitor
 import { BUFFER_USAGE, MAP_MODE, nv12Length, parseVcamStatus, rgbaToNv12, yuv } from "./output.js";
 import { computeScopes, scopeBuffers, scopeSize } from "./scopes.js";
 
-const framingSettings = { zoom: 1, autoReframe: false, deadZone: 0.08, smartWide: true, dof: false, dofStrength: 0.5, afIntervalS: 0 };
+const framingSettings = {
+    zoom: 1,
+    autoReframe: false,
+    deadZone: 0.08,
+    smartWide: true,
+    dof: false,
+    dofStrength: 0.5,
+    afIntervalS: 0,
+    pinchZoom: true,
+    pinchOptical: true,
+    opticalRange: 3.1,
+    opticalTravelS: 3,
+};
 
 describe("NV12 reference (mirrors vcam/shared/src/nv12.rs)", () => {
     it("maps reference colours to BT.709 limited range", () => {
