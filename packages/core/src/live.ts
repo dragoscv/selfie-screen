@@ -340,6 +340,8 @@ export const liveServerMessages = [
     z.object({ type: z.literal("game"), state: gameStateSchema }),
     /** Inline Romanian translation of a foreign chat message (WS20-14). */
     z.object({ type: z.literal("translation"), eventId: z.string(), lang: z.string(), text: z.string() }),
+    /** Translation of one final transcript line (`itemId` = the STT item) into studio.captions.lang. */
+    z.object({ type: z.literal("transcriptTranslation"), itemId: z.string(), lang: z.string(), text: z.string() }),
     z.object({ type: z.literal("summaries"), sessions: z.array(sessionInfoSchema) }),
     z.object({
         type: z.literal("summary"),

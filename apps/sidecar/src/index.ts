@@ -134,6 +134,8 @@ class Sidecar {
     #goals: GoalTracker;
     #games: GameManager;
     #translator: Translator;
+    /** Live captions: every final streamer line into studio.captions.lang. */
+    #captionTranslator: Translator;
     #summaries: SummaryService;
     #rules: RulesEngine;
     #petAgents: PetAgents;
@@ -215,6 +217,15 @@ class Sidecar {
             emit: (eventId, lang, text) => this.#broadcast({ type: "translation", eventId, lang, text }),
             onError: (message) => log.debug(`translation skipped (${message})`),
         });
+        this.#captionTranslator = new Translator(
+            {
+                client: this.#codai,
+                model: () => this.#settings.codai.replyModel,
+                emit: (itemId, lang, text) => this.#broadcast({ type: "transcriptTranslation", itemId, lang, text }),
+                onError: (message) => log.debug(`caption translation skipped (${message})`),
+            },
+            { filter: "all", windowMs: 120 },
+        );
         this.#applyTranslationSettings();
 
         this.#effects = new EffectsController({
@@ -530,6 +541,7 @@ class Sidecar {
             case "transcript":
                 this.#cohost.onTranscript(message.itemId, message.text, message.final, message.at);
                 if (this.#settings.assistant.transcribe) this.#petAgents.onTranscript(message.itemId, message.text, message.final, message.at);
+                if (message.final) this.#captionTranslator.offer({ eventId: message.itemId, text: message.text });
                 break;
             case "sayState":
                 this.#cohost.onSayState(message.id, message.state, message.error);
@@ -806,6 +818,9 @@ class Sidecar {
     #applyTranslationSettings(): void {
         this.#translator.enabled = this.#settings.translation.enabled;
         this.#translator.minLetters = this.#settings.translation.minLetters;
+        const cap = this.#settings.studio.captions;
+        this.#captionTranslator.target = cap.lang;
+        this.#captionTranslator.enabled = cap.translate && (this.#settings.studio.monitor.transcript || cap.output);
     }
 
     #applyControl(action: ControlAction): void {
@@ -954,6 +969,7 @@ class Sidecar {
         this.#goals.dispose();
         this.#games.dispose();
         this.#translator.dispose();
+        this.#captionTranslator.dispose();
         this.#rules.dispose();
         this.#petAgents.dispose();
         if (this.#petPersonalityTimer) clearTimeout(this.#petPersonalityTimer);

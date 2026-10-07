@@ -660,7 +660,25 @@
         "label": "Live transcript",
         "listening": "Listening… your words appear here",
         "off": "Transcription is off: Settings → AI co-host → Transcribe my microphone",
-        "offline": "Transcription is reconnecting…"
+        "offline": "Transcription is reconnecting…",
+        "output": "Show on the live",
+        "outputHint": "Draw the captions into the video your viewers see. Drag them in the preview to move, pull the corner to resize.",
+        "translate": "Second language",
+        "translateHint": "Each sentence is also shown translated, under the original.",
+        "lang": "Translate into",
+        "style": "Look",
+        "styles": {
+            "glass": "Glass",
+            "solid": "Solid",
+            "minimal": "Minimal"
+        },
+        "lines": "Lines on screen",
+        "size": "Size",
+        "editHint": "In the preview: drag to move, corner or mouse wheel to resize, double-click to reset.",
+        "editLabel": "Live captions: drag to move, corner to resize",
+        "placeholder": "Captions appear here",
+        "resize": "Resize the captions",
+        "reset": "Reset position and size"
     },
     "sound": {
         "devices": "Devices",

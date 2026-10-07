@@ -94,4 +94,24 @@ describe("Translator", () => {
         expect(t.translator.offer({ eventId: "b", text: "hello how are you" })).toBe(false);
         t.translator.dispose();
     });
+
+    it("captions mode translates every Romanian line into the chosen language and resets on a new target", async () => {
+        const complete = vi.fn(async () => ({ ok: true as const, value: '{"m0": "Hello everyone!"}' }));
+        const emitted: Array<[string, string, string]> = [];
+        const tr = new Translator({ client: { complete } as Complete, model: () => "codai-fast", emit: (id, lang, text) => emitted.push([id, lang, text]) }, { filter: "all", windowMs: 50 });
+        tr.enabled = true;
+        tr.target = "en";
+        expect(tr.offer({ eventId: "item1", text: "Salut tuturor!" })).toBe(true);
+        await tr.flush();
+        expect(emitted).toEqual([["item1", "en", "Hello everyone!"]]);
+        const calls = complete.mock.calls as unknown as [string, { role: string; content: string }[]][];
+        expect(calls[0]?.[1][0]?.content).toContain('"en"');
+        // A new target clears the cache: the same line costs a new call in the new language.
+        tr.target = "es";
+        tr.offer({ eventId: "item2", text: "Salut tuturor!" });
+        await tr.flush();
+        expect(complete).toHaveBeenCalledTimes(2);
+        expect(emitted.at(-1)?.[1]).toBe("es");
+        tr.dispose();
+    });
 });

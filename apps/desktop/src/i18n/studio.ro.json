@@ -664,7 +664,25 @@
         "label": "Transcriere în timp real",
         "listening": "Ascult… cuvintele tale apar aici",
         "off": "Transcrierea e oprită: Setări → Co-host AI → Transcrie microfonul",
-        "offline": "Transcrierea se reconectează…"
+        "offline": "Transcrierea se reconectează…",
+        "output": "Afișează pe live",
+        "outputHint": "Subtitrarea apare în video, la spectatori. Trage-o în previzualizare ca s-o muți, trage de colț ca s-o redimensionezi.",
+        "translate": "A doua limbă",
+        "translateHint": "Fiecare propoziție apare și tradusă, sub cea originală.",
+        "lang": "Tradu în",
+        "style": "Aspect",
+        "styles": {
+            "glass": "Sticlă",
+            "solid": "Plin",
+            "minimal": "Minimal"
+        },
+        "lines": "Rânduri pe ecran",
+        "size": "Mărime",
+        "editHint": "În previzualizare: trage ca s-o muți, colțul sau rotița mouse-ului pentru mărime, dublu-click pentru resetare.",
+        "editLabel": "Subtitrare pe live: trage ca s-o muți, colțul pentru mărime",
+        "placeholder": "Aici apare subtitrarea",
+        "resize": "Redimensionează subtitrarea",
+        "reset": "Resetează poziția și mărimea"
     },
     "sound": {
         "devices": "Dispozitive",

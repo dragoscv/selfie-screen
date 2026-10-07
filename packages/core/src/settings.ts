@@ -428,6 +428,30 @@ export const monitorSchema = z.object({
 });
 export type MonitorSettings = z.infer<typeof monitorSchema>;
 
+/** Second-language targets for live captions (BCP-47); display names come from Intl.DisplayNames. */
+export const CAPTION_LANGUAGES = ["en", "es", "it", "fr", "de", "pt", "hu", "pl", "uk", "ru", "tr", "nl", "el", "ar", "hi", "zh", "ja", "ko"] as const;
+export type CaptionLanguage = (typeof CAPTION_LANGUAGES)[number];
+export const CAPTION_STYLES = ["glass", "solid", "minimal"] as const;
+
+/**
+ * Live transcript captions. Shown in the studio preview by `monitor.transcript`; `output` also
+ * draws them INTO the video (virtual camera / live). Position = centre in output-normalised
+ * coords (u right, v down); the default sits between the face and TikTok's comment area
+ * (portrait comments start at v 0.6), never under the top bar. `scale` = height multiplier.
+ */
+export const captionsSchema = z.object({
+    output: z.boolean().default(false),
+    translate: z.boolean().default(false),
+    lang: z.enum(CAPTION_LANGUAGES).default("en"),
+    u: z.number().min(0).max(1).default(0.5),
+    v: z.number().min(0).max(1).default(0.54),
+    scale: z.number().min(0.5).max(2.5).default(1),
+    style: z.enum(CAPTION_STYLES).default("glass"),
+    /** Final lines kept on screen (1 = only the newest sentence). */
+    lines: z.number().int().min(1).max(3).default(2),
+});
+export type CaptionSettings = z.infer<typeof captionsSchema>;
+
 export const framingSchema = z.object({
     /** Digital zoom 1..2.5 on top of the optical BLE zoom. */
     zoom: z.number().min(1).max(2.5).default(1),
@@ -582,6 +606,7 @@ export const studioSchema = z.object({
     cameraHeightM: z.number().min(0.3).max(3).default(1.2),
     /** Preview-only monitoring aids; never in the output frame. */
     monitor: monitorSchema.prefault({}),
+    captions: captionsSchema.prefault({}),
     /** Digital framing: zoom, auto-reframe on the face, synthetic depth of field. */
     framing: framingSchema.prefault({}),
     /** Placed AR objects (x/y in output 0..1, z in metres from the camera). */

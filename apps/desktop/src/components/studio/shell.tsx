@@ -21,6 +21,7 @@ import { StatusBar } from "./status.js";
 const ArEditor = lazy(() => import("./ar-editor.js").then((m) => ({ default: m.ArEditor })));
 const Calibration = lazy(() => import("./calibration.js").then((m) => ({ default: m.Calibration })));
 const Captions = lazy(() => import("./captions.js").then((m) => ({ default: m.Captions })));
+const CaptionEditor = lazy(() => import("./caption-editor.js").then((m) => ({ default: m.CaptionEditor })));
 const Debug3d = lazy(() => import("./debug3d.js").then((m) => ({ default: m.Debug3d })));
 const Enrol = lazy(() => import("./enrol.js").then((m) => ({ default: m.Enrol })));
 const SpaceCalibration = lazy(() => import("./space-calibration.js").then((m) => ({ default: m.SpaceCalibration })));
@@ -216,8 +217,8 @@ export function StudioShell(props: StudioShellProps) {
                 </AnimatePresence>
                 <AnimatePresence>{(loupe || loupeHeld) && <Loupe key="loupe" />}</AnimatePresence>
 
-                {/* Caption lane: bottom centre, lifted above the dock while it shows; hidden behind an open panel or modal. */}
-                {studio.monitor.transcript && !clean && !blocking && panel === null && (
+                {/* Caption lane (preview only): bottom centre, lifted above the dock while it shows; hidden behind an open panel or modal. */}
+                {studio.monitor.transcript && !studio.captions.output && !clean && !blocking && panel === null && (
                     <motion.div
                         className="pointer-events-none absolute inset-x-3 flex justify-center"
                         initial={false}
@@ -228,6 +229,12 @@ export function StudioShell(props: StudioShellProps) {
                             <Captions />
                         </Suspense>
                     </motion.div>
+                )}
+                {/* On the live: the caption is in the video itself; move/resize handles while the controls show. */}
+                {studio.monitor.transcript && studio.captions.output && controlsShown && !blocking && (
+                    <Suspense fallback={null}>
+                        <CaptionEditor />
+                    </Suspense>
                 )}
 
                 <AnimatePresence>

@@ -20,6 +20,9 @@ const budgets = [
     ["studio sound panel (lazy)", /^sound-panel-.*\.js$/, "apps/desktop/dist/assets", 6 * KB],
     ["studio monitor panel (lazy)", /^monitor-panel-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
     ["studio captions (lazy)", /^captions-.*\.js$/, "apps/desktop/dist/assets", 3 * KB],
+    // Live captions in the output video (canvas layer + transcript feed) and their move/resize handles.
+    ["studio caption layer (lazy)", /^caption-layer-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
+    ["studio caption editor (lazy)", /^caption-editor-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
     // Separate window; three/webgpu + MediaPipe never load in the main window.
     // 0.3.0: engine (output RT, AR, monitor, scopes, vcam pump) + control surface = 38.5 KB measured;
     // tutorial / calibration / enrol / AR editor are lazy chunks.

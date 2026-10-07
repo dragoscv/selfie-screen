@@ -22,6 +22,22 @@ const SYSTEM = [
     'Răspunde DOAR cu JSON: {"<id>": "traducere", ...}. Dacă un mesaj este deja în română, omite-l.',
 ].join("\n");
 
+/** Prompt for live captions: everything the streamer says, into `target` (BCP-47 code). */
+export function captionPrompt(target: string): string {
+    return [
+        `You translate a TikTok LIVE streamer's spoken sentences (live subtitles) into the language with BCP-47 code "${target}".`,
+        "Natural, short, spoken style; keep names, emoji and @mentions; no explanations, no quotes.",
+        'Reply ONLY with JSON: {"<id>": "translation", ...}. Translate every line, even short ones.',
+    ].join("\n");
+}
+
+export interface TranslatorOptions {
+    /** "foreign" = chat: only lines the detector flags as not Romanian; "all" = every line (captions). */
+    filter?: "foreign" | "all";
+    /** Batch window (ms): captions want low latency. */
+    windowMs?: number;
+}
+
 export interface TranslationJob {
     eventId: string;
     text: string;
@@ -66,6 +82,10 @@ function cacheKey(text: string): string {
 
 export class Translator {
     #deps: TranslatorDeps;
+    readonly #filter: "foreign" | "all";
+    readonly #windowMs: number;
+    #system = SYSTEM;
+    #target = "ro";
     #cache = new Map<string, string>();
     #pending: Pending[] = [];
     #timer: NodeJS.Timeout | null = null;
@@ -73,14 +93,30 @@ export class Translator {
     enabled = false;
     minLetters = 6;
 
-    constructor(deps: TranslatorDeps) {
+    constructor(deps: TranslatorDeps, options: TranslatorOptions = {}) {
         this.#deps = deps;
+        this.#filter = options.filter ?? "foreign";
+        this.#windowMs = options.windowMs ?? BATCH_WINDOW_MS;
+    }
+
+    /** Captions: change the target language (prompt + cache are per target). */
+    set target(lang: string) {
+        if (lang === this.#target) return;
+        this.#target = lang;
+        this.#system = captionPrompt(lang);
+        this.#cache.clear();
+        this.#pending = [];
+    }
+
+    get target(): string {
+        return this.#target;
     }
 
     /** Returns true when the line was queued or answered from cache. */
     offer(job: TranslationJob): boolean {
         if (!this.enabled) return false;
-        const detection = detectLanguage(job.text, this.minLetters);
+        if (job.text.trim() === "") return false;
+        const detection = this.#filter === "all" ? { lang: this.#target, foreign: true } : detectLanguage(job.text, this.minLetters);
         if (!detection.foreign) return false;
         const key = cacheKey(job.text);
         const cached = this.#cache.get(key);
@@ -108,7 +144,7 @@ export class Translator {
             const result = await this.#deps.client.complete(
                 this.#deps.model(),
                 [
-                    { role: "system", content: SYSTEM },
+                    { role: "system", content: this.#system },
                     { role: "user", content: lines.join("\n") },
                 ],
                 TIMEOUT_MS,
@@ -123,7 +159,7 @@ export class Translator {
                 const text = translations.get(id) ?? "";
                 // Cache misses too ("" = model said it is Romanian), so they never cost twice.
                 this.#remember(job.key, text);
-                if (text !== "" && cacheKey(text) !== job.key) {
+                if (text !== "" && (this.#filter === "all" || cacheKey(text) !== job.key)) {
                     this.#deps.emit(job.eventId, job.lang, text);
                     emitted += 1;
                 }
@@ -151,7 +187,7 @@ export class Translator {
         this.#timer = setTimeout(() => {
             this.#timer = null;
             void this.flush();
-        }, BATCH_WINDOW_MS);
+        }, this.#windowMs);
         this.#timer.unref();
     }
 }

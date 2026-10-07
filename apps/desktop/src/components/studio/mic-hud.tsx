@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { MicEvent } from "../../lib/audio/mic.js";
-import { subscribeMicFeed, type MicPayload } from "./mic-feed.js";
+import { subscribeMicFeed, type MicPayload } from "../../lib/studio/mic-feed.js";
 
 /**
  * Studio mic HUD (F4, preview only — never in the output video): what the transcription hears,

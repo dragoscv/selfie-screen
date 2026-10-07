@@ -27,6 +27,8 @@ export interface MicEvent {
     at: number;
     kind: "commit" | "skip" | "final" | "error" | "open" | "close" | "server-commit";
     text: string;
+    /** STT item id of a "final" line (the sidecar's transcriptTranslation uses the same id). */
+    itemId?: string;
 }
 
 /** Live diagnostics snapshot (studio mic HUD), ~10 Hz. */
@@ -164,8 +166,8 @@ export class Mic {
         return this.#events.splice(0, this.#events.length);
     }
 
-    #event(kind: MicEvent["kind"], text: string): void {
-        this.#events.push({ at: Date.now(), kind, text: text.slice(0, 200) });
+    #event(kind: MicEvent["kind"], text: string, itemId?: string): void {
+        this.#events.push({ at: Date.now(), kind, text: text.slice(0, 200), ...(itemId ? { itemId } : {}) });
         if (this.#events.length > 50) this.#events.shift();
     }
 
@@ -433,7 +435,7 @@ export class Mic {
                 if (committed !== undefined) this.#lastLatencyMs = Date.now() - committed;
                 if (text.trim() !== "") {
                     this.#finals += 1;
-                    this.#event("final", text.trim());
+                    this.#event("final", text.trim(), itemId);
                     this.#callbacks.onFinal(itemId, text.trim());
                 } else {
                     // Diagnostic only: an empty result is not a transcript line.

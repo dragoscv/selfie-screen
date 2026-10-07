@@ -1,6 +1,6 @@
 import { emitTo, listen } from "@tauri-apps/api/event";
 
-import type { MicDiag, MicEvent } from "../../lib/audio/mic.js";
+import type { MicDiag, MicEvent } from "../audio/mic.js";
 
 /** One `mic://diag` tick from the main window (10 Hz while watched). */
 export interface MicPayload {

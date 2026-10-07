@@ -256,6 +256,8 @@ export interface StudioController {
     ensureModels(which: ("identity" | "dogIdentity" | "depth")[], onProgress?: (p: number) => void): Promise<void>;
     /** AR editing: move/scale objects; changes persist through the settings store by the caller. */
     pickArObject(x: number, y: number): ArObject["id"] | null;
+    /** Live caption pill in the output (centre + size, output-normalised), or null when not on the live. */
+    captionRect?(): { u: number; v: number; w: number; h: number } | null;
     /** Output-normalised -> preview element coords helper data. */
     readonly outputSize: { width: number; height: number };
     /** Live 3D state for the debug overlay; null before start. Read inside rAF, do not hold. */

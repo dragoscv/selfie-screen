@@ -75,6 +75,7 @@ import { VcamPump } from "./output.js";
 import { ScopeSampler } from "./scopes.js";
 import { StudioVision } from "./vision/runtime.js";
 import type * as TraceModule from "./trace.js";
+import type { CaptionLayer } from "./caption-layer.js";
 
 export const PET_ASSET_BASE = "/pets";
 const TRANSCODER = "/basis/";
@@ -406,6 +407,9 @@ export class StudioEngine implements StudioController {
     #scopes: ScopeSampler | null = null;
     #ar: ArLayer | null = null;
     #effects: EffectLayer | null = null;
+    /** Live captions in the output video (lazy: loaded when studio.captions.output turns on). */
+    #captions: CaptionLayer | null = null;
+    #captionsLoading = false;
     #stream: MediaStream | null = null;
     #settings: StudioSettings;
     #raf = 0;
@@ -669,6 +673,34 @@ export class StudioEngine implements StudioController {
         this.#wantScopes = m.scope !== "none" || m.clipping || this.#visionSettings.coach.exposure;
     }
 
+    /** Captions in the output: the layer (and its transcript feed) loads on first use. */
+    async #syncCaptions(settings: StudioSettings): Promise<void> {
+        const want = settings.captions.output && settings.monitor.transcript;
+        if (this.#captions) {
+            this.#captions.settings = settings.captions;
+            this.#captions.setLive(want);
+            return;
+        }
+        if (!want || this.#captionsLoading || !this.#stage) return;
+        this.#captionsLoading = true;
+        try {
+            const { CaptionLayer: Layer } = await import("./caption-layer.js");
+            const stage = this.#stage;
+            if (!stage || this.#stopped) return;
+            this.#captions = new Layer(stage.scene, this.#settings.captions);
+            this.#captions.setLive(this.#settings.captions.output && this.#settings.monitor.transcript);
+        } catch (e) {
+            this.#cb.onError?.(`captions: ${String(e)}`);
+        } finally {
+            this.#captionsLoading = false;
+        }
+    }
+
+    /** Output caption pill (output-normalised centre + size) for the preview's move/resize handles. */
+    captionRect(): { u: number; v: number; w: number; h: number } | null {
+        return this.#captions?.live ? this.#captions.rect : null;
+    }
+
     async applyStudio(settings: StudioSettings): Promise<void> {
         const prev = this.#settings;
         this.#settings = settings;
@@ -683,6 +715,7 @@ export class StudioEngine implements StudioController {
         this.#preview?.set(settings.monitor);
         if (this.#framing.targetZoom !== settings.framing.zoom) this.#framing.setZoom(settings.framing.zoom);
         this.#ar?.set(settings.arObjects);
+        void this.#syncCaptions(settings);
         this.#updateWantScopes();
         if (this.#vision && (prev.rotation !== settings.rotation || prev.mirror !== settings.mirror)) {
             await this.#vision
@@ -1235,6 +1268,7 @@ export class StudioEngine implements StudioController {
         stage.setPalms(this.#settings.petHands.enabled ? palmPerches(this.#debugHands, [0, pin.heightM ?? 0, 0]) : []);
         this.#ar?.update(pin, this.#ownerM, this.#arAnchors, now / 1000, dt, this.#hidden);
         this.#effects?.update(dt);
+        if (this.#captions) this.#captions.update(now, W, H);
         stage.update(body.present ? body : null, dt);
         if (this.#trace && now - this.#traceAt >= this.#trace.TRACE_MS) {
             this.#traceAt = now;
@@ -1345,6 +1379,8 @@ export class StudioEngine implements StudioController {
         this.#ar = null;
         this.#effects?.dispose();
         this.#effects = null;
+        this.#captions?.dispose();
+        this.#captions = null;
         if (this.#copy) {
             this.#copy.removeFromParent();
             this.#copy.geometry.dispose();
