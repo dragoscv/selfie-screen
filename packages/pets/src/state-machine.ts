@@ -37,6 +37,11 @@ const ONE_SHOT: Readonly<Record<PetClip, number>> = {
     wave: 1200,
 };
 
+/** How long a clip plays before falling back (0 = looping). */
+export function clipDurationMs(clip: PetClip): number {
+    return ONE_SHOT[clip];
+}
+
 export class PetStateMachine {
     readonly #b: PetBehaviour;
     readonly #rand: () => number;

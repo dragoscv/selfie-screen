@@ -9,10 +9,21 @@ import {
     popScale,
     revealCount,
     sanitizeBubbleText,
+    tailOffsetPx,
     textVisemes,
 } from "./bubble-layout.js";
 
 describe("speech bubble layout", () => {
+    it("bends the tail toward the pet when the bubble is slid in, never past the rect", () => {
+        expect(tailOffsetPx(0, 300)).toBe(0);
+        expect(tailOffsetPx(0.1, 300)).toBeCloseTo(51.2);
+        expect(tailOffsetPx(-0.1, 300)).toBeCloseTo(-51.2);
+        expect(tailOffsetPx(0.9, 300)).toBe(150 - 41);
+        expect(tailOffsetPx(-0.9, 300)).toBe(-(150 - 41));
+        expect(tailOffsetPx(0.5, 60)).toBe(0);
+        expect(tailOffsetPx(Number.NaN, 300)).toBe(0);
+    });
+
     it("wraps on words into at most two lines of 22 chars", () => {
         expect(layoutBubble("Salut!")).toEqual(["Salut!"]);
         const lines = layoutBubble("Bună seara tuturor, mulțumesc pentru cadou");

@@ -48,6 +48,23 @@ export function defaultSignalConfig(signal: SignalId): SignalConfig {
     return { ...FAMILY_DEFAULTS[signalFamily(signal)], ...SIGNAL_DEFAULTS[signal] };
 }
 
+/**
+ * Personal gesture thresholds (settings `vision.calibration.hands.gestures`: signal -> score)
+ * as tracker overrides: `on` = the calibrated score, `off` keeps the default hysteresis ratio
+ * below it. Unknown signal names and non-finite scores are ignored.
+ */
+export function gestureOverrides(gestures: Readonly<Record<string, number>>, known: readonly string[]): Partial<Record<SignalId, Partial<SignalConfig>>> {
+    const out: Partial<Record<SignalId, Partial<SignalConfig>>> = {};
+    for (const [signal, score] of Object.entries(gestures)) {
+        if (!known.includes(signal) || !Number.isFinite(score)) continue;
+        const id = signal as SignalId;
+        const d = defaultSignalConfig(id);
+        const on = Math.min(Math.max(score, 0.2), 0.95);
+        out[id] = { on, off: Math.min(on - 0.05, on * (d.off / d.on)) };
+    }
+    return out;
+}
+
 export interface TrackerOptions {
     armHoldMs: number;
     armWindowMs: number;
@@ -106,6 +123,12 @@ export class SignalTracker {
     /** Longest `hold` duration any enabled rule waits for, per signal (drives the HUD ring). */
     setHoldTargets(targets: Partial<Record<SignalId, number>>): void {
         this.#holdTargets = targets;
+    }
+
+    /** Replace per-signal config overrides (e.g. personal gesture thresholds from calibration). */
+    setOverrides(overrides: Partial<Record<SignalId, Partial<SignalConfig>>>): void {
+        this.#o.overrides = overrides;
+        this.#configs.clear();
     }
 
     config(signal: SignalId): SignalConfig {

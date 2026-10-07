@@ -50,7 +50,7 @@ const hands = new Map();
 for (const f of frames) {
     for (const p of f.parts) {
         if (p.pet) {
-            const s = pets.get(p.pet) ?? { n: 0, prev: null, du: [], dz: [], sc: [], z: [], anchors: new Map(), switches: 0, acts: new Map(), held: 0, pushed: 0, gaits: new Map() };
+            const s = pets.get(p.pet) ?? { n: 0, prev: null, du: [], dz: [], sc: [], z: [], anchors: new Map(), switches: 0, acts: new Map(), clips: new Map(), held: 0, pushed: 0, gaits: new Map() };
             const [u, v] = p.uv.split(",").map(Number);
             const z = Number(p.z);
             const sc = Number(p.sc);
@@ -68,6 +68,7 @@ for (const f of frames) {
             s.z.push(z);
             s.anchors.set(p.a, (s.anchors.get(p.a) ?? 0) + 1);
             s.acts.set(p.act, (s.acts.get(p.act) ?? 0) + 1);
+            if (p.clip) s.clips.set(p.clip, (s.clips.get(p.clip) ?? 0) + 1);
             s.gaits.set(p.gait, (s.gaits.get(p.gait) ?? 0) + 1);
             if (p.held === "1") s.held++;
             if (Number(p.push) > 0.005) s.pushed++;
@@ -93,7 +94,7 @@ if (args.includes("--timeline")) {
     const step = args.includes("--every") ? 1 : Math.max(1, Math.floor(frames.length / 40));
     for (let i = 0; i < frames.length; i += step) {
         const f = frames[i];
-        const ps = f.parts.filter((p) => p.pet).map((p) => `${p.pet} ${p.a}/${p.act} uv=${p.uv} z=${p.z} sc=${p.sc}${p.held === "1" ? " HELD" : ""}`);
+        const ps = f.parts.filter((p) => p.pet).map((p) => `${p.pet} ${p.a}/${p.act}${p.clip ? `/${p.clip}` : ""} uv=${p.uv} z=${p.z} sc=${p.sc}${p.held === "1" ? " HELD" : ""}`);
         const hs = f.parts.filter((p) => p.hand).map((p) => `${p.hand}:${p.shape}${p.pin === "1" ? "*" : ""}${p.uv ? ` uv=${p.uv} size=${p.size}` : ""}`);
         console.log(`  ${f.clock} owner=${f.owner} grab=${f.grab} | ${ps.join(" | ")} | ${hs.join(" ")}`);
     }
@@ -104,7 +105,7 @@ for (const [id, s] of pets) {
             ` | depth z p10=${fmt(q(s.z, 0.1), 2)} p90=${fmt(q(s.z, 0.9), 2)} dz/s p90=${fmt(q(s.dz, 0.9), 2)}` +
             ` | scale min=${fmt(Math.min(...s.sc), 2)} max=${fmt(Math.max(...s.sc), 2)}` +
             ` | anchor switches=${s.switches} (${(s.switches / Math.max(span, 1e-3)).toFixed(2)}/s) ${top(s.anchors)}` +
-            ` | acts ${top(s.acts)} | gait ${top(s.gaits)} | held=${s.held} pushed=${s.pushed}`,
+            ` | acts ${top(s.acts)} | clips ${top(s.clips)} | gait ${top(s.gaits)} | held=${s.held} pushed=${s.pushed}`,
     );
 }
 for (const [side, s] of hands) console.log(`hand ${side}: n=${s.n} pinching=${s.pin} shapes ${top(s.shapes, 5)} z p10=${fmt(q(s.z, 0.1), 2)} p90=${fmt(q(s.z, 0.9), 2)}`);

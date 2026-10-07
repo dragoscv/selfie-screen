@@ -1,10 +1,11 @@
 import { FaceLandmarker, FilesetResolver, GestureRecognizer, ObjectDetector, PoseLandmarker, type NormalizedLandmark } from "@mediapipe/tasks-vision";
-import { signalFamily, type IdentityProfile, type SignalEvent, type SignalFamily, type SignalId, type Subject, type VisionSnapshot } from "@tiksee/core";
+import { HAND_GESTURES, signalFamily, type IdentityProfile, type SignalEvent, type SignalFamily, type SignalId, type Subject, type VisionSnapshot } from "@tiksee/core";
 import {
     boxOfPoints,
     classifyHand,
     DistanceEstimator,
     FaceAnalyzer,
+    gestureOverrides,
     handObservations,
     handInFrame,
     HandSmoother,
@@ -335,6 +336,8 @@ export class VisionPipeline {
             for (const t of r.triggers) if (t.type === "signal" && t.on === "hold") holds[t.signal] = Math.max(holds[t.signal] ?? 0, t.holdMs);
         }
         this.#signals.setHoldTargets(holds);
+        // Personal gesture thresholds from the Hands & gestures calibration.
+        this.#signals.setOverrides(gestureOverrides(s.calibration.hands.gestures, HAND_GESTURES));
         for (const st of this.#state.values()) {
             st.face.setCalibration(s.calibration);
             st.posture.setCalibration(s.calibration);

@@ -5,7 +5,8 @@ import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 
 import type { Backdrop } from "./backdrop.js";
-import { SpeechBubble, type SayOptions } from "./bubble.js";
+import type * as BubbleModule from "./bubble.js";
+import type { SayOptions, SpeechBubble } from "./bubble.js";
 import { sanitizeBubbleText, textVisemes } from "./bubble-layout.js";
 import { PETS, petUrl, type PetId } from "./catalogue.js";
 import { HandGrab, PET_SCALE_MAX, PET_SCALE_MIN, type GrabMode, type GrabPet, type HandInput } from "./grab.js";
@@ -17,7 +18,7 @@ import { PetActor } from "./pet-actor.js";
 import { ANCHORS, PetRoamer, locomotionOf, onScreen, type AnchorId, type PalmPerch, type PetPose } from "./roam.js";
 import type { Side } from "./shoulders.js";
 import { DEFAULT_VFOV_DEG, project, unproject, type BodySnapshot, type Pinhole, type Vec3 } from "./space.js";
-import { PET_CLIPS, type PetClip, type PetEvent } from "./state-machine.js";
+import { PET_CLIPS, clipDurationMs, type PetClip, type PetEvent } from "./state-machine.js";
 import { mouthWeights, type VisemeEvent } from "./visemes.js";
 
 export interface StageOptions {
@@ -75,6 +76,8 @@ interface Slot {
     speech: { visemes: readonly VisemeEvent[]; startMs: number } | null;
     /** Director command holding an anchor until a time. */
     command: { anchor: AnchorId; until: number } | null;
+    /** An external clip (rule / director / event) the mind must not overwrite until this time. */
+    clipHoldUntil: number;
     /** Last mind action (chatter rising edge). */
     lastAction: ActionKind | null;
 }
@@ -111,6 +114,8 @@ export interface PetDebug {
     held: boolean;
     /** Owner resize multiplier (1 = catalogue size). */
     scale: number;
+    /** Clip the animation brain is playing (may differ from the mind's action). */
+    clip: PetClip;
 }
 
 /** Live context the engine feeds the minds (cheap, set whenever it changes). */
@@ -202,6 +207,7 @@ export class PetStage {
     #loader: GLTFLoader | null = null;
     #speech: { visemes: readonly VisemeEvent[]; startMs: number } | null = null;
     #hidden = false;
+    #bubbleModule: Promise<typeof BubbleModule> | null = null;
     #vfov = DEFAULT_VFOV_DEG;
     #tilt = 0;
     #camHeight = 0;
@@ -463,6 +469,7 @@ export class PetStage {
             bubble: null,
             speech: null,
             command: null,
+            clipHoldUntil: 0,
             lastAction: null,
         });
     }
@@ -499,13 +506,24 @@ export class PetStage {
         }
         for (const s of this.#slots.values()) {
             if (stim) s.mind.stimulus(stim);
+            // Rule/director clips (🤟 -> dance) nudge the mind toward the matching behaviour too.
+            if (event.type === "command" && event.clip === "dance") s.mind.bias("celebrate", 2, now, clipDurationMs("dance"));
             const lead = !this.#spotlight || this.#spotlight === s.actor.pet;
-            if (lead) s.actor.send(event, now);
+            if (lead) this.#sendHeld(s, event, now);
             else {
                 const [lo, hi] = s.mind.personality.reactionMs;
                 const delay = 300 + lo + Math.random() * (hi - lo);
-                setTimeout(() => s.actor.send(event, performance.now()), delay);
+                setTimeout(() => this.#sendHeld(s, event, performance.now()), delay);
             }
+        }
+    }
+
+    /** Send an external event; a one-shot clip it starts is protected from the mind's 5 Hz override. */
+    #sendHeld(s: Slot, event: PetEvent, now: number): void {
+        s.actor.send(event, now);
+        if (event.type === "command" || event.type === "gift" || event.type === "gesture") {
+            const len = clipDurationMs(s.actor.brain.clip);
+            if (len > 0) s.clipHoldUntil = now + len;
         }
     }
 
@@ -640,8 +658,17 @@ export class PetStage {
         if (!s || !clean) return;
         if (!s.bubble) {
             if (typeof document === "undefined" && typeof OffscreenCanvas === "undefined") return;
-            s.bubble = new SpeechBubble();
-            this.scene.add(s.bubble.mesh);
+            // The bubble (canvas text + TSL material) is loaded on the first line, off the studio chunk.
+            this.#bubbleModule ??= import("./bubble.js");
+            void this.#bubbleModule.then(({ SpeechBubble: Bubble }) => {
+                if (this.#slotOf(pet) !== s) return;
+                if (!s.bubble) {
+                    s.bubble = new Bubble();
+                    this.scene.add(s.bubble.mesh);
+                }
+                this.say(pet, text, opts);
+            });
+            return;
         }
         const now = performance.now();
         s.bubble.say(clean, now, opts);
@@ -667,7 +694,7 @@ export class PetStage {
         }
         if (cmd.clip) {
             const clip: PetClip | null = cmd.clip === "happy" ? "hop" : (PET_CLIPS as readonly string[]).includes(cmd.clip) ? cmd.clip : null;
-            if (clip) s.actor.send({ type: "command", clip }, now);
+            if (clip) this.#sendHeld(s, { type: "command", clip }, now);
         }
     }
 
@@ -752,7 +779,14 @@ export class PetStage {
                 if (slot.command) slot.roamer.request(slot.command.anchor);
                 // Behaviour clips the mind asks for (look, wave, dance, sleep...) go through the brain.
                 // Chatter talks through the bubble + lip-sync, not a looping clip.
-                if (d.clip !== "idle" && slot.actor.brain.clip !== d.clip && d.action !== "perchShoulder" && d.action !== "chatter" && !slot.held) {
+                if (
+                    d.clip !== "idle" &&
+                    slot.actor.brain.clip !== d.clip &&
+                    d.action !== "perchShoulder" &&
+                    d.action !== "chatter" &&
+                    !slot.held &&
+                    now >= slot.clipHoldUntil
+                ) {
                     slot.actor.send({ type: "command", clip: d.clip }, now);
                 }
             }
@@ -818,6 +852,7 @@ export class PetStage {
                 pushed: slot.pushed,
                 held: slot.held,
                 scale: slot.scale,
+                clip: slot.actor.brain.clip,
             });
         }
         this.#debug = debug;

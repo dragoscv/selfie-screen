@@ -20,6 +20,7 @@ export function traceLine(nowMs: number, pets: readonly PetDebug[], hands: reado
             `pet=${d.pet}`,
             `a=${d.pose.anchor}`,
             `act=${d.mind.decision?.action ?? "-"}`,
+            `clip=${d.clip}`,
             `set=${d.pose.settled ? 1 : 0}`,
             `gait=${d.pose.gait ?? "-"}`,
             `p=${f3(pos[0])},${f3(pos[1])},${f3(pos[2])}`,

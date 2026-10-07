@@ -32,7 +32,9 @@ const child = spawn("pnpm", ["--filter", "@tiksee/desktop", "tauri", "dev"], {
     stdio: "inherit",
     shell: process.platform === "win32",
 });
-child.on("exit", (code) => {
+child.on("exit", (code, signal) => {
+    // code -1 / a signal = the process tree was killed from outside (closed terminal), not a crash.
+    console.log(`[dev-app] tauri dev exited code=${code} signal=${signal ?? "-"} at ${new Date().toISOString()}`);
     // Give WebView2 a moment to exit with its parent, then reap leftovers.
     setTimeout(() => {
         killOrphans("after exit");

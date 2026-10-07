@@ -16,7 +16,7 @@ export * from "./grab.js";
 export * from "./bubble-layout.js";
 export * from "./personality.js";
 export { PERSONALITIES, PetMind, pickSpotlight, seeded, type Decision, type MindContext, type MindOptions, type Mood, type Needs, type Personality, type Stimulus } from "./mind.js";
-export { SpeechBubble, type SayOptions } from "./bubble.js";
+export type { SayOptions, SpeechBubble } from "./bubble.js";
 export { bodyCapsules, type Capsule } from "./constraints.js";
 export { PetActor } from "./pet-actor.js";
 export { Backdrop, type BackdropDof, type BackdropLook } from "./backdrop.js";

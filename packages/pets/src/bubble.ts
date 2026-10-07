@@ -13,6 +13,7 @@ import {
     popScale,
     revealCount,
     revealDurationMs,
+    tailOffsetPx,
 } from "./bubble-layout.js";
 import { focalPx, project, unproject, type Pinhole, type Vec3 } from "./space.js";
 
@@ -90,6 +91,7 @@ export class SpeechBubble {
     #lastDraw = -Infinity;
     #drawnChars = -1;
     #drawnSize: Size = { w: -1, h: -1 };
+    #drawnTail = 0;
     #active = false;
     /** Smoothed edge fit (shrink) and screen offset, so the bubble glides instead of jumping. */
     #fit = 1;
@@ -189,7 +191,7 @@ export class SpeechBubble {
         return { w: this.#from.w + (this.#to.w - this.#from.w) * t, h: this.#from.h + (this.#to.h - this.#from.h) * t };
     }
 
-    #draw(size: Size, shown: number): void {
+    #draw(size: Size, shown: number, tailPx = 0): void {
         const ctx = this.#ctx;
         ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
         ctx.clearRect(0, 0, W, H);
@@ -198,14 +200,15 @@ export class SpeechBubble {
         const y = bottom - size.h;
         const r = Math.min(RADIUS, size.h / 2);
         const cx = W / 2;
+        const tx = cx + tailPx;
         ctx.beginPath();
         ctx.moveTo(x + r, y);
         ctx.arcTo(x + size.w, y, x + size.w, bottom, r);
         ctx.arcTo(x + size.w, bottom, x, bottom, r);
-        // Tail: down to the pet, slightly curved.
-        ctx.lineTo(cx + TAIL_W / 2, bottom);
-        ctx.quadraticCurveTo(cx + 4, bottom + TAIL_H * 0.5, cx, bottom + TAIL_H);
-        ctx.quadraticCurveTo(cx - 6, bottom + TAIL_H * 0.4, cx - TAIL_W / 2, bottom);
+        // Tail: down to the pet, slightly curved; follows the pet when the bubble is slid in.
+        ctx.lineTo(tx + TAIL_W / 2, bottom);
+        ctx.quadraticCurveTo(tx + 4, bottom + TAIL_H * 0.5, tx, bottom + TAIL_H);
+        ctx.quadraticCurveTo(tx - 6, bottom + TAIL_H * 0.4, tx - TAIL_W / 2, bottom);
         ctx.arcTo(x, bottom, x, y, r);
         ctx.arcTo(x, y, x + size.w, y, r);
         ctx.closePath();
@@ -279,37 +282,49 @@ export class SpeechBubble {
         const morphing = nowMs - this.#morphStart < MORPH_MS + 20;
         const shown = revealCount(this.#chars, nowMs - this.#revealStart);
         const sizeChanged = Math.abs(size.w - this.#drawnSize.w) > 0.25 || Math.abs(size.h - this.#drawnSize.h) > 0.25;
-        if ((morphing && sizeChanged) || (shown !== this.#drawnChars && nowMs - this.#lastDraw >= REDRAW_MS) || this.#drawnChars < 0) {
-            this.#draw(size, shown);
-            this.#drawnChars = shown;
-            this.#drawnSize = size;
-            this.#lastDraw = nowMs;
-        }
         // Screen-space layout: the tail tip sits on the pet's anchor; the bubble keeps a constant
-        // on-screen size, shrinks smoothly (down to MIN_SHRINK) when it would cross the frame edge,
-        // and is slid fully inside the safe area. It keeps following the pet; when the pet leaves
-        // the frame the bubble waits at the nearest edge and resumes as soon as the pet is back.
+        // on-screen size and slides inside the safe area near the frame edges (the tail bends back
+        // toward the pet). It only shrinks (down to MIN_SHRINK) when the room above the pet or the
+        // frame width itself is too small. When the pet leaves the frame the bubble waits at the
+        // nearest edge and resumes as soon as the pet is back.
         const a = project(pin, anchor);
         const depth = Math.max(a.depthM, 0.1);
         const au = Math.min(1, Math.max(0, a.u));
         const av = Math.min(1, Math.max(0, a.v));
         const hFrac = MESH_FRAC;
         const wFrac = (hFrac * (W / H) * pin.height) / pin.width;
-        const spaceX = Math.max(0, Math.min(au - SAFE, 1 - SAFE - au) * 2);
+        // Width the drawn rectangle really needs (the canvas is wider than the rounded rect).
+        const rectFrac = (wFrac * Math.max(size.w, MIN_W)) / W;
+        const spaceX = Math.max(0, 1 - 2 * SAFE);
         const spaceY = Math.max(0, av - SAFE);
-        const wantFit = Math.max(MIN_SHRINK, Math.min(1, spaceX / wFrac, spaceY / hFrac));
+        const wantFit = Math.max(MIN_SHRINK, Math.min(1, spaceX / rectFrac, spaceY / hFrac));
         const kf = this.#placed ? 1 - Math.exp(-Math.max(0, nowMs - this.#lastPlace) / 120) : 1;
         this.#lastPlace = nowMs;
         this.#fit += (wantFit - this.#fit) * kf;
         const k = Math.max(pop * exit * this.#fit, 1e-3);
         const bw = wFrac * k;
         const bh = hFrac * k;
+        const rw = rectFrac * k;
         const cu0 = au;
         const cv0 = av - bh / 2 + Math.sin(nowMs / 420) * bh * 0.015;
-        const tu = Math.min(1 - SAFE - bw / 2, Math.max(SAFE + bw / 2, cu0));
+        const tu = Math.min(1 - SAFE - rw / 2, Math.max(SAFE + rw / 2, cu0));
         const tv = Math.min(1 - SAFE - bh / 2, Math.max(SAFE + bh / 2, cv0));
         this.#shift = [this.#shift[0] + (tu - cu0 - this.#shift[0]) * kf, this.#shift[1] + (tv - cv0 - this.#shift[1]) * kf];
         this.#placed = true;
+        // Tail x (canvas px from the centre) that keeps pointing at the pet after the slide.
+        const tail = tailOffsetPx(-this.#shift[0] / bw, size.w, W, RADIUS + TAIL_W / 2);
+        if (
+            (morphing && sizeChanged) ||
+            (shown !== this.#drawnChars && nowMs - this.#lastDraw >= REDRAW_MS) ||
+            this.#drawnChars < 0 ||
+            Math.abs(tail - this.#drawnTail) > 1
+        ) {
+            this.#draw(size, shown, tail);
+            this.#drawnChars = shown;
+            this.#drawnSize = size;
+            this.#drawnTail = tail;
+            this.#lastDraw = nowMs;
+        }
         const p: Vec3 = unproject(pin, cu0 + this.#shift[0], cv0 + this.#shift[1], depth);
         const worldH = (bh * pin.height * depth) / focalPx(pin);
         this.mesh.quaternion.copy(camera.quaternion);

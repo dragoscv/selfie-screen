@@ -1,7 +1,7 @@
 import type { SignalEvent, SignalId, Subject } from "@tiksee/core";
 import { describe, expect, it } from "vitest";
 
-import { defaultSignalConfig, SignalTracker } from "./debounce.js";
+import { defaultSignalConfig, gestureOverrides, SignalTracker } from "./debounce.js";
 
 const OWNER: Subject = { kind: "person", track: 1, owner: true };
 const GUEST: Subject = { kind: "person", track: 2, owner: false };
@@ -14,6 +14,25 @@ function feed(tr: SignalTracker, signal: SignalId, score: number, t0: number, ms
 }
 
 const tracker = () => new SignalTracker({ overrides: { smile: { minOnMs: 200, minOffMs: 250, cooldownMs: 1000 } } });
+
+describe("calibrated gesture thresholds", () => {
+    it("maps hands.gestures to on/off overrides, ignoring unknown names", () => {
+        const o = gestureOverrides({ fist: 0.64, bogus: 0.5, victory: Number.NaN }, ["fist", "victory"]);
+        expect(Object.keys(o)).toEqual(["fist"]);
+        expect(o.fist?.on).toBe(0.64);
+        expect(o.fist?.off).toBeLessThan(0.64);
+        expect(o.fist?.off).toBeCloseTo(0.64 * 0.7);
+    });
+
+    it("a stricter personal threshold blocks a score the default would accept", () => {
+        const tr = new SignalTracker();
+        expect(feed(tr, "fist", 0.55, 0, 600).map((e) => e.phase)).toEqual(["start"]);
+        const strict = new SignalTracker();
+        strict.setOverrides(gestureOverrides({ fist: 0.7 }, ["fist"]));
+        expect(feed(strict, "fist", 0.55, 0, 600)).toEqual([]);
+        expect(feed(strict, "fist", 0.8, 600, 600).map((e) => e.phase)).toEqual(["start"]);
+    });
+});
 
 describe("SignalTracker edges", () => {
     it("emits start after the dwell and end with the duration", () => {

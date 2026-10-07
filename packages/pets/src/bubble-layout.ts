@@ -133,6 +133,17 @@ export function exitFactor(sinceExpiryMs: number): number {
 }
 
 /**
+ * Tail x offset (canvas px from the bubble centre) for a bubble slid sideways to stay in
+ * frame: `frac` = pet offset from the bubble centre as a fraction of the canvas width.
+ * Clamped so the tail never leaves the rounded rect's straight bottom edge.
+ */
+export function tailOffsetPx(frac: number, rectW: number, canvasW = 512, inset = 41): number {
+    const max = Math.max(0, rectW / 2 - inset);
+    const px = Number.isFinite(frac) ? frac * canvasW : 0;
+    return Math.min(max, Math.max(-max, px));
+}
+
+/**
  * A cheap mouth flap for an unvoiced bubble: one Azure viseme per revealed
  * character (vowels open the mouth, b/m/p close it), timed with the typewriter.
  */
