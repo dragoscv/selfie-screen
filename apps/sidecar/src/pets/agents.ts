@@ -65,7 +65,7 @@ export interface PetAgentsDeps {
     emitSay: (say: PetSay) => void;
     emitCommand: (command: PetCommand) => void;
     /** Queue a line for TTS in `voice`; returns the queue entry id (utterances `<id>:<n>`). */
-    speak?: (text: string, voice: string | undefined) => string | undefined;
+    speak?: (text: string, opts: { voice?: string | undefined; speed?: number | undefined; pitch?: number | undefined }) => string | undefined;
     store?: Pick<PetStore, "ensure" | "seen" | "addMemory" | "applyExperience" | "addTurn" | "turns"> | null;
     /** Facts about a viewer (viewer memory). */
     viewerFacts?: (uniqueId: string) => string[];
@@ -360,7 +360,8 @@ export class PetAgents {
     #emit(pet: string, text: string, emotion: PetSay["emotion"]): void {
         const s = this.#deps.settings();
         const voiced = s.studio.petAi.voice && !this.#deps.shopMode();
-        const sayId = voiced ? this.#deps.speak?.(text, s.studio.petAi.voices[pet]) : undefined;
+        const prosody = s.studio.petAi.prosody[pet];
+        const sayId = voiced ? this.#deps.speak?.(text, { voice: s.studio.petAi.voices[pet], speed: prosody?.speed, pitch: prosody?.pitch }) : undefined;
         if (sayId) {
             this.#petEntries.add(sayId);
             if (this.#petEntries.size > 50) this.#petEntries.delete(this.#petEntries.values().next().value ?? "");

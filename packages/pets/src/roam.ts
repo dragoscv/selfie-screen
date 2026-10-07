@@ -148,13 +148,18 @@ export function anchorPoints(
         out.shoulderR = perch(b.p, 1);
     }
     if (body.head.conf > 0.3) {
-        out.crown = add(body.crown, [0, 0.01, 0.02]);
-        out.centre = add(body.head.p, [0, -0.05, 0.35]);
+        const h = body.head;
+        // On the crown, 1 cm proud of the hair and 2 cm towards the face, along the head's own axes:
+        // nod forward and the pet rides forward with the skull, tilt and it slides with it.
+        out.crown = add(body.crown, add(mul(h.up, 0.01), mul(h.forward, 0.02)));
+        // In front of the face (0.35 m along where it looks, never behind the owner), 5 cm below eye line.
+        const ahead = h.forward[2] > 0.3 ? h.forward : ([h.forward[0], h.forward[1], 0.3] as Vec3);
+        out.centre = add(h.p, add(mul(ahead, 0.35), [0, -0.05, 0]));
         // Orbit: an ellipse around the head (0.34 m wide, 0.28 m deep) centred 0.1 m IN FRONT,
         // so ~70 % of the lap is beside/in front of the face and only a short arc passes behind
         // (occluded by the person mask). ~6.5 s per lap, phase per side.
         const ph = tSec * 0.95 + (side === "left" ? 0 : Math.PI);
-        out.orbit = add(body.head.p, [Math.cos(ph) * 0.34, 0.12 + Math.sin(ph * 2) * 0.04, 0.1 + Math.sin(ph) * 0.28]);
+        out.orbit = add(h.p, [Math.cos(ph) * 0.34, 0.12 + Math.sin(ph * 2) * 0.04, 0.1 + Math.sin(ph) * 0.28]);
     }
     const wrist = [j.leftWrist, j.rightWrist].filter((w) => w.conf > 0.5).sort((a, b) => a.p[0] - b.p[0]);
     // Only a hand raised above the shoulders is a perch.
@@ -181,6 +186,8 @@ export class PetRoamer {
     #v: Vec3 = [0, 0, 0];
     #yaw = 0;
     #pitch = 0;
+    /** Lean that follows the head while perched on the crown (radians). */
+    #roll = 0;
     #anchor: AnchorId;
     #want: AnchorId | null = null;
     #since = 0;
@@ -425,15 +432,23 @@ export class PetRoamer {
             wantYaw = toCam + angleDelta(toCam, toHead) * 0.33;
         }
         this.#yaw += angleDelta(this.#yaw, wantYaw) * (1 - Math.exp(-dt / 0.18));
-        const wantPitch = this.loco === "walk" ? 0 : Math.max(-0.5, Math.min(0.5, -vel[1] * 0.4 + sp * 0.25));
-        this.#pitch += (wantPitch - this.#pitch) * (1 - Math.exp(-dt / 0.15));
+        // On the crown the pet rides the head: lean with its roll and pitch (60 %, so it still
+        // looks like it balances), ~0.12 s behind. Anywhere else it levels out.
+        const onHead = this.#anchor === "crown" && this.#settled && !this.#held && body?.present === true && body.head.rotConf > 0.2;
+        const rad = Math.PI / 180;
+        const headPitch = onHead && body ? Math.max(-0.6, Math.min(0.6, -body.head.euler.pitch * rad * 0.6)) : 0;
+        const headRoll = onHead && body ? Math.max(-0.6, Math.min(0.6, -body.head.euler.roll * rad * 0.6)) : 0;
+        const flightPitch = this.loco === "walk" ? 0 : Math.max(-0.5, Math.min(0.5, -vel[1] * 0.4 + sp * 0.25));
+        const wantPitch = onHead ? headPitch : flightPitch;
+        this.#pitch += (wantPitch - this.#pitch) * (1 - Math.exp(-dt / (onHead ? 0.12 : 0.15)));
+        this.#roll += (headRoll - this.#roll) * (1 - Math.exp(-dt / 0.12));
         const camera: Vec3 = [0, pin.heightM ?? 0, 0];
         const lookAt: Vec3 = body?.present && body.head.conf > 0.3 ? lookTarget(body, camera, nowMs, this.#o.side === "left" ? 0 : 1.5) : camera;
         return {
             p: pos,
             yaw: this.#yaw,
             pitch: this.#pitch,
-            roll: 0,
+            roll: this.#roll,
             gait,
             gaitWeight,
             anchor: this.#anchor,

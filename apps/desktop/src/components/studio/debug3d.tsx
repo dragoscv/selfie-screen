@@ -21,6 +21,8 @@ import {
     grabLine,
     HAND_BONES,
     handLabel,
+    headLine,
+    headRings,
     hudLine,
     metres,
     moodDot,
@@ -205,12 +207,42 @@ function drawBody(g: Ctx, s: Debug3dState, rect: Rect): void {
     const ls = worldToShell(s.pin, rect, j.leftShoulder.p);
     const rs = worldToShell(s.pin, rect, j.rightShoulder.p);
     if (ls && rs) label(g, `${Math.round(body.shoulders.span * 100)} cm`, (ls.x + rs.x) / 2 - 16, (ls.y + rs.y) / 2 - 10, "rgb(253 224 71)");
-    // Head: centre, forward arrow, crown, axes gizmo.
+    // Neck: shoulder midpoint -> head centre, so the head is visibly part of the skeleton.
+    const neckBase = add3(scale3(add3(j.leftShoulder.p, j.rightShoulder.p), 0.5), [0, 0.04, 0]);
+    const nb = worldToShell(s.pin, rect, neckBase);
     const head = worldToShell(s.pin, rect, body.head.p);
+    if (nb && head && Math.min(j.leftShoulder.conf, j.rightShoulder.conf) > 0.3) {
+        g.strokeStyle = depthColor((nb.depthM + head.depthM) / 2, 0.25 + 0.6 * body.head.conf);
+        g.lineWidth = 2.5;
+        g.setLineDash(body.head.conf < 0.5 ? [4, 4] : []);
+        g.beginPath();
+        g.moveTo(nb.x, nb.y);
+        g.lineTo(head.x, head.y);
+        g.stroke();
+        g.setLineDash([]);
+    }
+    // Head: wireframe skull in the head's own axes (turns, nods, tilts), forward arrow, crown, local axes.
     if (head) {
+        g.lineWidth = 1.5;
+        g.strokeStyle = `rgb(255 255 255 / ${(0.25 + 0.55 * body.head.conf).toFixed(3)})`;
+        for (const ring of headRings(body.head.p, body.head)) {
+            g.beginPath();
+            let started = false;
+            for (const q of ring) {
+                const p = worldToShell(s.pin, rect, q);
+                if (!p) {
+                    started = false;
+                    continue;
+                }
+                if (started) g.lineTo(p.x, p.y);
+                else g.moveTo(p.x, p.y);
+                started = true;
+            }
+            g.stroke();
+        }
         arrow(g, s.pin, rect, body.head.p, add3(body.head.p, scale3(body.head.forward, 0.15)), "rgb(255 255 255 / 0.9)");
         label(g, metres(head.depthM), head.x + 10, head.y - 12);
-        axes(g, s.pin, rect, body.head.p);
+        axes(g, s.pin, rect, body.head.p, body.head);
     }
     const crown = worldToShell(s.pin, rect, body.crown);
     if (crown) {
@@ -221,10 +253,11 @@ function drawBody(g: Ctx, s: Debug3dState, rect: Rect): void {
     }
 }
 
-function axes(g: Ctx, pin: Pinhole, rect: Rect, at: Vec3): void {
-    arrow(g, pin, rect, at, add3(at, [0.1, 0, 0]), "#ef4444");
-    arrow(g, pin, rect, at, add3(at, [0, 0.1, 0]), "#22c55e");
-    arrow(g, pin, rect, at, add3(at, [0, 0, 0.1]), "#3b82f6");
+/** Head-local axes: red = right, green = up, blue = forward. */
+function axes(g: Ctx, pin: Pinhole, rect: Rect, at: Vec3, h: { right: Vec3; up: Vec3; forward: Vec3 }): void {
+    arrow(g, pin, rect, at, add3(at, scale3(h.right, 0.1)), "#ef4444");
+    arrow(g, pin, rect, at, add3(at, scale3(h.up, 0.1)), "#22c55e");
+    arrow(g, pin, rect, at, add3(at, scale3(h.forward, 0.1)), "#3b82f6");
 }
 
 function arrow(g: Ctx, pin: Pinhole, rect: Rect, from: Vec3, to: Vec3, color: string): void {
@@ -510,7 +543,7 @@ function drawMindCard(g: Ctx, x: number, y: number, pet: Debug3dState["pets"][nu
 
 function drawHud(g: Ctx, s: Debug3dState, rect: Rect): void {
     const grab = grabLine(s);
-    const lines = grab ? [hudLine(s), distanceLine(s), grab] : [hudLine(s), distanceLine(s)];
+    const lines = [hudLine(s), distanceLine(s), ...(s.body?.present ? [headLine(s.body.head)] : []), ...(grab ? [grab] : [])];
     g.font = FONT;
     const x = rect.left + 8;
     let y = rect.top + 8;

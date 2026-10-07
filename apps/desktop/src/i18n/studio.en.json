@@ -150,14 +150,13 @@
             "composition": "Composition",
             "audioAids": "Audio",
             "output": "Output",
+            "transcript": {
+                "label": "Transcript",
+                "hint": "Your words as captions above the controls. Preview only."
+            },
             "mic": {
-                "label": "Microphone & transcription",
-                "hint": "What the transcription hears, live (F4). Preview only.",
-                "show": "Show",
-                "modes": {
-                    "full": "Full panel",
-                    "transcript": "Transcript only"
-                }
+                "label": "Microphone diagnostics",
+                "hint": "Level, threshold, connection and what the transcription hears (F4). Preview only."
             },
             "guides": "Guides",
             "guideKinds": {
@@ -261,6 +260,11 @@
         },
         "ar": {
             "name": "AR"
+        },
+        "sound": {
+            "name": "Sound",
+            "cohost": "Co-host",
+            "pets": "+ pets"
         }
     },
     "pets": {
@@ -651,6 +655,42 @@
             "laptop": "Laptop webcam",
             "custom": "Custom / calibrated"
         }
+    },
+    "captions": {
+        "label": "Live transcript",
+        "listening": "Listening… your words appear here",
+        "off": "Transcription is off: Settings → AI co-host → Transcribe my microphone",
+        "offline": "Transcription is reconnecting…"
+    },
+    "sound": {
+        "devices": "Devices",
+        "output": "Voice output",
+        "input": "Microphone",
+        "systemDefault": "System default",
+        "missing": "Missing device (unplugged?)",
+        "unnamed": "Device {{n}}",
+        "allow": "Allow microphone to see device names",
+        "cohost": "Co-host voice",
+        "voiceOn": "Voice on",
+        "volume": "Volume",
+        "duck": "Lower while I talk",
+        "voice": "Voice",
+        "voices": {
+            "default": "Co-host",
+            "alina": "Alina",
+            "emil": "Emil"
+        },
+        "speed": "Speed",
+        "pitch": "Pitch",
+        "test": "Test",
+        "testCohost": "Test the co-host voice",
+        "testPet": "Test {{name}}'s voice",
+        "sampleCohost": "Salut! Așa sună vocea mea acum.",
+        "samplePet": "Bună! Eu sunt animăluțul tău.",
+        "pets": "Pet voices",
+        "petVoice": "Pets speak out loud",
+        "petVoiceHint": "Pet lines through the co-host voice queue, each with its own voice, speed and pitch.",
+        "noPets": "No pets on screen: pick them in Pets."
     },
     "mic": {
         "title": "Microphone & transcription",

@@ -53,6 +53,8 @@ export interface PoseResult {
     irisPx: number | null;
     /** Age of the face result behind irisPx, ms. */
     irisAgeMs: number;
+    /** Owner head rotation (display degrees) + capture time of its face frame, or null. */
+    head: PoseEarly["head"];
 }
 
 /** Newest early owner-hands result (see HandsEarly); `seq` increments per result. */
@@ -228,6 +230,7 @@ export class StudioVision implements VisionRuntime {
             rawH: e.rawH,
             irisPx: e.irisPx,
             irisAgeMs: e.irisAgeMs,
+            head: e.head,
         };
     }
 

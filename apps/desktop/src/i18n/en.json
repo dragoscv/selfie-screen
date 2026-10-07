@@ -577,12 +577,9 @@
                 "loupeZoom": "Loupe magnification",
                 "debug3d": "3D debug view",
                 "debug3dHint": "Skeleton in metres, depth grid, pet anchors and paths (F3 in the studio). Preview only",
-                "micPanel": "Microphone & transcription (F4 in the studio)",
-                "micPanelModes": {
-                    "off": "Off",
-                    "full": "Full panel",
-                    "transcript": "Transcript only"
-                }
+                "micPanel": "Microphone diagnostics (F4 in the studio)",
+                "transcript": "Transcript captions",
+                "transcriptHint": "Your words as captions above the studio controls. Preview only"
             },
             "framing": {
                 "title": "Framing",

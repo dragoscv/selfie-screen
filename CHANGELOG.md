@@ -4,8 +4,13 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 
 ## [Unreleased]
 
+### Added
+- **Sound button in the Studio dock**: choose the voice output and the microphone, the co-host's voice, volume, speed and pitch, how much it lowers while you talk, and for each pet on screen its own voice, speed and pitch, each with a ▶ Test button. Changes apply at once and also show in Settings.
+- **Pitch now works with the codai voice** (co-host and pets), independent of speed: the pitch slider in Settings → Voice is no longer limited to Windows voices.
+- **Your head in 3D**: the skeleton now has a head that turns, nods and tilts with you (from the face model), joined to the shoulders by a neck. The F3 3D view draws it as a wireframe skull with its own axes, and shows yaw, pitch and roll. A pet sitting on your head rides forward when you bow, back when you lean back, and leans when you tilt; "in front of the face" follows where you look.
+
 ### Changed
-- **Microphone & transcription is now a Monitor aid** in the Studio (Monitor → Audio), also in Settings → Studio: switch it on and choose **Full panel** or **Transcript only** (just your words, larger, without the meters). The choice is saved; F4 cycles off → full → transcript. Clean feed hides it.
+- **Monitor → Audio has two separate switches**: **Transcript** shows your words as captions just above the controls (part of the layout, never on top of the status bar, scopes or panels; it moves down when the controls hide and steps aside while a panel is open), and **Microphone diagnostics** opens the full panel (F4). Both are saved, also in Settings → Studio; Clean feed hides them.
 
 ### Fixed
 - Empty transcription results no longer appear as "(empty transcript)" lines; they are listed only in the diagnostic log.

@@ -37,6 +37,13 @@ const SAY_WATCHDOG_PER_CHAR_MS = 90;
 
 const AI_KINDS: ReadonlySet<EntryKind> = new Set(["ai"]);
 
+/** Per-utterance voice override (a pet's voice and prosody, or a voice audition). */
+export interface SpeakOptions {
+    voice?: string | undefined;
+    speed?: number | undefined;
+    pitch?: number | undefined;
+}
+
 export interface CoHostDeps {
     settings: () => Settings;
     send: (message: ServerMessage) => void;
@@ -248,7 +255,7 @@ export class CoHost {
      * `speak` from the UI (or a pet line): manual announcement, bypasses the reply bucket.
      * Returns the queue entry id; its utterances are `<id>:<part>`.
      */
-    speak(text: string, voice?: string): string {
+    speak(text: string, opts: SpeakOptions = {}): string {
         const now = this.#now();
         const id = this.#queue.nextId();
         this.#queue.add(
@@ -259,7 +266,9 @@ export class CoHost {
                 parts: splitSentences(text),
                 streaming: false,
                 expiresAt: now + TEMPLATE_TTL_MS,
-                ...(voice ? { voice } : {}),
+                ...(opts.voice ? { voice: opts.voice } : {}),
+                ...(opts.speed !== undefined ? { speed: opts.speed } : {}),
+                ...(opts.pitch !== undefined ? { pitch: opts.pitch } : {}),
             },
             now,
         );
@@ -474,6 +483,8 @@ export class CoHost {
             id: sayId,
             text,
             voice: candidate.voice ?? settings.voice.voice,
+            ...(candidate.speed !== undefined ? { speed: candidate.speed } : {}),
+            ...(candidate.pitch !== undefined ? { pitch: candidate.pitch } : {}),
             ...(candidate.item.eventId ? { eventId: candidate.item.eventId } : {}),
         });
     }

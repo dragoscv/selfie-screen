@@ -160,14 +160,15 @@ function RuleToasts() {
 }
 
 export function GestureHud() {
-    const { vision } = useStudio();
+    const { vision, studio } = useStudio();
     return (
         <>
             {vision.showGestureHud && <Rings />}
             <div className="pointer-events-none absolute inset-x-3 top-[max(12%,6rem)] flex justify-center">
                 <ArmedBadge />
             </div>
-            <div className="pointer-events-none absolute bottom-[max(14%,7.5rem)] left-3 max-w-[calc(100%-1.5rem)]">
+            {/* Above the caption lane (Captions, up to ~3 lines over the dock) when captions are on. */}
+            <div className={`pointer-events-none absolute left-3 max-w-[calc(100%-1.5rem)] ${studio.monitor.transcript ? "bottom-[max(24%,13rem)]" : "bottom-[max(14%,7.5rem)]"}`}>
                 <RuleToasts />
             </div>
         </>

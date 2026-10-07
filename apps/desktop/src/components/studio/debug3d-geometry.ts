@@ -104,6 +104,30 @@ export function rotateY(v: Vec3, yaw: number): Vec3 {
 export const add3 = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const scale3 = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
 
+/** Adult head half-extents (m): ear to ear, chin to crown, nose to back. */
+export const HEAD_HALF_M = { right: 0.075, up: 0.115, forward: 0.095 } as const;
+
+/**
+ * Three rings of the head ellipsoid (horizontal, sagittal, coronal) around `p` in the head's
+ * own axes, `n` points each: the wireframe skull that turns, nods and tilts with the face.
+ */
+export function headRings(p: Vec3, axes: { forward: Vec3; up: Vec3; right: Vec3 }, n = 24): Vec3[][] {
+    const { forward: f, up: u, right: r } = axes;
+    const at = (a: Vec3, ka: number, b: Vec3, kb: number): Vec3 => add3(p, add3(scale3(a, ka), scale3(b, kb)));
+    const ring = (a: Vec3, ra: number, b: Vec3, rb: number): Vec3[] =>
+        Array.from({ length: n + 1 }, (_, i) => {
+            const t = (i / n) * Math.PI * 2;
+            return at(a, Math.cos(t) * ra, b, Math.sin(t) * rb);
+        });
+    return [ring(r, HEAD_HALF_M.right, f, HEAD_HALF_M.forward), ring(f, HEAD_HALF_M.forward, u, HEAD_HALF_M.up), ring(r, HEAD_HALF_M.right, u, HEAD_HALF_M.up)];
+}
+
+/** `head yaw 12° pitch -8° roll 3° · face 100%` (face = share of the rotation from the face model). */
+export function headLine(head: { euler: { yaw: number; pitch: number; roll: number }; rotConf: number }): string {
+    const e = head.euler;
+    return `head yaw ${Math.round(e.yaw)}° pitch ${Math.round(e.pitch)}° roll ${Math.round(e.roll)}° · face ${Math.round(head.rotConf * 100)}%`;
+}
+
 /** Box edges (12) as corner index pairs: 0-3 bottom ring, 4-7 top ring. */
 export const BOX_EDGES: readonly (readonly [number, number])[] = [
     [0, 1], [1, 2], [2, 3], [3, 0],
@@ -173,7 +197,7 @@ export const metres = (m: number): string => `${m.toFixed(2)} m`;
 export function hudLine(s: Debug3dState): string {
     const parts = [`vFOV ${s.pin.vfovDeg.toFixed(1)}°`, `focal ${Math.round(focalPx(s.pin))} px`];
     if (s.body?.present) {
-        parts.push(`owner ${metres(s.body.distanceM)}`, `yaw ${Math.round((s.body.yaw * 180) / Math.PI)}°`);
+        parts.push(`owner ${metres(s.body.distanceM)}`, `body yaw ${Math.round((s.body.yaw * 180) / Math.PI)}°`);
     } else {
         parts.push("owner —");
     }

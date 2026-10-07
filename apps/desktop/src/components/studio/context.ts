@@ -1,4 +1,4 @@
-import type { IdentityProfile, StudioSettings, VisionSettings } from "@tiksee/core";
+import type { AudioSettings, IdentityProfile, StudioSettings, VisionSettings, VoiceSettings } from "@tiksee/core";
 import { createContext, useContext, useState, useSyncExternalStore } from "react";
 
 import type { StudioController, StudioFrameInfo } from "../../lib/studio/controller.js";
@@ -133,6 +133,8 @@ export interface StudioContextValue {
     /** Apply now (engine) and persist (debounced). */
     patchStudio(patch: Partial<StudioSettings>): void;
     patchVision(patch: Partial<VisionSettings>): void;
+    /** Persist voice/audio edits; the main window (which owns playback and the mic) applies them. */
+    patchSound(patch: { voice?: Partial<VoiceSettings>; audio?: Partial<AudioSettings> }): void;
 }
 
 export const StudioContext = createContext<StudioContextValue | null>(null);

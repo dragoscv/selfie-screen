@@ -1,4 +1,4 @@
-import type { IdentityProfile, StudioSettings, VisionSettings } from "@tiksee/core";
+import type { AudioSettings, IdentityProfile, StudioSettings, VisionSettings, VoiceSettings } from "@tiksee/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -20,6 +20,7 @@ import { StatusBar } from "./status.js";
 // On-demand flows stay out of the studio entry chunk (budget: scripts/check-budgets.mjs).
 const ArEditor = lazy(() => import("./ar-editor.js").then((m) => ({ default: m.ArEditor })));
 const Calibration = lazy(() => import("./calibration.js").then((m) => ({ default: m.Calibration })));
+const Captions = lazy(() => import("./captions.js").then((m) => ({ default: m.Captions })));
 const Debug3d = lazy(() => import("./debug3d.js").then((m) => ({ default: m.Debug3d })));
 const Enrol = lazy(() => import("./enrol.js").then((m) => ({ default: m.Enrol })));
 const SpaceCalibration = lazy(() => import("./space-calibration.js").then((m) => ({ default: m.SpaceCalibration })));
@@ -44,6 +45,7 @@ export interface StudioShellProps {
     loupe: boolean;
     patchStudio(patch: Partial<StudioSettings>): void;
     patchVision(patch: Partial<VisionSettings>): void;
+    patchSound(patch: { voice?: Partial<VoiceSettings>; audio?: Partial<AudioSettings> }): void;
 }
 
 /** Tracks where the `object-fit: contain` canvas image lands inside the shell. */
@@ -79,7 +81,7 @@ function useDisplayedRect(shell: HTMLElement | null, canvas: HTMLCanvasElement, 
  * the output frame: the engine renders the output separately.
  */
 export function StudioShell(props: StudioShellProps) {
-    const { controller, canvas, frames, studio, vision, profiles, petsHidden, modal, onModal, loupe, patchStudio, patchVision } = props;
+    const { controller, canvas, frames, studio, vision, profiles, petsHidden, modal, onModal, loupe, patchStudio, patchVision, patchSound } = props;
     const { t } = useTranslation();
     const reduced = useReducedMotion();
     const [shell, setShell] = useState<HTMLDivElement | null>(null);
@@ -139,8 +141,8 @@ export function StudioShell(props: StudioShellProps) {
     }, [poke, openRadial, rectRef]);
 
     const ctx = useMemo<StudioContextValue>(
-        () => ({ controller, frames, studio, vision, profiles, petsHidden, rect, rectRef, canvas, patchStudio, patchVision }),
-        [controller, frames, studio, vision, profiles, petsHidden, rect, rectRef, canvas, patchStudio, patchVision],
+        () => ({ controller, frames, studio, vision, profiles, petsHidden, rect, rectRef, canvas, patchStudio, patchVision, patchSound }),
+        [controller, frames, studio, vision, profiles, petsHidden, rect, rectRef, canvas, patchStudio, patchVision, patchSound],
     );
 
     const photo = useCallback(async () => {
@@ -213,6 +215,20 @@ export function StudioShell(props: StudioShellProps) {
                     )}
                 </AnimatePresence>
                 <AnimatePresence>{(loupe || loupeHeld) && <Loupe key="loupe" />}</AnimatePresence>
+
+                {/* Caption lane: bottom centre, lifted above the dock while it shows; hidden behind an open panel or modal. */}
+                {studio.monitor.transcript && !clean && !blocking && panel === null && (
+                    <motion.div
+                        className="pointer-events-none absolute inset-x-3 flex justify-center"
+                        initial={false}
+                        animate={{ bottom: controlsShown ? 96 : 16 }}
+                        transition={fade}
+                    >
+                        <Suspense fallback={null}>
+                            <Captions />
+                        </Suspense>
+                    </motion.div>
+                )}
 
                 <AnimatePresence>
                     {controlsShown && (

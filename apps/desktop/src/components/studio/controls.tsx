@@ -1,4 +1,4 @@
-import { GUIDE_KINDS, MIC_PANEL_MODES, PEAKING_COLORS, PET_CHOICES, SCOPE_KINDS, type StudioSettings } from "@tiksee/core";
+import { PET_CHOICES, type StudioSettings } from "@tiksee/core";
 import { ChipSelector, SliderRow, SwitchRow } from "@tiksee/ui";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import {
@@ -18,6 +18,7 @@ import {
     Search,
     Sparkles,
     SunMedium,
+    Volume2,
     X,
     ZoomIn,
     ZoomOut,
@@ -32,8 +33,10 @@ import { ActionButton, Section } from "./controls-parts.js";
 import { HoldButton } from "./hold-button.js";
 
 const AiPanel = lazy(() => import("./ai-panel.js").then((m) => ({ default: m.AiPanel })));
+const MonitorPanel = lazy(() => import("./monitor-panel.js").then((m) => ({ default: m.MonitorPanel })));
+const SoundPanel = lazy(() => import("./sound-panel.js").then((m) => ({ default: m.SoundPanel })));
 
-const PANELS = ["zoom", "focus", "look", "framing", "monitor", "camera", "pets", "ai", "ar"] as const;
+const PANELS = ["zoom", "focus", "look", "framing", "monitor", "camera", "pets", "ai", "sound", "ar"] as const;
 export type PanelId = (typeof PANELS)[number];
 
 const ICONS: Record<PanelId, LucideIcon> = {
@@ -45,6 +48,7 @@ const ICONS: Record<PanelId, LucideIcon> = {
     camera: Camera,
     pets: PawPrint,
     ai: Sparkles,
+    sound: Volume2,
     ar: Box,
 };
 
@@ -180,61 +184,6 @@ function FramingPanel() {
     );
 }
 
-function MonitorPanel() {
-    const { studio, patchStudio } = useStudio();
-    const { t } = useTranslation();
-    const m = studio.monitor;
-    const set = (p: Partial<StudioSettings["monitor"]>) => patchStudio({ monitor: { ...m, ...p } });
-    return (
-        <>
-            <Section title={t("studio.controls.monitor.focusAids")}>
-                <SwitchRow label={t("studio.controls.monitor.peaking")} checked={m.peaking} onChange={(peaking) => set({ peaking })} />
-                {m.peaking && (
-                    <>
-                        <ChipSelector options={PEAKING_COLORS} value={m.peakingColor} onSelect={(peakingColor) => set({ peakingColor })} display={(v) => t(`studio.controls.monitor.colors.${v}`)} label={t("studio.controls.monitor.peakingColor")} />
-                        <SliderRow label={t("studio.controls.monitor.peakingThreshold")} value={m.peakingThreshold} min={0.03} max={0.5} step={0.01} format={(v) => v.toFixed(2)} onCommit={(peakingThreshold) => set({ peakingThreshold })} />
-                    </>
-                )}
-                <SwitchRow label={t("studio.controls.monitor.afBox")} checked={m.afBox} onChange={(afBox) => set({ afBox })} />
-                <ChipSelector label={t("studio.controls.monitor.loupeZoom")} options={["2", "4"] as const} value={String(m.loupeZoom) as "2" | "4"} onSelect={(v) => set({ loupeZoom: v === "4" ? 4 : 2 })} display={(v) => `${v}×`} />
-            </Section>
-            <Section title={t("studio.controls.monitor.exposureAids")}>
-                <SwitchRow label={t("studio.controls.monitor.zebra")} checked={m.zebra} onChange={(zebra) => set({ zebra })} />
-                {m.zebra && <SliderRow label={t("studio.controls.monitor.zebraLevel")} value={m.zebraLevel} min={50} max={100} step={1} format={(v) => `${v} IRE`} onCommit={(zebraLevel) => set({ zebraLevel: Math.round(zebraLevel) })} />}
-                <SwitchRow label={t("studio.controls.monitor.falseColor")} checked={m.falseColor} onChange={(falseColor) => set({ falseColor })} />
-                <SwitchRow label={t("studio.controls.monitor.clipping")} checked={m.clipping} onChange={(clipping) => set({ clipping })} />
-                <ChipSelector label={t("studio.controls.monitor.scope")} options={SCOPE_KINDS} value={m.scope} onSelect={(scope) => set({ scope })} display={(v) => t(`studio.scopes.kind.${v}`)} />
-            </Section>
-            <Section title={t("studio.controls.monitor.composition")}>
-                <ChipSelector label={t("studio.controls.monitor.guides")} options={GUIDE_KINDS} value={m.guides} onSelect={(guides) => set({ guides })} display={(v) => t(`studio.controls.monitor.guideKinds.${v}`)} />
-                <SwitchRow label={t("studio.controls.monitor.safeZones")} checked={m.safeZones} onChange={(safeZones) => set({ safeZones })} />
-                <SwitchRow label={t("studio.controls.monitor.horizon")} checked={m.horizon} onChange={(horizon) => set({ horizon })} />
-                <SwitchRow label={t("studio.controls.monitor.debug3d.label")} description={t("studio.controls.monitor.debug3d.hint")} checked={m.debug3d} onChange={(debug3d) => set({ debug3d })} />
-            </Section>
-            <Section title={t("studio.controls.monitor.audioAids")}>
-                <SwitchRow
-                    label={t("studio.controls.monitor.mic.label")}
-                    description={t("studio.controls.monitor.mic.hint")}
-                    checked={m.micPanel !== "off"}
-                    onChange={(on) => set({ micPanel: on ? "full" : "off" })}
-                />
-                {m.micPanel !== "off" && (
-                    <ChipSelector
-                        label={t("studio.controls.monitor.mic.show")}
-                        options={MIC_PANEL_MODES.filter((v) => v !== "off")}
-                        value={m.micPanel}
-                        onSelect={(micPanel) => set({ micPanel })}
-                        display={(v) => t(`studio.controls.monitor.mic.modes.${v}`)}
-                    />
-                )}
-            </Section>
-            <Section title={t("studio.controls.monitor.output")}>
-                <SwitchRow label={t("studio.controls.monitor.cleanFeed")} description={t("studio.controls.monitor.cleanFeedHint")} checked={m.cleanFeed} onChange={(cleanFeed) => set({ cleanFeed })} />
-            </Section>
-        </>
-    );
-}
-
 function CameraPanel({ onSpace }: { onSpace: () => void }) {
     const { controller, frames, studio } = useStudio();
     const { t } = useTranslation();
@@ -308,7 +257,7 @@ function usePillValue(id: PanelId): string {
             return studio.framing.autoReframe ? t("studio.controls.framing.autoShort") : studio.framing.dof ? "DoF" : t("studio.common.off");
         case "monitor": {
             if (m.cleanFeed) return t("studio.controls.monitor.clean");
-            const n = [m.peaking, m.zebra, m.falseColor, m.clipping, m.scope !== "none", m.guides !== "none", m.safeZones, m.debug3d, m.micPanel !== "off"].filter(Boolean).length;
+            const n = [m.peaking, m.zebra, m.falseColor, m.clipping, m.scope !== "none", m.guides !== "none", m.safeZones, m.debug3d, m.micPanel, m.transcript].filter(Boolean).length;
             return t("studio.controls.monitor.aids", { count: n });
         }
         case "camera":
@@ -317,6 +266,8 @@ function usePillValue(id: PanelId): string {
             return petsHidden ? t("studio.controls.pets.hidden") : [studio.leftPet, studio.rightPet].filter((p) => p !== "none").length.toString();
         case "ai":
             return t(`studio.controls.ai.levels.${studio.petAi.level}`);
+        case "sound":
+            return studio.petAi.voice ? t("studio.controls.sound.pets") : t("studio.controls.sound.cohost");
         case "ar":
             return String(studio.arObjects.length);
     }
@@ -400,12 +351,21 @@ function Panel({ id, onClose, onLoupe, onSpace }: { id: PanelId; onClose: () => 
                 {id === "focus" && <FocusPanel onLoupe={onLoupe} />}
                 {id === "look" && <LookPanel />}
                 {id === "framing" && <FramingPanel />}
-                {id === "monitor" && <MonitorPanel />}
+                {id === "monitor" && (
+                    <Suspense fallback={<div className="h-40" aria-busy />}>
+                        <MonitorPanel />
+                    </Suspense>
+                )}
                 {id === "camera" && <CameraPanel onSpace={onSpace} />}
                 {id === "pets" && <PetsPanel />}
                 {id === "ai" && (
                     <Suspense fallback={<div className="h-40" aria-busy />}>
                         <AiPanel />
+                    </Suspense>
+                )}
+                {id === "sound" && (
+                    <Suspense fallback={<div className="h-40" aria-busy />}>
+                        <SoundPanel />
                     </Suspense>
                 )}
             </motion.div>

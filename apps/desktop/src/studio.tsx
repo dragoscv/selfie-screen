@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { error as logError, info } from "@tauri-apps/plugin-log";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { load } from "@tauri-apps/plugin-store";
-import { MIC_PANEL_MODES, parseSettings, type IdentityProfile, type MicPanelMode, type SignalEvent, type StudioSettings, type VisionSettings } from "@tiksee/core";
+import { parseSettings, type AudioSettings, type IdentityProfile, type SignalEvent, type StudioSettings, type VisionSettings, type VoiceSettings } from "@tiksee/core";
 import { applyAppearance } from "@tiksee/ui";
 import type { FrameStatsSnapshot } from "@tiksee/pets";
 import { MotionConfig } from "motion/react";
@@ -74,12 +74,17 @@ function Studio() {
         persistRef.current?.queue({ vision: patch });
     }, []);
 
-    /** Mic & transcription aid (Monitor panel, F4 cycles): persisted in studio.monitor.micPanel. */
+    /** Sound panel edits: persisted here, applied by the main window (it owns playback and the mic). */
+    const patchSound = useCallback((patch: { voice?: Partial<VoiceSettings>; audio?: Partial<AudioSettings> }) => {
+        persistRef.current?.queue(patch);
+    }, []);
+
+    /** Mic & transcription diagnostics (Monitor → Audio, F4): persisted in studio.monitor.micPanel. */
     const setMicPanel = useCallback(
-        (next: (mode: MicPanelMode) => MicPanelMode) => {
+        (on: (cur: boolean) => boolean) => {
             const cur = studioRef.current;
             if (!cur) return;
-            patchStudio({ monitor: { ...cur.monitor, micPanel: next(cur.monitor.micPanel) } });
+            patchStudio({ monitor: { ...cur.monitor, micPanel: on(cur.monitor.micPanel) } });
         },
         [patchStudio],
     );
@@ -305,7 +310,7 @@ function Studio() {
 
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "F2") setHud((v) => !v);
-            else if (e.key === "F4") setMicPanel((m) => MIC_PANEL_MODES[(MIC_PANEL_MODES.indexOf(m) + 1) % MIC_PANEL_MODES.length] ?? "off");
+            else if (e.key === "F4") setMicPanel((on) => !on);
         };
         window.addEventListener("keydown", onKey);
         // Closing the window or a full reload tears the page down without
@@ -360,11 +365,12 @@ function Studio() {
                     loupe={loupe}
                     patchStudio={patchStudio}
                     patchVision={patchVision}
+                    patchSound={patchSound}
                 />
             )}
-            {studio && studio.monitor.micPanel !== "off" && !studio.monitor.cleanFeed && (
+            {studio && studio.monitor.micPanel && !studio.monitor.cleanFeed && (
                 <Suspense fallback={null}>
-                    <MicHud mode={studio.monitor.micPanel} onClose={() => setMicPanel(() => "off")} />
+                    <MicHud onClose={() => setMicPanel(() => false)} />
                 </Suspense>
             )}
             {hud && (

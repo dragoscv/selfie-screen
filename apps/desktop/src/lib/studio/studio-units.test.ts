@@ -248,7 +248,7 @@ describe("monitor + scopes", () => {
     });
 
     it("clean feed disables every aid", () => {
-        const m = { peaking: true, peakingColor: "red", peakingThreshold: 0.15, zebra: false, zebraLevel: 95, falseColor: false, clipping: false, guides: "thirds", safeZones: true, scope: "none", afBox: true, horizon: true, loupeZoom: 2, micPanel: "off", cleanFeed: false, debug3d: false } as const;
+        const m = { peaking: true, peakingColor: "red", peakingThreshold: 0.15, zebra: false, zebraLevel: 95, falseColor: false, clipping: false, guides: "thirds", safeZones: true, scope: "none", afBox: true, horizon: true, loupeZoom: 2, micPanel: false, transcript: false, cleanFeed: false, debug3d: false } as const;
         expect(monitorActive(m)).toBe(true);
         expect(monitorActive({ ...m, cleanFeed: true })).toBe(false);
     });

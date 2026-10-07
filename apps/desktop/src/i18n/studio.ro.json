@@ -150,14 +150,13 @@
             "composition": "Compoziție",
             "audioAids": "Audio",
             "output": "Ieșire",
+            "transcript": {
+                "label": "Transcriere",
+                "hint": "Cuvintele tale ca subtitrare deasupra controalelor. Doar în previzualizare."
+            },
             "mic": {
-                "label": "Microfon și transcriere",
-                "hint": "Ce aude transcrierea, în timp real (F4). Doar în previzualizare.",
-                "show": "Afișează",
-                "modes": {
-                    "full": "Panou complet",
-                    "transcript": "Doar transcrierea"
-                }
+                "label": "Diagnostic microfon",
+                "hint": "Nivel, prag, conexiune și ce aude transcrierea (F4). Doar în previzualizare."
             },
             "guides": "Ghidaje",
             "guideKinds": {
@@ -263,6 +262,11 @@
         },
         "ar": {
             "name": "AR"
+        },
+        "sound": {
+            "name": "Sunet",
+            "cohost": "Co-host",
+            "pets": "+ animăluțe"
         }
     },
     "pets": {
@@ -655,6 +659,42 @@
             "laptop": "Webcam de laptop",
             "custom": "Personalizat / calibrat"
         }
+    },
+    "captions": {
+        "label": "Transcriere în timp real",
+        "listening": "Ascult… cuvintele tale apar aici",
+        "off": "Transcrierea e oprită: Setări → Co-host AI → Transcrie microfonul",
+        "offline": "Transcrierea se reconectează…"
+    },
+    "sound": {
+        "devices": "Dispozitive",
+        "output": "Ieșire voce",
+        "input": "Microfon",
+        "systemDefault": "Implicit sistem",
+        "missing": "Dispozitiv lipsă (deconectat?)",
+        "unnamed": "Dispozitiv {{n}}",
+        "allow": "Permite microfonul ca să vezi numele dispozitivelor",
+        "cohost": "Vocea co-host-ului",
+        "voiceOn": "Voce pornită",
+        "volume": "Volum",
+        "duck": "Mai încet cât vorbesc eu",
+        "voice": "Voce",
+        "voices": {
+            "default": "Co-host",
+            "alina": "Alina",
+            "emil": "Emil"
+        },
+        "speed": "Viteză",
+        "pitch": "Ton",
+        "test": "Testează",
+        "testCohost": "Testează vocea co-host-ului",
+        "testPet": "Testează vocea lui {{name}}",
+        "sampleCohost": "Salut! Așa sună vocea mea acum.",
+        "samplePet": "Bună! Eu sunt animăluțul tău.",
+        "pets": "Vocile animăluțelor",
+        "petVoice": "Animăluțele vorbesc cu voce",
+        "petVoiceHint": "Replicile lor trec prin coada vocii co-host-ului, fiecare cu vocea, viteza și tonul lui.",
+        "noPets": "Niciun animăluț pe ecran: alege-le din Animăluțe."
     },
     "mic": {
         "title": "Microfon și transcriere",

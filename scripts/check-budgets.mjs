@@ -16,6 +16,10 @@ const budgets = [
     ["desktop mic (lazy)", /^mic-[^h].*\.js$/, "apps/desktop/dist/assets", 4 * KB],
     // 0.5.0: studio mic/transcription diagnostics (F4), loaded on first open.
     ["studio mic hud (lazy)", /^mic-hud-.*\.js$/, "apps/desktop/dist/assets", 6 * KB],
+    // 0.5.2: Sound panel (devices, co-host + per-pet voice/speed/pitch), Monitor panel, transcript captions.
+    ["studio sound panel (lazy)", /^sound-panel-.*\.js$/, "apps/desktop/dist/assets", 6 * KB],
+    ["studio monitor panel (lazy)", /^monitor-panel-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
+    ["studio captions (lazy)", /^captions-.*\.js$/, "apps/desktop/dist/assets", 3 * KB],
     // Separate window; three/webgpu + MediaPipe never load in the main window.
     // 0.3.0: engine (output RT, AR, monitor, scopes, vcam pump) + control surface = 38.5 KB measured;
     // tutorial / calibration / enrol / AR editor are lazy chunks.

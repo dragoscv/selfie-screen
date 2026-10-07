@@ -365,6 +365,7 @@ export class StudioEngine implements StudioController {
     /** Dev telemetry (trace.ts), loaded only when enabled so it never ships in the studio chunk. */
     #trace: typeof TraceModule | null = null;
     #traceAt = 0;
+    #traceCalib = "";
     #lastPoseAt = 0;
     #poseSeq = -1;
     readonly #metric = new MetricDistance();
@@ -1194,7 +1195,13 @@ export class StudioEngine implements StudioController {
             const shift = m && solved ? m.distanceM - solved.distanceM : 0;
             const jointDepthM = solved?.jointDepthM?.map((d) => (d === undefined ? undefined : d + shift));
             this.#body.measure(
-                { tMs: early.tMs, landmarks: pose ? poseToOutput(pose, f, rotation) : null, distanceM: this.#ownerM, ...(jointDepthM ? { jointDepthM } : {}) },
+                {
+                    tMs: early.tMs,
+                    landmarks: pose ? poseToOutput(pose, f, rotation) : null,
+                    distanceM: this.#ownerM,
+                    ...(jointDepthM ? { jointDepthM } : {}),
+                    head: early.head ?? null,
+                },
                 early.arrivalMs,
             );
             if (pose) {
@@ -1232,7 +1239,11 @@ export class StudioEngine implements StudioController {
         if (this.#trace && now - this.#traceAt >= this.#trace.TRACE_MS) {
             this.#traceAt = now;
             const g = stage.grabState;
-            console.error(this.#trace.traceLine(now, stage.debug, this.#debugHands, pin, { ownerM: this.#ownerM ?? NaN, poseHz: this.#poseHz, grab: g ? `${g.pet}:${g.mode}:${g.scale.toFixed(2)}` : "-" }));
+            console.error(
+                this.#trace.traceLine(now, stage.debug, this.#debugHands, pin, { ownerM: this.#ownerM ?? NaN, poseHz: this.#poseHz, grab: g ? `${g.pet}:${g.mode}:${g.scale.toFixed(2)}` : "-", body }),
+            );
+            const calib = this.#trace.calibLine(this.#visionSettings.calibration.hands);
+            if (calib !== this.#traceCalib) console.error((this.#traceCalib = calib));
         }
 
         // Pass 1: graded camera. Pass 2: output composite. Pass 3: preview to the canvas.

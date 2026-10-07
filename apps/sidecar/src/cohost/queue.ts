@@ -19,6 +19,9 @@ export interface QueueEntry {
     expiresAt?: number;
     /** TTS voice for this entry (a pet's own voice); absent = settings.voice.voice. */
     voice?: string;
+    /** Tempo / pitch for this entry (a pet's prosody); absent = settings.voice.speed / 1. */
+    speed?: number;
+    pitch?: number;
 }
 
 const ACTIVE: ReadonlySet<ReplyStatus> = new Set(["pending", "drafting", "ready", "speaking"]);

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { applyAppearance, wantsNativeBackdrop } from "@tiksee/ui";
 import type { Settings } from "@tiksee/core";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { load, type Store } from "@tauri-apps/plugin-store";
 
 import { setLocale } from "../i18n/index.js";
@@ -55,11 +55,18 @@ export function useSettingsSync(): void {
         if (!loaded) return;
         let disposed = false;
         let stop: (() => void) | undefined;
-        void listen<{ studio?: Partial<Settings["studio"]>; vision?: Partial<Settings["vision"]> }>("studio://patch", (e) => {
+        void listen<{
+            studio?: Partial<Settings["studio"]>;
+            vision?: Partial<Settings["vision"]>;
+            voice?: Partial<Settings["voice"]>;
+            audio?: Partial<Settings["audio"]>;
+        }>("studio://patch", (e) => {
             useAppStore.getState().updateSettings((s) => ({
                 ...s,
                 studio: { ...s.studio, ...e.payload.studio },
                 vision: { ...s.vision, ...e.payload.vision },
+                voice: { ...s.voice, ...e.payload.voice },
+                audio: { ...s.audio, ...e.payload.audio },
             }));
         })
             .then((fn) => {
@@ -104,6 +111,12 @@ export function useSettingsSync(): void {
             if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
         };
     }, [settings, loaded]);
+
+    // ---- the studio Sound panel mirrors voice/audio (edited here or there) ----
+    useEffect(() => {
+        if (!loaded) return;
+        void emitTo("studio", "studio://sound", { voice: settings.voice, audio: settings.audio }).catch(() => undefined);
+    }, [settings.voice, settings.audio, loaded]);
 
     // ---- theme + locale + native backdrop ------------------------------
     useEffect(() => {

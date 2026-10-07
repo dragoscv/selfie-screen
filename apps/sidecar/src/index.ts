@@ -254,7 +254,7 @@ class Sidecar {
             emitSay: (say) => this.#broadcast({ type: "petSay", ...say }),
             emitCommand: (command) => this.#broadcast({ type: "petCommand", ...command }),
             // Same path as the UI `speak` message: queued behind the co-host, through the speaking gate.
-            speak: (text, voice) => this.#cohost.speak(text, voice),
+            speak: (text, opts) => this.#cohost.speak(text, opts),
             store: this.#petStore,
             viewerFacts: (uniqueId) => this.#memory?.facts(uniqueId) ?? [],
             onPersonalityChanged: () => this.#schedulePetPersonalities(),
@@ -525,7 +525,7 @@ class Sidecar {
                 this.#cohost.skip(message.id);
                 break;
             case "speak":
-                this.#cohost.speak(message.text);
+                this.#cohost.speak(message.text, { voice: message.voice, speed: message.speed, pitch: message.pitch });
                 break;
             case "transcript":
                 this.#cohost.onTranscript(message.itemId, message.text, message.final, message.at);

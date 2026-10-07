@@ -399,9 +399,6 @@ export const CAMERA_ROTATIONS = [0, 90, 180, 270] as const;
 export const GUIDE_KINDS = ["none", "thirds", "golden", "grid", "center"] as const;
 export const PEAKING_COLORS = ["red", "yellow", "white", "blue"] as const;
 export const SCOPE_KINDS = ["none", "histogram", "waveform", "parade", "vectorscope"] as const;
-export const MIC_PANEL_MODES = ["off", "full", "transcript"] as const;
-export type MicPanelMode = (typeof MIC_PANEL_MODES)[number];
-
 /** Pro monitoring aids drawn in the studio preview only (two render targets: output never has them). */
 export const monitorSchema = z.object({
     peaking: z.boolean().default(false),
@@ -420,8 +417,10 @@ export const monitorSchema = z.object({
     horizon: z.boolean().default(true),
     /** 2x/4x magnifier on the eyes while held. */
     loupeZoom: z.union([z.literal(2), z.literal(4)]).default(2),
-    /** Microphone monitoring: off, full waveform, or transcript only. */
-    micPanel: z.enum(MIC_PANEL_MODES).default("off"),
+    /** Microphone & transcription diagnostics panel (preview only, F4). Pre-0.5.2 dev builds stored "off"|"full"|"transcript". */
+    micPanel: z.preprocess((v) => (typeof v === "string" ? v === "full" : v), z.boolean()).default(false),
+    /** Live transcript captions above the dock (preview only), independent of the diagnostics panel. */
+    transcript: z.boolean().default(false),
     /** Hide every preview aid (what the viewers see). */
     cleanFeed: z.boolean().default(false),
     /** 3D debug overlay: body skeleton in metres, depth grid, pet anchors/paths, occlusion (preview only, F3). */
@@ -518,6 +517,10 @@ export const studioSchema = z.object({
             voice: z.boolean().default(false),
             /** TTS voice per pet id (absent = the co-host voice). */
             voices: z.record(z.string(), z.enum(VOICES)).default({}),
+            /** Per-pet TTS speed (tempo) and pitch, independent of each other (absent = 1/1). */
+            prosody: z
+                .record(z.string(), z.object({ speed: z.number().min(0.5).max(1.5).default(1), pitch: z.number().min(0.6).max(1.6).default(1) }))
+                .default({}),
             /** After a stream each pet reflects on it and keeps up to 3 memories (one call per pet). */
             reflection: z.boolean().default(true),
             /** Cap on LLM calls per hour for pets (cost guard). */

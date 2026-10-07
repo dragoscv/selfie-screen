@@ -36,6 +36,12 @@ export interface PoseEarly {
     irisPx: number | null;
     /** Age of that face result relative to `tMs`, ms (Infinity when irisPx is null). */
     irisAgeMs: number;
+    /**
+     * Owner's head rotation from the face model's transformation matrix, in DISPLAY terms
+     * (degrees: yaw + towards display-right, pitch + up, roll + clockwise), with the capture
+     * time of the face frame it came from (face runs every other frame). Null = no face.
+     */
+    head: { yaw: number; pitch: number; roll: number; tMs: number } | null;
 }
 
 /**

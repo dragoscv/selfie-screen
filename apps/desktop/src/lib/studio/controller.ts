@@ -329,6 +329,8 @@ export interface VisionRuntime {
         rawH: number;
         irisPx: number | null;
         irisAgeMs: number;
+        /** Owner head rotation in display degrees (yaw + right, pitch + up, roll + clockwise) and its face frame's capture time. */
+        head?: { yaw: number; pitch: number; roll: number; tMs: number } | null;
     } | null;
     sampleCalibration(ms: number): Promise<CalibrationSample>;
     sampleEnrolment(kind: "person" | "dog"): Promise<EnrolSample | null>;

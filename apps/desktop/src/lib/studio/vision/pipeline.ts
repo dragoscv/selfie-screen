@@ -911,13 +911,22 @@ export class VisionPipeline {
             });
         }
         let irisPx: number | null = null;
+        let head: PoseEarly["head"] = null;
         const nose = poses[ownerIndex]?.[0];
         if (nose) {
             let bestD = Infinity;
+            let headD = Infinity;
             for (const f of this.#lastFaces) {
                 const b = rawBox(f.raw);
                 const d = Math.hypot((b.x + b.w / 2 - nose.x) * rawW, (b.y + b.h / 2 - nose.y) * rawH);
-                if (d >= Math.max(b.w * rawW, b.h * rawH) || d >= bestD) continue;
+                if (d >= Math.max(b.w * rawW, b.h * rawH)) continue;
+                // Head rotation of the owner's face (display terms, same rotation/mirror as the output).
+                if (f.matrix && d < headD) {
+                    headD = d;
+                    const hp = headPose(f.matrix, this.#cfg?.rotation ?? 0, this.#cfg?.mirror ?? false);
+                    head = { yaw: hp.yaw, pitch: hp.pitch, roll: hp.roll, tMs: this.#lastFacesAt };
+                }
+                if (d >= bestD) continue;
                 const px = irisDiameterPx(f.raw, rawW, rawH);
                 if (px === null) continue;
                 bestD = d;
@@ -934,6 +943,7 @@ export class VisionPipeline {
                 rawH,
                 irisPx,
                 irisAgeMs: irisPx === null ? Infinity : Math.max(0, tMs - this.#lastFacesAt),
+                head,
             });
         } catch (e) {
             console.warn("[vision] onPose failed", e);

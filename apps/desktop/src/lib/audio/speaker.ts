@@ -3,12 +3,17 @@ import type { AudioSettings, CodaiSettings, VoiceSettings } from "@tiksee/core";
 import { getCodaiToken, invalidateCodaiToken } from "../codai-token.js";
 import { applySink } from "./output.js";
 import { createPcm16Decoder } from "./pcm.js";
+import { prosodyPlan } from "./prosody.js";
 import { createSseParser, type SseEvent } from "./sse.js";
 
 export interface Utterance {
     id: string;
     text: string;
     voice: string;
+    /** Tempo override (a pet's prosody); absent = voice.speed. */
+    speed?: number;
+    /** Pitch override, independent of tempo; absent = voice.pitch. */
+    pitch?: number;
     eventId?: string;
 }
 
@@ -196,7 +201,7 @@ export class Speaker {
                 input: utterance.text,
                 voice: utterance.voice === "emil" || utterance.voice === "alina" ? utterance.voice : this.#config.voice.voice,
                 response_format: "pcm",
-                speed: this.#config.voice.speed,
+                speed: this.#plan(utterance).serverSpeed,
             }),
             // Only the connect phase is time-boxed; a long utterance may stream for longer.
             signal: AbortSignal.any([signal, timeout]),
@@ -211,10 +216,16 @@ export class Speaker {
         return response;
     }
 
+    #plan(utterance: Utterance) {
+        return prosodyPlan(utterance.speed ?? this.#config.voice.speed, utterance.pitch ?? this.#config.voice.pitch);
+    }
+
     async #speakCodai(utterance: Utterance, signal: AbortSignal): Promise<void> {
         const response = await this.#openStream(utterance, signal);
         const body = response.body;
         if (!body) throw new Error("codai TTS returned no body");
+        // playbackRate shifts pitch; the server already slowed the tempo by the same factor.
+        const { rate } = this.#plan(utterance);
 
         let ctx: AudioContext | null = null;
         let nextTime = 0;
@@ -244,10 +255,11 @@ export class Speaker {
             buffer.copyToChannel(samples, 0);
             const source = ctx.createBufferSource();
             source.buffer = buffer;
+            source.playbackRate.value = rate;
             source.connect(this.#volume ?? ctx.destination);
             const at = Math.max(nextTime, ctx.currentTime + START_LEAD_S);
             source.start(at);
-            nextTime = at + buffer.duration;
+            nextTime = at + buffer.duration / rate;
             this.#sources.add(source);
             source.onended = () => this.#sources.delete(source);
             if (!started) {
@@ -282,7 +294,7 @@ export class Speaker {
                     break;
                 case "viseme":
                     if (typeof payload.id === "number" && typeof payload.offsetMs === "number") {
-                        visemes.push({ id: payload.id, offsetMs: payload.offsetMs });
+                        visemes.push({ id: payload.id, offsetMs: payload.offsetMs / rate });
                         pushTimeline(false);
                     }
                     break;
@@ -292,7 +304,7 @@ export class Speaker {
                         typeof payload.offsetMs === "number" &&
                         typeof payload.durationMs === "number"
                     ) {
-                        words.push({ text: payload.text, offsetMs: payload.offsetMs, durationMs: payload.durationMs });
+                        words.push({ text: payload.text, offsetMs: payload.offsetMs / rate, durationMs: payload.durationMs / rate });
                         pushTimeline(false);
                     }
                     break;
@@ -368,8 +380,8 @@ export class Speaker {
         if (!synth) return Promise.reject(new Error("speechSynthesis unavailable"));
         const { voice } = this.#config;
         const spoken = new SpeechSynthesisUtterance(utterance.text);
-        spoken.rate = voice.speed;
-        spoken.pitch = voice.pitch;
+        spoken.rate = utterance.speed ?? voice.speed;
+        spoken.pitch = utterance.pitch ?? voice.pitch;
         // speechSynthesis cannot be ducked mid-utterance; apply the duck at start.
         spoken.volume = voice.volume * (this.#ducked ? this.#config.audio.duckTo : 1);
         const picked = pickSystemVoice(synth.getVoices(), voice);

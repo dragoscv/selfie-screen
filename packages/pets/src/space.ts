@@ -56,6 +56,30 @@ export function worldToCam(p: Pinhole, w: Vec3): Vec3 {
     return [w[0], y * cos - w[2] * sin, y * sin + w[2] * cos];
 }
 
+/** Camera-frame DIRECTION -> room-frame direction (tilt only, no height). */
+export function camDirToWorld(p: Pinhole, c: Vec3): Vec3 {
+    const t = ((p.tiltDeg ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(t);
+    const sin = Math.sin(t);
+    return [c[0], c[1] * cos + c[2] * sin, -c[1] * sin + c[2] * cos];
+}
+
+/**
+ * Head axes in the upright, display-oriented CAMERA frame (x right, y up, z towards the camera)
+ * from a display head pose in degrees (yaw + = towards display-right, pitch + = looking up,
+ * roll + = clockwise on screen), i.e. R = Rz(-roll)·Ry(yaw)·Rx(-pitch) applied to +Z and +Y.
+ */
+export function headAxes(yawDeg: number, pitchDeg: number, rollDeg: number): { forward: Vec3; up: Vec3 } {
+    const y = (yawDeg * Math.PI) / 180;
+    const x = (-pitchDeg * Math.PI) / 180;
+    const z = (-rollDeg * Math.PI) / 180;
+    const [cy, sy, cx, sx, cz, sz] = [Math.cos(y), Math.sin(y), Math.cos(x), Math.sin(x), Math.cos(z), Math.sin(z)];
+    // Rx: (0,0,1) -> (0, -sx, cx); (0,1,0) -> (0, cx, sx). Then Ry, then Rz.
+    const ry = (v: Vec3): Vec3 => [v[0] * cy + v[2] * sy, v[1], -v[0] * sy + v[2] * cy];
+    const rz = (v: Vec3): Vec3 => [v[0] * cz - v[1] * sz, v[0] * sz + v[1] * cz, v[2]];
+    return { forward: rz(ry([0, -sx, cx])), up: rz(ry([0, cx, sx])) };
+}
+
 /** Output-normalised (u, v down) at optical depth `depthM` -> room point. */
 export function unproject(p: Pinhole, u: number, v: number, depthM: number): Vec3 {
     const f = focalPx(p);
@@ -162,9 +186,15 @@ export interface BodySnapshot {
     /** Distance of the torso centre from the camera, metres. */
     distanceM: number;
     joints: Readonly<Record<BodyJoint, BodyJointState>>;
-    /** Head centre (between the ears / eyes), metres, and a unit forward vector the face points to (towards the camera = +Z). */
-    head: { p: Vec3; forward: Vec3; conf: number };
-    /** Top of the head (crown), metres. */
+    /**
+     * Head centre (between the ears), metres, and its orientation as unit axes in the room frame:
+     * `forward` = where the face points (towards the camera = +Z), `up` = top of the head,
+     * `right` = the subject's display-right. `rotConf` 0..1 = how much of the orientation comes
+     * from the face model (1) vs. the nose/ears guess with a world-up head (0). `euler` = the
+     * smoothed display head pose in degrees (yaw + right, pitch + up, roll + clockwise).
+     */
+    head: { p: Vec3; forward: Vec3; up: Vec3; right: Vec3; conf: number; rotConf: number; euler: { yaw: number; pitch: number; roll: number } };
+    /** Top of the head (crown), metres: follows the head's tilt. */
     crown: Vec3;
     /** Shoulder line: left->right unit vector and span in metres. */
     shoulders: { span: number; right: Vec3 };

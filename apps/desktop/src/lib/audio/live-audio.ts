@@ -80,6 +80,8 @@ class LiveAudio {
                 id: message.id,
                 text: message.text,
                 voice: message.voice,
+                ...(message.speed !== undefined ? { speed: message.speed } : {}),
+                ...(message.pitch !== undefined ? { pitch: message.pitch } : {}),
                 ...(message.eventId !== undefined ? { eventId: message.eventId } : {}),
             };
             void this.#say(utterance);

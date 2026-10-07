@@ -258,7 +258,14 @@ export const liveClientMessages = [
     z.object({ type: z.literal("replyApprove"), id: z.string(), text: z.string().max(500).optional() }),
     z.object({ type: z.literal("replySkip"), id: z.string() }),
     /** Speak arbitrary text now (settings test button, manual announcements). */
-    z.object({ type: z.literal("speak"), text: z.string().min(1).max(500) }),
+    /** Manual line (or a voice audition): optional voice and prosody override the co-host's. */
+    z.object({
+        type: z.literal("speak"),
+        text: z.string().min(1).max(500),
+        voice: z.string().max(40).optional(),
+        speed: z.number().min(0.5).max(1.5).optional(),
+        pitch: z.number().min(0.6).max(1.6).optional(),
+    }),
     /** Streamer transcript from the renderer's realtime STT session. */
     z.object({
         type: z.literal("transcript"),
@@ -310,6 +317,10 @@ export const liveServerMessages = [
         id: z.string(),
         text: z.string(),
         voice: z.string(),
+        /** Tempo for this utterance (absent = voice.speed). */
+        speed: z.number().min(0.5).max(1.5).optional(),
+        /** Pitch for this utterance, independent of tempo (absent = 1). */
+        pitch: z.number().min(0.6).max(1.6).optional(),
         eventId: z.string().optional(),
     }),
     z.object({ type: z.literal("sayCancel"), id: z.string() }),

@@ -12,7 +12,6 @@ import {
     PET_CHOICES,
     PET_STYLES,
     SCOPE_KINDS,
-    MIC_PANEL_MODES,
     SPEECH_ENGINES,
     SPEECH_LANGUAGES,
     STUDIO_ORIENTATIONS,
@@ -409,7 +408,7 @@ function VoiceSection() {
                         onCommit={(speed) => update("voice", { speed })}
                         tint="var(--kind-gift)"
                     />
-                    {voice.engine === "system" && (
+                    {voice.engine !== "off" && (
                         <SliderRow
                             label={t("settings.voice.pitch")}
                             value={voice.pitch}
@@ -1447,21 +1446,30 @@ function StudioSection() {
                 <Reveal show={s.petAi.voice}>
                     {[s.leftPet, s.rightPet]
                         .filter((pet, i, all) => pet !== "none" && all.indexOf(pet) === i)
-                        .map((pet) => (
-                            <ChipSelector
-                                key={pet}
-                                label={t("studio.controls.ai.petVoice", { name: t(`settings.studio.pets.${pet}`) })}
-                                options={["default", ...VOICES] as const}
-                                value={s.petAi.voices[pet] ?? "default"}
-                                onSelect={(v) => {
-                                    const voices = Object.fromEntries(Object.entries(s.petAi.voices).filter(([k]) => k !== pet));
-                                    update("studio", { petAi: { ...s.petAi, voices: v === "default" ? voices : { ...voices, [pet]: v } } });
-                                }}
-                                display={(v) => (v === "default" ? t("studio.controls.ai.petVoiceDefault") : t(`settings.voice.voices.${v}`))}
-                                tint="var(--kind-like)"
-                                disabled={s.petAi.level === "off" || s.petAi.level === "local"}
-                            />
-                        ))}
+                        .map((pet) => {
+                            const prosody = s.petAi.prosody[pet] ?? { speed: 1, pitch: 1 };
+                            const setProsody = (p: Partial<typeof prosody>) =>
+                                update("studio", { petAi: { ...s.petAi, prosody: { ...s.petAi.prosody, [pet]: { ...prosody, ...p } } } });
+                            const off = s.petAi.level === "off" || s.petAi.level === "local";
+                            return (
+                                <div key={pet} className="space-y-2">
+                                    <ChipSelector
+                                        label={t("studio.controls.ai.petVoice", { name: t(`settings.studio.pets.${pet}`) })}
+                                        options={["default", ...VOICES] as const}
+                                        value={s.petAi.voices[pet] ?? "default"}
+                                        onSelect={(v) => {
+                                            const voices = Object.fromEntries(Object.entries(s.petAi.voices).filter(([k]) => k !== pet));
+                                            update("studio", { petAi: { ...s.petAi, voices: v === "default" ? voices : { ...voices, [pet]: v } } });
+                                        }}
+                                        display={(v) => (v === "default" ? t("studio.controls.ai.petVoiceDefault") : t(`settings.voice.voices.${v}`))}
+                                        tint="var(--kind-like)"
+                                        disabled={off}
+                                    />
+                                    <SliderRow label={t("settings.voice.speed")} value={prosody.speed} min={0.5} max={1.5} step={0.05} format={(v) => `${v.toFixed(2)}×`} onCommit={(speed) => setProsody({ speed })} tint="var(--kind-like)" disabled={off} />
+                                    <SliderRow label={t("settings.voice.pitch")} value={prosody.pitch} min={0.6} max={1.6} step={0.05} format={(v) => `${v.toFixed(2)}×`} onCommit={(pitch) => setProsody({ pitch })} tint="var(--kind-like)" disabled={off} />
+                                </div>
+                            );
+                        })}
                 </Reveal>
                 <SwitchRow
                     label={t("studio.controls.ai.reflection")}
@@ -1719,12 +1727,8 @@ function MonitorCard() {
             <SwitchRow label={t("settings.studio.monitor.afBox")} checked={m.afBox} onChange={(afBox) => set({ afBox })} tint="var(--kind-chat)" />
             <SwitchRow label={t("settings.studio.monitor.horizon")} checked={m.horizon} onChange={(horizon) => set({ horizon })} tint="var(--kind-chat)" />
             <SwitchRow label={t("settings.studio.monitor.debug3d")} description={t("settings.studio.monitor.debug3dHint")} checked={m.debug3d} onChange={(debug3d) => set({ debug3d })} tint="var(--kind-chat)" />
-            <SelectField
-                label={t("settings.studio.monitor.micPanel")}
-                value={m.micPanel}
-                options={MIC_PANEL_MODES.map((k) => ({ value: k, label: t(`settings.studio.monitor.micPanelModes.${k}`) }))}
-                onChange={(v) => set({ micPanel: v as typeof m.micPanel })}
-            />
+            <SwitchRow label={t("settings.studio.monitor.transcript")} description={t("settings.studio.monitor.transcriptHint")} checked={m.transcript} onChange={(transcript) => set({ transcript })} tint="var(--kind-chat)" />
+            <SwitchRow label={t("settings.studio.monitor.micPanel")} checked={m.micPanel} onChange={(micPanel) => set({ micPanel })} tint="var(--kind-chat)" />
             <ChipSelector
                 label={t("settings.studio.monitor.loupeZoom")}
                 options={["2", "4"] as const}

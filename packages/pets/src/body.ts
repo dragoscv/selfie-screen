@@ -4,7 +4,9 @@ import {
     BODY_JOINTS,
     HEAD_HEIGHT_M,
     POSE_INDEX,
+    camDirToWorld,
     camToWorld,
+    headAxes,
     tiltFromUpright,
     unproject,
     type BodyJoint,
@@ -57,10 +59,30 @@ export const CONF_ON = 0.6;
 export const CONF_OFF = 0.35;
 /** Owner absent for this long = not present. */
 export const ABSENT_AFTER_MS = 1500;
+/**
+ * Head rotation filter on the 6 components of the forward + up axes (unit vectors, so the
+ * One-Euro units are "radians-ish"): steady at rest, follows a fast nod within ~1 frame.
+ */
+export const HEAD_FILTER: OneEuroOptions = { minCutoff: 1.5, beta: 0.6, dCutoff: 1 };
+/** Face rotation older than this (ms behind the render clock) fades back to the landmark guess. */
+export const HEAD_STALE_MS = 500;
+/** Ear midpoint -> head centre: the skull centre sits ~3 cm behind the ear line and ~2 cm above it. */
+const HEAD_CENTRE_BACK_M = 0.03;
+const HEAD_CENTRE_UP_M = 0.02;
+/** Head half-height above the centre to the crown. */
+const CROWN_M = HEAD_HEIGHT_M * 0.55;
 
 interface Sample {
     t: number;
     p: Vec3;
+}
+
+/** One filtered head orientation sample (room frame) by face capture time. */
+interface HeadSample {
+    t: number;
+    f: Vec3;
+    u: Vec3;
+    euler: { yaw: number; pitch: number; roll: number };
 }
 
 interface JointTrack {
@@ -85,6 +107,35 @@ const norm = (a: Vec3): Vec3 => {
     const l = len(a) || 1;
     return [a[0] / l, a[1] / l, a[2] / l];
 };
+const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const lerp3 = (a: Vec3, b: Vec3, k: number): Vec3 => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+
+/** Orthonormal (forward, up, right) from a rough forward and up: forward wins, up is re-orthogonalised. */
+export function orthoHead(forward: Vec3, up: Vec3): { forward: Vec3; up: Vec3; right: Vec3 } {
+    const f = norm(forward);
+    let r = cross(up, f);
+    if (len(r) < 1e-4) r = cross([0, 1, 0], f);
+    r = norm(r);
+    return { forward: f, up: norm(cross(f, r)), right: r };
+}
+
+/** Head orientation at time `t` from its ring: linear blend of the axes between samples, re-orthonormalised. */
+export function sampleHeadRing(ring: readonly HeadSample[], t: number): HeadSample | null {
+    const n = ring.length;
+    if (n === 0) return null;
+    const first = ring[0] as HeadSample;
+    const last = ring[n - 1] as HeadSample;
+    if (t <= first.t) return first;
+    if (t >= last.t) return last;
+    let i = 0;
+    while (i < n - 2 && (ring[i + 1] as HeadSample).t <= t) i++;
+    const a = ring[i] as HeadSample;
+    const b = ring[i + 1] as HeadSample;
+    const k = Math.min(1, Math.max(0, (t - a.t) / Math.max(b.t - a.t, 1e-3)));
+    const o = orthoHead(lerp3(a.f, b.f, k), lerp3(a.u, b.u, k));
+    const mixA = (x: number, y: number) => x + (y - x) * k;
+    return { t, f: o.forward, u: o.up, euler: { yaw: mixA(a.euler.yaw, b.euler.yaw), pitch: mixA(a.euler.pitch, b.euler.pitch), roll: mixA(a.euler.roll, b.euler.roll) } };
+}
 
 function newTrack(): JointTrack {
     return {
@@ -154,6 +205,11 @@ export interface BodyMeasurement {
      * is far too weak for arms reaching towards the camera.
      */
     jointDepthM?: readonly (number | undefined)[];
+    /**
+     * Owner head rotation from the face model, DISPLAY degrees (yaw + right, pitch + up,
+     * roll + clockwise), with the capture time of its (half-rate) face frame.
+     */
+    head?: { yaw: number; pitch: number; roll: number; tMs: number } | null;
 }
 
 export class BodyModel {
@@ -168,6 +224,12 @@ export class BodyModel {
     readonly #lags: number[] = [];
     #lastCapture = -Infinity;
     #delay = 90;
+    /** Head rotation: filter on forward+up (camera frame), ring of room-frame samples, render state. */
+    readonly #headFilter = new OneEuroPoint(6, HEAD_FILTER);
+    #headRing: HeadSample[] = [];
+    #headLastT = -Infinity;
+    #headRot: HeadSample | null = null;
+    #headRotConf = 0;
 
     constructor(pinhole: Pinhole, initialDistanceM = 1) {
         this.#pin = pinhole;
@@ -252,6 +314,18 @@ export class BodyModel {
             if (t.ring.length === 1) t.p = p;
         }
         this.#estimateTilt(camPts);
+        this.#measureHead(m.head ?? null);
+    }
+
+    /** Face rotation -> filtered room-frame axes, stamped with the FACE frame's capture time. */
+    #measureHead(h: BodyMeasurement["head"]): void {
+        if (!h || !Number.isFinite(h.yaw) || h.tMs <= this.#headLastT) return;
+        this.#headLastT = h.tMs;
+        const ax = headAxes(h.yaw, h.pitch, h.roll);
+        const [f0 = 0, f1 = 0, f2 = 1, u0 = 0, u1 = 1, u2 = 0] = this.#headFilter.filter([...ax.forward, ...ax.up], h.tMs);
+        const o = orthoHead(camDirToWorld(this.#pin, [f0, f1, f2]), camDirToWorld(this.#pin, [u0, u1, u2]));
+        this.#headRing.push({ t: h.tMs, f: o.forward, u: o.up, euler: { yaw: h.yaw, pitch: h.pitch, roll: h.roll } });
+        if (this.#headRing.length > RING) this.#headRing.shift();
     }
 
     #estimateTilt(c: Partial<Record<BodyJoint, Vec3>>): void {
@@ -274,6 +348,9 @@ export class BodyModel {
             t.fz.reset();
             t.ring = [];
         }
+        this.#headFilter.reset();
+        this.#headRing = [];
+        this.#headLastT = -Infinity;
         this.#lastCapture = -Infinity;
     }
 
@@ -295,6 +372,12 @@ export class BodyModel {
             else if (want < t.conf) t.conf = Math.max(want, t.conf - step);
             joints[joint] = { p: t.p, conf: t.conf, ageMs: Number.isFinite(age) ? age : 1e9 };
         }
+        // Head rotation at the same delayed time as the joints; fades out when the face is lost.
+        const rot = sampleHeadRing(this.#headRing, at);
+        const fresh = rot !== null && nowMs - this.#headLastT < HEAD_STALE_MS + this.#delay;
+        if (rot) this.#headRot = rot;
+        const stepRot = (dtSec * 1000) / FADE_MS;
+        this.#headRotConf = fresh ? Math.min(1, this.#headRotConf + stepRot * 2) : Math.max(0, this.#headRotConf - stepRot);
         this.#snapshot = this.#derive(joints, nowMs);
         return this.#snapshot;
     }
@@ -316,7 +399,7 @@ export class BodyModel {
             span = Math.max(len(d), 0.1);
             right = norm(d[0] >= 0 ? d : scale(d, -1));
         }
-        // Head centre: ears > eyes > nose, offset back from the nose.
+        // Landmark head guess: ears > eyes > nose, offset back from the nose (world-up head).
         const earsOk = j.leftEar.conf > 0.3 && j.rightEar.conf > 0.3;
         const eyesOk = j.leftEye.conf > 0.3 && j.rightEye.conf > 0.3;
         let headP: Vec3;
@@ -338,13 +421,21 @@ export class BodyModel {
             headP = unproject(pin, 0.5, 0.3, this.#distance);
             headConf = 0;
         }
-        // Face direction from nose relative to the head centre (towards the camera = +Z).
-        let forward: Vec3 = [0, 0, 1];
+        // Landmark face direction from nose relative to the head centre (towards the camera = +Z).
+        let guessF: Vec3 = [0, 0, 1];
         if (j.nose.conf > 0.3 && (earsOk || eyesOk)) {
             const f = sub(j.nose.p, headP);
-            forward = norm([f[0], f[1] * 0.5, Math.max(f[2], 0.02) + 0.05]);
+            guessF = norm([f[0], f[1] * 0.5, Math.max(f[2], 0.02) + 0.05]);
         }
-        const crown = add(headP, [0, HEAD_HEIGHT_M * 0.55, 0]);
+        // Face-model rotation blended in by its confidence (continuous: no snap when the face drops out).
+        const k = this.#headRotConf;
+        const rot = this.#headRot;
+        const axes = orthoHead(rot && k > 0 ? lerp3(guessF, rot.f, k) : guessF, rot && k > 0 ? lerp3([0, 1, 0], rot.u, k) : [0, 1, 0]);
+        // Bound to the skeleton: the skull centre sits behind and above the ear line, along the
+        // head's OWN axes, so a nod moves the crown forward/back instead of straight up.
+        if (earsOk) headP = add(headP, add(scale(axes.forward, -HEAD_CENTRE_BACK_M * k), scale(axes.up, HEAD_CENTRE_UP_M)));
+        const crown = add(headP, scale(axes.up, CROWN_M));
+        const euler = rot && k > 0 ? { yaw: rot.euler.yaw * k, pitch: rot.euler.pitch * k, roll: rot.euler.roll * k } : { yaw: 0, pitch: 0, roll: 0 };
         // Yaw from the shoulder depth difference.
         const yaw = haveShoulders ? Math.atan2(ls.p[2] - rs.p[2], Math.abs(ls.p[0] - rs.p[0]) || 1e-3) : 0;
         const present = nowMs - this.#lastPoseAt < ABSENT_AFTER_MS;
@@ -352,7 +443,7 @@ export class BodyModel {
             present,
             distanceM: this.#distance,
             joints: j,
-            head: { p: headP, forward, conf: headConf },
+            head: { p: headP, forward: axes.forward, up: axes.up, right: axes.right, conf: headConf, rotConf: k, euler },
             crown,
             shoulders: { span, right },
             yaw,

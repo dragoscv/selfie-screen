@@ -31,7 +31,7 @@ interface Harness {
     calls: ChatMessage[][];
     says: PetSay[];
     commands: PetCommand[];
-    spoken: { text: string; voice: string | undefined }[];
+    spoken: { text: string; voice: string | undefined; speed?: number | undefined; pitch?: number | undefined }[];
     replies: string[];
     clock: { now: number };
     settings: Settings;
@@ -60,8 +60,8 @@ function harness(store: PetStore | null, level: Settings["studio"]["petAi"]["lev
         lastStreamerAt: () => 0,
         emitSay: (s) => h.says.push(s),
         emitCommand: (c) => h.commands.push(c),
-        speak: (text, voice) => {
-            h.spoken.push({ text, voice });
+        speak: (text, opts) => {
+            h.spoken.push({ text, ...opts, voice: opts.voice });
             return `r${h.spoken.length}`;
         },
         store,
@@ -147,15 +147,16 @@ describe("pet agents", () => {
         expect(h.agents.history("cat").at(-1)?.said).toBe("");
     });
 
-    it("voices a line in the pet's own voice through the co-host queue and links the say id", async () => {
+    it("voices a line in the pet's own voice and prosody through the co-host queue and links the say id", async () => {
         const h = harness(store);
         h.settings.studio.petAi.voice = true;
         h.settings.studio.petAi.voices = { fox: "emil" };
+        h.settings.studio.petAi.prosody = { fox: { speed: 1.2, pitch: 1.3 } };
         h.agents.onPetState([mind("fox")]);
         h.agents.onEvent(chat("fox"));
         h.replies.push('{"say":"Salutare tuturor!"}');
         await h.agents.tick();
-        expect(h.spoken).toEqual([{ text: "Salutare tuturor!", voice: "emil" }]);
+        expect(h.spoken).toEqual([{ text: "Salutare tuturor!", voice: "emil", speed: 1.2, pitch: 1.3 }]);
         expect(h.says[0]?.sayId).toBe("r1");
         // The co-host queue echo of a pet's own line does not enter the log as the co-host.
         h.agents.onUtterance("r1", "Salutare tuturor!", "manual");

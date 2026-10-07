@@ -1,10 +1,13 @@
 import { emitTo } from "@tauri-apps/api/event";
 import { load } from "@tauri-apps/plugin-store";
-import { parseSettings, type StudioSettings, type VisionSettings } from "@tiksee/core";
+import { parseSettings, type AudioSettings, type StudioSettings, type VisionSettings, type VoiceSettings } from "@tiksee/core";
 
 export interface StudioPatch {
     studio?: Partial<StudioSettings>;
     vision?: Partial<VisionSettings>;
+    /** Sound panel: the main window owns playback and the mic, it applies these live. */
+    voice?: Partial<VoiceSettings>;
+    audio?: Partial<AudioSettings>;
 }
 
 /** Fold `next` into `acc` (later keys win). */
@@ -12,6 +15,8 @@ export function mergePatch(acc: StudioPatch, next: StudioPatch): StudioPatch {
     return {
         ...(acc.studio || next.studio ? { studio: { ...acc.studio, ...next.studio } } : {}),
         ...(acc.vision || next.vision ? { vision: { ...acc.vision, ...next.vision } } : {}),
+        ...(acc.voice || next.voice ? { voice: { ...acc.voice, ...next.voice } } : {}),
+        ...(acc.audio || next.audio ? { audio: { ...acc.audio, ...next.audio } } : {}),
     };
 }
 
@@ -44,7 +49,7 @@ export class SettingsPersister {
         window.clearTimeout(this.#timer);
         const patch = this.#pending;
         this.#pending = {};
-        if (!patch.studio && !patch.vision) return;
+        if (!patch.studio && !patch.vision && !patch.voice && !patch.audio) return;
         try {
             const store = await load("settings.json", { autoSave: false });
             const current = parseSettings(await store.get("settings"));
@@ -52,6 +57,8 @@ export class SettingsPersister {
                 ...current,
                 studio: { ...current.studio, ...patch.studio },
                 vision: { ...current.vision, ...patch.vision },
+                voice: { ...current.voice, ...patch.voice },
+                audio: { ...current.audio, ...patch.audio },
             });
             await store.set("settings", next);
             await store.save();
