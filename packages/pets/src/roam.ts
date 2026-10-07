@@ -254,6 +254,12 @@ export class PetRoamer {
     }
 
     #held: Vec3 | null = null;
+    /** Facing set by the in-view editor (radians, 0 = camera), or null = automatic. */
+    #yawOverride: number | null = null;
+
+    faceYaw(yaw: number | null): void {
+        this.#yawOverride = yaw;
+    }
 
     /** Positions of every anchor this frame (for the mind's availability check). */
     get anchors(): Readonly<Record<AnchorId, Vec3 | null>> | null {
@@ -429,7 +435,8 @@ export class PetRoamer {
         const vel = this.#v;
         const sp = Math.hypot(vel[0], vel[2]);
         let wantYaw: number;
-        if (sp > 0.08) wantYaw = Math.atan2(vel[0], vel[2]);
+        if (this.#yawOverride !== null) wantYaw = this.#yawOverride;
+        else if (sp > 0.08) wantYaw = Math.atan2(vel[0], vel[2]);
         else {
             // Face the camera (the viewers), turned a third of the way towards the owner.
             const toCam = Math.atan2(0 - pos[0], 0 - pos[2]);

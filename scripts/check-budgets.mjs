@@ -25,6 +25,8 @@ const budgets = [
     ["studio caption editor (lazy)", /^caption-editor-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
     // Simple dock panels (zoom, focus, look, framing, camera, pets), loaded on first open.
     ["studio dock panels (lazy)", /^dock-panels-.*\.js$/, "apps/desktop/dist/assets", 5 * KB],
+    // In-view 3D editor (AR objects + pets), loaded when "Edit in view" is switched on.
+    ["studio scene gizmo (lazy)", /^scene-gizmo-.*\.js$/, "apps/desktop/dist/assets", 6 * KB],
     // Separate window; three/webgpu + MediaPipe never load in the main window.
     // 0.3.0: engine (output RT, AR, monitor, scopes, vcam pump) + control surface = 38.5 KB measured;
     // tutorial / calibration / enrol / AR editor are lazy chunks.

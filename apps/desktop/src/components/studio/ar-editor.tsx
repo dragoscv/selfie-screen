@@ -1,13 +1,16 @@
 import { PET_CHOICES, type ArObject } from "@tiksee/core";
 import { SliderRow, SwitchRow } from "@tiksee/ui";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Eye, EyeOff, ImagePlus, Smile, Trash2, Type, X, PawPrint } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, ImagePlus, Smile, Trash2, Type, X, PawPrint } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { FOCUS_RING, GLASS, INSTANT, SPRING, useFrame, useStudio } from "./context.js";
 import { DEPTH_MAX_M, DEPTH_MIN_M, clamp, depthToPos, posToDepth, stepDepth, toNormalised } from "./geometry.js";
+import type { SceneSel } from "./scene-gizmo.js";
+
+const SceneGizmo = lazy(() => import("./scene-gizmo.js").then((m) => ({ default: m.SceneGizmo })));
 
 const EMOJIS = ["❤️", "⭐", "🔥", "✨", "🎉", "🌈", "🎈", "🎁", "👑", "💎", "🍀", "🌸", "🦋", "🐶", "🐱", "🦜", "🍕", "☕", "🎵", "💬", "👋", "😎", "🚀", "🌙"] as const;
 const PETS = PET_CHOICES.filter((p) => p !== "none");
@@ -145,6 +148,12 @@ export function ArEditor({ onClose }: { onClose: () => void }) {
     const [selected, setSelected] = useState<string | null>(objects[0]?.id ?? null);
     const [picker, setPicker] = useState(false);
     const [text, setText] = useState("");
+    /** In-view 3D editing (gizmo for AR objects and pets); remembered for the session. */
+    const [inView, setInView] = useState(() => sessionStorage.getItem("tiksee.arInView") === "1");
+    const [gizmoSel, setGizmoSel] = useState<SceneSel>(selected ? { kind: "ar", id: selected } : null);
+    /** In 3D mode the panel folds to its header so the whole picture is free to edit. */
+    const [folded, setFolded] = useState(false);
+    const compact = inView && folded;
     const fileRef = useRef<HTMLInputElement>(null);
     const drag = useRef<{ id: string; startX: number; startY: number; ox: number; oy: number; rot: number; rotate: boolean } | null>(null);
     const pendingRef = useRef<ArObject[] | null>(null);
@@ -181,7 +190,7 @@ export function ArEditor({ onClose }: { onClose: () => void }) {
         setSelected(id);
         setPicker(false);
     };
-    const base = (name: string): Omit<Draft, "kind" | "content"> => ({ name, visible: true, x: 0.5, y: 0.45, z: 1.5, size: 0.3, rotation: 0, animate: "bob", anchor: "world" });
+    const base = (name: string): Omit<Draft, "kind" | "content"> => ({ name, visible: true, x: 0.5, y: 0.45, z: 1.5, size: 0.3, rotation: 0, yaw: 0, animate: "bob", anchor: "world" });
 
     const onFile = async (file: File | undefined) => {
         if (!file) return;
@@ -268,7 +277,18 @@ export function ArEditor({ onClose }: { onClose: () => void }) {
 
     return (
         <>
-            {/* Capture layer exactly over the displayed image. */}
+            {inView ? (
+                <Suspense fallback={null}>
+                    <SceneGizmo
+                        sel={gizmoSel}
+                        onSel={(s) => {
+                            setGizmoSel(s);
+                            if (s?.kind === "ar") setSelected(s.id);
+                        }}
+                    />
+                </Suspense>
+            ) : (
+            /* Capture layer exactly over the displayed image. */
             <div
                 id="ar-capture"
                 tabIndex={0}
@@ -283,7 +303,8 @@ export function ArEditor({ onClose }: { onClose: () => void }) {
                 className={`absolute cursor-crosshair rounded-sm ring-1 ring-inset ring-amber-300/40 ${FOCUS_RING}`}
                 style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
             />
-            {sel && rect.width > 0 && (
+            )}
+            {!inView && sel && rect.width > 0 && (
                 <motion.div
                     className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-300 shadow-[0_0_16px_rgb(252_211_77/0.7)]"
                     animate={{ left: rect.left + sel.x * rect.width, top: rect.top + sel.y * rect.height }}
@@ -293,28 +314,55 @@ export function ArEditor({ onClose }: { onClose: () => void }) {
                 />
             )}
 
-            <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2">
-                <DepthRuler objects={objects} selected={selected} onSelect={setSelected} onDepth={(id, z) => update(id, { z })} />
-            </div>
+            {!inView && (
+                <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2">
+                    <DepthRuler objects={objects} selected={selected} onSelect={setSelected} onDepth={(id, z) => update(id, { z })} />
+                </div>
+            )}
 
             <motion.aside
                 aria-label={t("studio.ar.title")}
                 initial={reduced ? false : { opacity: 0, x: 32 }}
-                animate={{ opacity: 1, x: 0 }}
+                animate={{ opacity: 1, x: 0, height: compact ? 52 : "auto" }}
                 exit={reduced ? { opacity: 0 } : { opacity: 0, x: 32 }}
                 transition={reduced ? INSTANT : SPRING}
                 onKeyDown={(e) => {
                     if (e.key === "Escape") onClose();
                 }}
-                className={`${GLASS} pointer-events-auto absolute bottom-3 right-3 top-16 flex w-[min(20rem,calc(100cqw-1.5rem))] flex-col overflow-hidden rounded-3xl`}
+                className={`${GLASS} pointer-events-auto absolute right-3 top-16 flex w-[min(20rem,calc(100cqw-1.5rem))] flex-col overflow-hidden rounded-3xl ${compact ? "" : "bottom-3"}`}
             >
                 <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                     <h2 className="text-sm font-semibold">{t("studio.ar.title")}</h2>
-                    <button type="button" onClick={onClose} aria-label={t("studio.common.close")} className={`grid size-7 place-items-center rounded-full hover:bg-white/15 ${FOCUS_RING}`}>
-                        <X className="size-4" aria-hidden />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        {inView && (
+                            <button
+                                type="button"
+                                onClick={() => setFolded((v) => !v)}
+                                aria-expanded={!folded}
+                                aria-label={t(folded ? "studio.ar.gizmo.expand" : "studio.ar.gizmo.fold")}
+                                className={`grid size-7 place-items-center rounded-full hover:bg-white/15 ${FOCUS_RING}`}
+                            >
+                                {folded ? <ChevronDown className="size-4" aria-hidden /> : <ChevronUp className="size-4" aria-hidden />}
+                            </button>
+                        )}
+                        <button type="button" onClick={onClose} aria-label={t("studio.common.close")} className={`grid size-7 place-items-center rounded-full hover:bg-white/15 ${FOCUS_RING}`}>
+                            <X className="size-4" aria-hidden />
+                        </button>
+                    </div>
                 </header>
-                <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
+                <div className={`flex-1 space-y-4 overflow-y-auto px-4 py-3 ${compact ? "hidden" : ""}`}>
+                    <SwitchRow
+                        label={t("studio.ar.gizmo.toggle")}
+                        description={t("studio.ar.gizmo.toggleHint")}
+                        checked={inView}
+                        onChange={(on) => {
+                            setInView(on);
+                            sessionStorage.setItem("tiksee.arInView", on ? "1" : "0");
+                            if (on && selected) setGizmoSel({ kind: "ar", id: selected });
+                            // Turning it on folds the panel so the picture is free; the chevron reopens it.
+                            setFolded(on);
+                        }}
+                    />
                     <div className="grid grid-cols-4 gap-1.5">
                         <AddButton icon={<Smile className="size-4" aria-hidden />} label={t("studio.ar.kinds.emoji")} onClick={() => setPicker((v) => !v)} pressed={picker} />
                         <AddButton
@@ -384,7 +432,15 @@ export function ArEditor({ onClose }: { onClose: () => void }) {
                             <ul className="space-y-1">
                                 {objects.map((o) => (
                                     <li key={o.id} className={`flex items-center gap-1 rounded-xl ${o.id === selected ? "bg-sky-400/20 ring-1 ring-sky-300/50" : ""}`}>
-                                        <button type="button" onClick={() => setSelected(o.id)} aria-pressed={o.id === selected} className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs ${FOCUS_RING}`}>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelected(o.id);
+                                                setGizmoSel({ kind: "ar", id: o.id });
+                                            }}
+                                            aria-pressed={o.id === selected}
+                                            className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs ${FOCUS_RING}`}
+                                        >
                                             <ObjectGlyph o={o} />
                                             <span className="truncate">{o.name}</span>
                                             <span className="ml-auto tabular-nums text-white/70">{o.z.toFixed(2)} m</span>
@@ -466,6 +522,7 @@ function Properties({ o, onChange }: { o: ArObject; onChange: (p: Partial<ArObje
             <SliderRow label={t("studio.ar.depth")} value={depthToPos(o.z)} min={0} max={1} step={0.005} format={(v) => `${posToDepth(v).toFixed(2)} m`} onCommit={(v) => onChange({ z: posToDepth(v) })} />
             <SliderRow label={t("studio.ar.size")} value={o.size} min={0.02} max={3} step={0.01} format={(v) => `${v.toFixed(2)} m`} onCommit={(size) => onChange({ size })} />
             <SliderRow label={t("studio.ar.rotation")} value={o.rotation} min={-180} max={180} step={1} format={(v) => `${Math.round(v)}°`} onCommit={(rotation) => onChange({ rotation: Math.round(rotation) })} />
+            <SliderRow label={t("studio.ar.yaw")} value={o.yaw} min={-180} max={180} step={1} format={(v) => `${Math.round(v)}°`} onCommit={(yaw) => onChange({ yaw: Math.round(yaw) })} />
             <Select label={t("studio.ar.animate")} value={o.animate} options={ANIMATIONS} display={(v) => t(`studio.ar.animations.${v}`)} onChange={(animate) => onChange({ animate })} />
             <Select label={t("studio.ar.anchor")} value={o.anchor} options={ANCHORS} display={(v) => t(`studio.ar.anchors.${v}`)} onChange={(anchor) => onChange({ anchor })} />
         </section>

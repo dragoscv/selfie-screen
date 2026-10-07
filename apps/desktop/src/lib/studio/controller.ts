@@ -135,6 +135,17 @@ export interface EnrolSample {
 }
 
 /** Live 3D state for the preview-only debug overlay (F3). */
+/** A grabbable object in the scene for the in-view editor (box: output-normalised, y down). */
+export interface SceneObject {
+    kind: "ar" | "pet";
+    /** AR object id or pet id. */
+    id: string;
+    box: { x: number; y: number; w: number; h: number };
+    /** Metres from the camera. */
+    z: number;
+    pinned?: boolean;
+}
+
 export interface Debug3dState {
     /** Output pinhole (width/height px of the output, vfovDeg after digital zoom). */
     pin: Pinhole;
@@ -256,6 +267,8 @@ export interface StudioController {
     ensureModels(which: ("identity" | "dogIdentity" | "depth")[], onProgress?: (p: number) => void): Promise<void>;
     /** AR editing: move/scale objects; changes persist through the settings store by the caller. */
     pickArObject(x: number, y: number): ArObject["id"] | null;
+    /** AR objects and pets with their on-screen boxes (output-normalised) and depth, nearest first. */
+    sceneObjects?(): SceneObject[];
     /** Live caption pill in the output (centre + size, output-normalised), or null when not on the live. */
     captionRect?(): { u: number; v: number; w: number; h: number } | null;
     /** Output-normalised -> preview element coords helper data. */

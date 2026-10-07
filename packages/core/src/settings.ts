@@ -485,6 +485,8 @@ export const arObjectSchema = z.object({
     /** Height in metres at its depth. */
     size: z.number().min(0.02).max(3).default(0.3),
     rotation: z.number().min(-180).max(180).default(0),
+    /** Turn around the vertical axis, degrees (0 = facing the camera); roll is `rotation`. */
+    yaw: z.number().min(-180).max(180).default(0),
     /** Turn slowly / bob for life. */
     animate: z.enum(["none", "spin", "bob", "pulse"]).default("bob"),
     /** Pin to a body anchor instead of the world. */
@@ -611,6 +613,14 @@ export const studioSchema = z.object({
     framing: framingSchema.prefault({}),
     /** Placed AR objects (x/y in output 0..1, z in metres from the camera). */
     arObjects: z.array(arObjectSchema).max(32).default([]),
+    /**
+     * Pets pinned in place with the in-view 3D editor: centre in output-normalised coords
+     * (x right, y down), `z` metres from the camera, `yaw` degrees (0 = facing the camera).
+     * A pinned pet stays there (still animates, talks, can be grabbed) until released.
+     */
+    petPins: z
+        .record(z.string(), z.object({ x: z.number().min(-0.5).max(1.5), y: z.number().min(-0.5).max(1.5), z: z.number().min(0.3).max(6), yaw: z.number().min(-180).max(180).default(0) }))
+        .default({}),
     /** Rolling clip buffer (WS28-07). */
     clips: clipsSchema.prefault({}),
 });

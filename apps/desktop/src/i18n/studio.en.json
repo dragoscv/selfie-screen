@@ -315,6 +315,22 @@
         "depth": "Depth",
         "size": "Size",
         "rotation": "Rotation",
+        "yaw": "Turn (around the vertical)",
+        "gizmo": {
+            "toggle": "Edit in view (3D)",
+            "toggleHint": "Grab any AR object or pet in the preview: drag to move, X / Y / Z arrows for one axis (Z = depth), corner to resize, ⟳ ring to turn (Shift = roll). Wheel = depth, Alt+wheel = size, [ ] turn.",
+            "label": "3D editor: click an object or a pet to select it",
+            "x": "Move left / right (X)",
+            "y": "Move up / down (Y)",
+            "z": "Move nearer / farther (Z, depth): drag up-right = farther",
+            "rotate": "Turn",
+            "rotateHint": "Drag left / right to turn; Shift = roll (AR objects)",
+            "scale": "Resize",
+            "release": "Release",
+            "pinHint": "stays where you leave it",
+            "fold": "Fold the panel (free the picture)",
+            "expand": "Show the panel"
+        },
         "animate": "Animation",
         "anchor": "Attached to",
         "animations": {

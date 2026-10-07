@@ -667,6 +667,55 @@ export class PetStage {
         return this.#slotOf(pet)?.scale ?? this.#pendingScale.get(pet) ?? 1;
     }
 
+    /**
+     * Pin a pet where the owner placed it with the in-view editor: centre at output-normalised
+     * (x, y) and `z` metres, facing `yawDeg`. `null` releases it to its normal behaviour.
+     * A hand grab still wins while it lasts.
+     */
+    setPetPin(pet: string, pin: { x: number; y: number; z: number; yaw: number } | null): void {
+        const s = this.#slotOf(pet);
+        if (pin) this.#pins.set(pet, pin);
+        else this.#pins.delete(pet);
+        if (!s) return;
+        if (!pin) {
+            if (!s.held) s.roamer.hold(null);
+            s.roamer.faceYaw(null);
+        }
+    }
+    readonly #pins = new Map<string, { x: number; y: number; z: number; yaw: number }>();
+
+    /** Pets on stage with their on-screen box (output-normalised, y down) and depth, for picking. */
+    petBoxes(): { pet: string; side: Side; box: { x: number; y: number; w: number; h: number }; z: number; pinned: boolean }[] {
+        const out: { pet: string; side: Side; box: { x: number; y: number; w: number; h: number }; z: number; pinned: boolean }[] = [];
+        const pin = this.pinhole;
+        for (const [side, s] of this.#slots) {
+            const p = s.roamer.position ?? s.pose?.p;
+            if (!p || s.fade < 0.5) continue;
+            const h = this.#heightOf(s);
+            const top = project(pin, [p[0], p[1] + h, p[2]]);
+            const foot = project(pin, p);
+            const hN = Math.max(0.01, foot.v - top.v);
+            const wN = (hN * 0.9 * pin.height) / Math.max(pin.width, 1);
+            out.push({ pet: s.actor.pet, side, box: { x: foot.u - wN / 2, y: top.v, w: wN, h: hN }, z: foot.depthM, pinned: this.#pins.has(s.actor.pet) });
+        }
+        return out;
+    }
+
+    /** Apply pins every frame (before locomotion): a pinned pet is held at its point, facing its yaw. */
+    #applyPins(): void {
+        if (this.#pins.size === 0) return;
+        const pin = this.pinhole;
+        for (const s of this.#slots.values()) {
+            const p = this.#pins.get(s.actor.pet);
+            if (!p || s.held) continue;
+            const h = this.#heightOf(s);
+            // (x, y) is the pet's centre on screen; the roamer holds the feet.
+            const c = unproject(pin, p.x, p.y, p.z);
+            s.roamer.hold([c[0], c[1] - h * 0.5, c[2]]);
+            s.roamer.faceYaw((p.yaw * Math.PI) / 180);
+        }
+    }
+
     #applyScale(s: Slot, scale: number): void {
         if (Math.abs(scale - s.scale) < 1e-4) return;
         s.scale = scale;
@@ -853,6 +902,7 @@ export class PetStage {
         }
         // 1b) Owner hands: pinch-grab and two-hand resize override the roamer.
         this.#updateGrab(slots, now);
+        this.#applyPins();
         // 2) Locomotion.
         const poses = new Map<Side, PetPose>();
         for (const [side, slot] of slots) poses.set(side, slot.roamer.update(body, pin, now, dtSec, this.#pointAt, this.#palms));

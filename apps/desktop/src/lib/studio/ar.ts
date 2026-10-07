@@ -284,15 +284,16 @@ export class ArLayer {
             p.root.visible = o.visible && !hidden;
             p.root.position.set(wx, wy + anim.dy * o.size, wz);
             const roll = (o.rotation * Math.PI) / 180;
+            const yaw = ((o.yaw ?? 0) * Math.PI) / 180;
             if (o.kind === "model") {
                 // glTF model: Y up, facing +Z (towards the camera), feet at the origin.
                 const s = sizeM / Math.max(p.height, 1e-6);
                 p.root.scale.set(s, s, s);
-                p.root.rotation.set(0, anim.rot, roll);
+                p.root.rotation.set(0, anim.rot + yaw, roll);
             } else {
                     // Billboard: parallel to the image plane (the camera's pitch), then roll on screen.
                 p.root.scale.set(sizeM * p.aspect, sizeM, 1);
-                    p.root.rotation.set((-(pin.tiltDeg ?? 0) * Math.PI) / 180, 0, roll + anim.rot, "YXZ");
+                    p.root.rotation.set((-(pin.tiltDeg ?? 0) * Math.PI) / 180, yaw, roll + anim.rot, "YXZ");
             }
             // Depth test handles correctness; this only sorts transparent draws.
             p.root.renderOrder = 100 - o.z * 10;
@@ -311,6 +312,17 @@ export class ArLayer {
 
     /** Topmost (nearest) visible object under an output-normalised point. */
     pick(x: number, y: number, outW: number, outH: number): string | null {
+        return this.#pick(x, y, outW, outH);
+    }
+
+    /** Visible objects with their on-screen box (output-normalised) and depth (m). */
+    boxes(): { id: string; box: { x: number; y: number; w: number; h: number }; z: number }[] {
+        const out: { id: string; box: { x: number; y: number; w: number; h: number }; z: number }[] = [];
+        for (const p of this.#placed.values()) if (p.rect.visible) out.push({ id: p.obj.id, box: { x: p.rect.x, y: p.rect.y, w: p.rect.w, h: p.rect.h }, z: p.obj.z });
+        return out;
+    }
+
+    #pick(x: number, y: number, outW: number, outH: number): string | null {
         if (!this.#pin) return null;
         let best: Placed | null = null;
         const px = x * outW;

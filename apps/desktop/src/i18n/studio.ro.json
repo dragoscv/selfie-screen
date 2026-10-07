@@ -317,6 +317,22 @@
         "depth": "Adâncime",
         "size": "Mărime",
         "rotation": "Rotație",
+        "yaw": "Întoarcere (în jurul verticalei)",
+        "gizmo": {
+            "toggle": "Editează direct în imagine (3D)",
+            "toggleHint": "Apucă orice obiect AR sau animăluț în previzualizare: trage ca să-l muți, săgețile X / Y / Z pentru o singură axă (Z = adâncime), colțul pentru mărime, inelul ⟳ ca să-l rotești (Shift = înclinare). Rotița = adâncime, Alt+rotița = mărime, [ ] rotire.",
+            "label": "Editor 3D: dă click pe un obiect sau un animăluț ca să-l selectezi",
+            "x": "Mută stânga / dreapta (X)",
+            "y": "Mută sus / jos (Y)",
+            "z": "Mută mai aproape / mai departe (Z, adâncime): trage în sus-dreapta = mai departe",
+            "rotate": "Rotește",
+            "rotateHint": "Trage stânga / dreapta ca să-l rotești; Shift = înclinare (obiecte AR)",
+            "scale": "Redimensionează",
+            "release": "Eliberează",
+            "pinHint": "rămâne unde îl lași",
+            "fold": "Strânge panoul (eliberează imaginea)",
+            "expand": "Arată panoul"
+        },
         "animate": "Animație",
         "anchor": "Atașat de",
         "animations": {

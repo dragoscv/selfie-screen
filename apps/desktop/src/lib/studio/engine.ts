@@ -55,6 +55,7 @@ import type {
     LensProgress,
     LensResult,
     SceneResult,
+    SceneObject,
     SpaceSample,
     DogBox,
     EnrolSample,
@@ -736,13 +737,14 @@ export class StudioEngine implements StudioController {
                 if (at) this.#effects?.spawn("sparkle", [at[0], at[1] + 0.12, at[2] + 0.05]);
             }
         }
-        // Hand-resized sizes persist per pet (positions do not).
+        // Hand-resized sizes persist per pet; positions only when pinned with the in-view editor.
         stage.setAutonomous(settings.petAi.level !== "off");
         if (settings.petAi.level === "off" || settings.petAi.level === "local" || !settings.petAi.bubbles) stage.clearSpeech();
         for (const pet of [settings.leftPet, settings.rightPet]) {
             if (pet === "none") continue;
             const k = settings.petHands.scale[pet] ?? 1;
             if (Math.abs(stage.petScale(pet) - k) > 1e-3) stage.setPetScale(pet, k);
+            stage.setPetPin(pet, settings.petPins[pet] ?? null);
         }
     }
 
@@ -1112,6 +1114,17 @@ export class StudioEngine implements StudioController {
     pickArObject(x: number, y: number): ArObject["id"] | null {
         const { width, height } = this.outputSize;
         return this.#ar?.pick(x, y, width, height) ?? null;
+    }
+
+    /**
+     * Scene objects the in-view editor can grab: AR objects and the pets, with their on-screen
+     * boxes (output-normalised, y down) and depth. Nearest first.
+     */
+    sceneObjects(): SceneObject[] {
+        const out: SceneObject[] = [];
+        for (const r of this.#ar?.boxes() ?? []) out.push({ kind: "ar", id: r.id, box: r.box, z: r.z });
+        for (const p of this.#stage?.petBoxes() ?? []) out.push({ kind: "pet", id: p.pet, box: p.box, z: p.z, pinned: p.pinned });
+        return out.sort((a, b) => a.z - b.z);
     }
 
     /** A new vision result: mask/depth uploads and signal forwarding happen once per result, not per frame. */
