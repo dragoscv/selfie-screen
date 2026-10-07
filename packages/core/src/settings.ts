@@ -629,6 +629,8 @@ export const studioSchema = z.object({
                 z: z.number().min(0.3).max(6),
                 yaw: z.number().min(-180).max(180).default(0),
                 pitch: z.number().min(-60).max(60).default(0),
+                /** Lean on screen (degrees, + = counter-clockwise). */
+                roll: z.number().min(-180).max(180).default(0),
             }),
         )
         .default({}),

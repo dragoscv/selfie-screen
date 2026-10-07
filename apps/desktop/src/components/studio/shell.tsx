@@ -94,6 +94,16 @@ export function StudioShell(props: StudioShellProps) {
     const [active, setActive] = useState(true);
     const [userHidden, setUserHidden] = useState(false);
     const [editing, setEditing] = useState(false);
+    /** Dock height (1 or 2 rows) so the caption lane always sits right above it. */
+    const [dockH, setDockH] = useState(72);
+    const dockRo = useRef<ResizeObserver | null>(null);
+    const dockRef = useCallback((el: HTMLDivElement | null) => {
+        dockRo.current?.disconnect();
+        if (!el) return;
+        const ro = new ResizeObserver(() => setDockH(Math.round(el.getBoundingClientRect().height)));
+        ro.observe(el);
+        dockRo.current = ro;
+    }, []);
     const idleTimer = useRef(0);
     // Latest settings for the window keydown handler (F3) without re-binding it on every patch.
     const latest = useRef({ studio, patchStudio });
@@ -223,7 +233,7 @@ export function StudioShell(props: StudioShellProps) {
                     <motion.div
                         className="pointer-events-none absolute inset-x-3 flex justify-center"
                         initial={false}
-                        animate={{ bottom: controlsShown ? 96 : 16 }}
+                        animate={{ bottom: controlsShown ? dockH + 24 : 16 }}
                         transition={fade}
                     >
                         <Suspense fallback={null}>
@@ -261,7 +271,7 @@ export function StudioShell(props: StudioShellProps) {
                                 )}
                             </div>
                             {!blocking && (
-                                <div className="pointer-events-auto absolute inset-x-3 bottom-4 flex justify-center">
+                                <div ref={dockRef} className="pointer-events-auto absolute inset-x-3 bottom-4 flex justify-center">
                                     <ControlDock
                                         open={panel}
                                         onOpenChange={setPanel}

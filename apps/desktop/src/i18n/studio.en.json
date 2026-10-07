@@ -265,6 +265,9 @@
             "name": "Sound",
             "cohost": "Co-host",
             "pets": "+ pets"
+        },
+        "gestures": {
+            "name": "Gestures"
         }
     },
     "pets": {
@@ -319,13 +322,15 @@
         "pitch": "Tilt (forward / back)",
         "gizmo": {
             "toggle": "Edit in view (3D)",
-            "toggleHint": "Grab any AR object or pet in the preview: drag to move, X / Y / Z arrows for one axis (Z = depth), corner to resize, ⟳ ring to rotate (left / right = turn, up / down = tilt, Shift = roll). Wheel = depth, Alt+wheel = size, [ ] turn, , . tilt.",
+            "toggleHint": "Grab any AR object or pet in the preview: drag to move, X / Y / Z arrows for one axis (Z = depth), corner to resize, ⟳ ring to rotate (left / right = turn, up / down = tilt), ↺ corner to lean (roll). Wheel = depth, Alt+wheel = size, [ ] turn, , . tilt, ; ' lean.",
             "label": "3D editor: click an object or a pet to select it",
             "x": "Move left / right (X)",
             "y": "Move up / down (Y)",
             "z": "Move nearer / farther (Z, depth): drag up-right = farther",
             "rotate": "Turn",
-            "rotateHint": "Drag left / right to turn, up / down to tilt; Shift = roll (AR objects)",
+            "rotateHint": "Drag left / right to turn, up / down to tilt; Shift = lean",
+            "roll": "Lean (roll)",
+            "rollHint": "Drag around the centre to lean it left or right (keys ; and ')",
             "scale": "Resize",
             "release": "Release",
             "pinHint": "stays where you leave it",
@@ -672,6 +677,37 @@
             "laptop": "Laptop webcam",
             "custom": "Custom / calibrated"
         }
+    },
+    "gestures": {
+        "title": "Gestures and what they do",
+        "enabled": "Gesture actions on",
+        "enabledHint": "Turn every gesture rule on or off at once.",
+        "add": "New gesture",
+        "newName": "My gesture",
+        "list": "Gesture rules",
+        "toggle": "Turn {{name}} on or off",
+        "name": "Name",
+        "gesture": "Gesture",
+        "when": "When",
+        "on": {
+            "start": "As soon as it is seen",
+            "hold": "Held for a while"
+        },
+        "holdFor": "Hold for",
+        "action": "Then",
+        "effect": "Effect",
+        "petReaction": "Pet reaction",
+        "camera": "Camera",
+        "studio": "Studio",
+        "control": "Live control",
+        "cooldown": "Wait before it can fire again",
+        "arm": "Only when armed",
+        "armHint": "Needs the arm gesture first (✋ open palm held), so it never fires by accident.",
+        "armed": "armed",
+        "complex": "This rule has several steps or conditions: edit it in the app (Vision → Rules). You can still turn it on or off and test it here.",
+        "test": "Test",
+        "tested": "{{name}} fired",
+        "delete": "Delete {{name}}"
     },
     "captions": {
         "label": "Live transcript",

@@ -115,11 +115,16 @@ describe("calibration maths", () => {
 });
 
 describe("safe-zone guardian", () => {
-    it("defines the four portrait zones inside the frame", () => {
+    it("defines the portrait LIVE zones inside the frame", () => {
         for (const z of PORTRAIT_SAFE_ZONES) {
             expect(z.x + z.w).toBeLessThanOrEqual(1);
             expect(z.y + z.h).toBeLessThanOrEqual(1);
         }
+        const ids = PORTRAIT_SAFE_ZONES.map((z) => z.id);
+        expect(ids.filter((id) => id === "crop")).toHaveLength(2);
+        const comments = PORTRAIT_SAFE_ZONES.find((z) => z.id === "comments");
+        const rail = PORTRAIT_SAFE_ZONES.find((z) => z.id === "rail");
+        expect(comments && rail ? overlapShare(comments, rail) : -1).toBe(0);
     });
 
     it("measures overlap as a share of the first box", () => {

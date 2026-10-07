@@ -1,5 +1,5 @@
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import { Box, Camera, Focus, Frame, MonitorCog, PawPrint, Search, Sparkles, SunMedium, Volume2, X, type LucideIcon } from "lucide-react";
+import { Box, Camera, Focus, Frame, Hand, MonitorCog, PawPrint, Search, Sparkles, SunMedium, Volume2, X, type LucideIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -8,6 +8,7 @@ import { FOCUS_RING, GLASS, INSTANT, SPRING, useFrame, useStudio } from "./conte
 const AiPanel = lazy(() => import("./ai-panel.js").then((m) => ({ default: m.AiPanel })));
 const MonitorPanel = lazy(() => import("./monitor-panel.js").then((m) => ({ default: m.MonitorPanel })));
 const SoundPanel = lazy(() => import("./sound-panel.js").then((m) => ({ default: m.SoundPanel })));
+const GesturesPanel = lazy(() => import("./gestures-panel.js").then((m) => ({ default: m.GesturesPanel })));
 // Simple panels share one lazy chunk (they used to sit in the studio entry chunk).
 const dock = () => import("./dock-panels.js");
 const ZoomPanel = lazy(() => dock().then((m) => ({ default: m.ZoomPanel })));
@@ -17,7 +18,7 @@ const FramingPanel = lazy(() => dock().then((m) => ({ default: m.FramingPanel })
 const CameraPanel = lazy(() => dock().then((m) => ({ default: m.CameraPanel })));
 const PetsPanel = lazy(() => dock().then((m) => ({ default: m.PetsPanel })));
 
-const PANELS = ["zoom", "focus", "look", "framing", "monitor", "camera", "pets", "ai", "sound", "ar"] as const;
+const PANELS = ["zoom", "focus", "look", "framing", "monitor", "camera", "pets", "ai", "gestures", "sound", "ar"] as const;
 export type PanelId = (typeof PANELS)[number];
 
 const ICONS: Record<PanelId, LucideIcon> = {
@@ -29,6 +30,7 @@ const ICONS: Record<PanelId, LucideIcon> = {
     camera: Camera,
     pets: PawPrint,
     ai: Sparkles,
+    gestures: Hand,
     sound: Volume2,
     ar: Box,
 };
@@ -40,7 +42,7 @@ const signed = (v: number, digits = 1) => `${v > 0 ? "+" : ""}${v.toFixed(digits
  * ------------------------------------------------------------------ */
 
 function usePillValue(id: PanelId): string {
-    const { studio, petsHidden, frames } = useStudio();
+    const { studio, vision, petsHidden, frames } = useStudio();
     const { t } = useTranslation();
     const focused = useFrame(frames, (i) => i?.camera.focused ?? false);
     const recording = useFrame(frames, (i) => i?.camera.recording ?? false);
@@ -65,6 +67,8 @@ function usePillValue(id: PanelId): string {
             return petsHidden ? t("studio.controls.pets.hidden") : [studio.leftPet, studio.rightPet].filter((p) => p !== "none").length.toString();
         case "ai":
             return t(`studio.controls.ai.levels.${studio.petAi.level}`);
+        case "gestures":
+            return vision.rulesEnabled ? String(vision.rules.filter((r) => r.enabled).length) : t("studio.common.off");
         case "sound":
             return studio.petAi.voice ? t("studio.controls.sound.pets") : t("studio.controls.sound.cohost");
         case "ar":
@@ -88,13 +92,13 @@ function Pill({ id, onOpen }: { id: PanelId; onOpen: (id: PanelId) => void }) {
             title={label}
             aria-haspopup="dialog"
             data-pill={id}
-            className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5 text-white hover:bg-white/15 @[34rem]/studio:flex-none @[34rem]/studio:min-w-16 @[34rem]/studio:px-3 ${FOCUS_RING}`}
+            className={`flex min-w-0 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5 text-white hover:bg-white/15 ${FOCUS_RING}`}
             style={{ borderRadius: 16 }}
         >
             <motion.span layout="position" className="flex min-w-0 max-w-full items-center justify-center gap-1 text-[0.625rem] font-semibold uppercase tracking-wide text-white/75">
                 <Icon className="size-3.5 shrink-0 @[34rem]/studio:size-3" aria-hidden />
-                {/* Narrow windows show icon + value only: a clipped "FOC…" label reads worse than none. */}
-                <span className="hidden truncate @[34rem]/studio:inline">{label}</span>
+                {/* Very narrow windows show icon + value only: a clipped "FOC…" label reads worse than none. */}
+                <span className="hidden truncate @[24rem]/studio:inline">{label}</span>
             </motion.span>
             <motion.span layout="position" className="max-w-full truncate text-xs font-bold tabular-nums @[34rem]/studio:text-sm">
                 {value}
@@ -172,6 +176,8 @@ function panelBody(id: PanelId, onLoupe: (on: boolean) => void, onSpace: () => v
             return <AiPanel />;
         case "sound":
             return <SoundPanel />;
+        case "gestures":
+            return <GesturesPanel />;
         case "ar":
             return null;
     }
@@ -218,17 +224,17 @@ export function ControlDock({
 
     return (
         <LayoutGroup id="studio-dock">
-            <div ref={dock} className="relative w-full @[34rem]/studio:w-auto">
+            <div ref={dock} className="relative w-full @[52rem]/studio:w-auto">
                 <AnimatePresence>{open && <Panel key={open} id={open} onClose={() => onOpenChange(null)} onLoupe={onLoupe} onSpace={onSpace} />}</AnimatePresence>
                 <nav
                     aria-label={t("studio.controls.label")}
-                    // One row that scales with the window (pills flex, text uses container units);
-                    // only below ~18rem does it wrap. Never cut off.
-                    className={`${GLASS} flex w-full flex-wrap items-center justify-center gap-0.5 rounded-[1.375rem] p-1 @[18rem]/studio:flex-nowrap @[34rem]/studio:w-auto`}
+                    // Two even rows (6 + 5) on narrow and portrait windows, one row from 52rem wide:
+                    // a grid, so every pill keeps a fair share of the width and nothing is cut off.
+                    className={`${GLASS} grid w-full grid-cols-6 items-stretch gap-0.5 rounded-[1.375rem] p-1 @[52rem]/studio:w-auto @[52rem]/studio:grid-flow-col @[52rem]/studio:grid-cols-none @[52rem]/studio:auto-cols-[minmax(4.25rem,auto)]`}
                 >
                     {PANELS.map((id) =>
                         open === id ? (
-                            <span key={id} className="invisible flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-1.5 @[34rem]/studio:flex-none @[34rem]/studio:min-w-16 @[34rem]/studio:px-3" aria-hidden>
+                            <span key={id} className="invisible flex min-w-0 flex-col items-center gap-0.5 px-1 py-1.5" aria-hidden>
                                 <span className="text-[0.625rem]">{t(`studio.controls.${id}.name`)}</span>
                                 <span className="text-sm">·</span>
                             </span>

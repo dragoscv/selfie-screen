@@ -267,6 +267,12 @@ export class PetRoamer {
         this.#pitchOverride = pitch;
     }
 
+    /** Lean set by the in-view editor (radians, + = counter-clockwise on screen), or null = automatic. */
+    #rollOverride: number | null = null;
+    faceRoll(roll: number | null): void {
+        this.#rollOverride = roll;
+    }
+
     /** Positions of every anchor this frame (for the mind's availability check). */
     get anchors(): Readonly<Record<AnchorId, Vec3 | null>> | null {
         return this.#lastAnchors;
@@ -460,7 +466,7 @@ export class PetRoamer {
         const flightPitch = this.loco === "walk" ? 0 : Math.max(-0.5, Math.min(0.5, -vel[1] * 0.4 + sp * 0.25));
         const wantPitch = this.#pitchOverride ?? (onHead ? headPitch : flightPitch);
         this.#pitch += (wantPitch - this.#pitch) * (1 - Math.exp(-dt / (onHead ? 0.12 : 0.15)));
-        this.#roll += (headRoll - this.#roll) * (1 - Math.exp(-dt / 0.12));
+        this.#roll += ((this.#rollOverride ?? headRoll) - this.#roll) * (1 - Math.exp(-dt / 0.12));
         const camera: Vec3 = [0, pin.heightM ?? 0, 0];
         const lookAt: Vec3 = body?.present && body.head.conf > 0.3 ? lookTarget(body, camera, nowMs, this.#o.side === "left" ? 0 : 1.5) : camera;
         return {

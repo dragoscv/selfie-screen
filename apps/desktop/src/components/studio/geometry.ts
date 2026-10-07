@@ -93,7 +93,7 @@ export function guideLines(kind: StudioSettings["monitor"]["guides"]): { xs: num
  * TikTok LIVE safe zones (estimated on a 1080x1920 portrait frame).
  * ------------------------------------------------------------------ */
 
-export type SafeZoneId = "top" | "comments" | "bottom" | "rail" | "title";
+export type SafeZoneId = "top" | "comments" | "bottom" | "rail" | "crop" | "title";
 
 export interface SafeZone extends NormBox {
     id: SafeZoneId;
@@ -101,11 +101,18 @@ export interface SafeZone extends NormBox {
 
 const PORTRAIT_W = 1080;
 const PORTRAIT_H = 1920;
+/**
+ * Viewer-side TikTok LIVE layout on a 1080x1920 frame: host card + viewer count + ranking
+ * row on top, the comment feed lower-left, floating likes/gifts lower-right, the comment
+ * input and gift buttons along the bottom, and ~90 px cropped off each side on 19.5:9 phones.
+ */
 const PORTRAIT_ZONES_PX: readonly { id: SafeZoneId; x0: number; y0: number; x1: number; y1: number }[] = [
-    { id: "top", x0: 0, y0: 0, x1: 1080, y1: 230 },
-    { id: "comments", x0: 0, y0: 1150, x1: 780, y1: 1700 },
-    { id: "bottom", x0: 0, y0: 1700, x1: 1080, y1: 1920 },
-    { id: "rail", x0: 930, y0: 1300, x1: 1080, y1: 1920 },
+    { id: "top", x0: 0, y0: 0, x1: 1080, y1: 220 },
+    { id: "comments", x0: 0, y0: 1220, x1: 800, y1: 1760 },
+    { id: "rail", x0: 900, y0: 1220, x1: 1080, y1: 1760 },
+    { id: "bottom", x0: 0, y0: 1760, x1: 1080, y1: 1920 },
+    { id: "crop", x0: 0, y0: 220, x1: 90, y1: 1220 },
+    { id: "crop", x0: 990, y0: 220, x1: 1080, y1: 1220 },
 ];
 
 export const PORTRAIT_SAFE_ZONES: readonly SafeZone[] = PORTRAIT_ZONES_PX.map((z) => ({

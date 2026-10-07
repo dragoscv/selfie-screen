@@ -672,7 +672,7 @@ export class PetStage {
      * (x, y) and `z` metres, facing `yawDeg`. `null` releases it to its normal behaviour.
      * A hand grab still wins while it lasts.
      */
-    setPetPin(pet: string, pin: { x: number; y: number; z: number; yaw: number; pitch?: number } | null): void {
+    setPetPin(pet: string, pin: { x: number; y: number; z: number; yaw: number; pitch?: number; roll?: number } | null): void {
         const s = this.#slotOf(pet);
         if (pin) this.#pins.set(pet, pin);
         else this.#pins.delete(pet);
@@ -681,9 +681,10 @@ export class PetStage {
             if (!s.held) s.roamer.hold(null);
             s.roamer.faceYaw(null);
             s.roamer.facePitch(null);
+            s.roamer.faceRoll(null);
         }
     }
-    readonly #pins = new Map<string, { x: number; y: number; z: number; yaw: number; pitch?: number }>();
+    readonly #pins = new Map<string, { x: number; y: number; z: number; yaw: number; pitch?: number; roll?: number }>();
 
     /** Pets on stage with their on-screen box (output-normalised, y down) and depth, for picking. */
     petBoxes(): { pet: string; side: Side; box: { x: number; y: number; w: number; h: number }; z: number; pinned: boolean }[] {
@@ -715,6 +716,7 @@ export class PetStage {
             s.roamer.hold([c[0], c[1] - h * 0.5, c[2]]);
             s.roamer.faceYaw((p.yaw * Math.PI) / 180);
             s.roamer.facePitch(((p.pitch ?? 0) * Math.PI) / 180);
+            s.roamer.faceRoll(((p.roll ?? 0) * Math.PI) / 180);
         }
     }
 

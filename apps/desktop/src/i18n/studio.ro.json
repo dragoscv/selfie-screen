@@ -267,6 +267,9 @@
             "name": "Sunet",
             "cohost": "Co-host",
             "pets": "+ animăluțe"
+        },
+        "gestures": {
+            "name": "Gesturi"
         }
     },
     "pets": {
@@ -321,13 +324,15 @@
         "pitch": "Înclinare (în față / în spate)",
         "gizmo": {
             "toggle": "Editează direct în imagine (3D)",
-            "toggleHint": "Apucă orice obiect AR sau animăluț în previzualizare: trage ca să-l muți, săgețile X / Y / Z pentru o singură axă (Z = adâncime), colțul pentru mărime, inelul ⟳ ca să-l rotești (stânga / dreapta = întoarcere, sus / jos = înclinare, Shift = rotire pe ecran). Rotița = adâncime, Alt+rotița = mărime, [ ] întoarcere, , . înclinare.",
+            "toggleHint": "Apucă orice obiect AR sau animăluț în previzualizare: trage ca să-l muți, săgețile X / Y / Z pentru o singură axă (Z = adâncime), colțul pentru mărime, inelul ⟳ ca să-l rotești (stânga / dreapta = întoarcere, sus / jos = înclinare), colțul ↺ ca să-l apleci (roll). Rotița = adâncime, Alt+rotița = mărime, [ ] întoarcere, , . înclinare, ; ' aplecare.",
             "label": "Editor 3D: dă click pe un obiect sau un animăluț ca să-l selectezi",
             "x": "Mută stânga / dreapta (X)",
             "y": "Mută sus / jos (Y)",
             "z": "Mută mai aproape / mai departe (Z, adâncime): trage în sus-dreapta = mai departe",
             "rotate": "Rotește",
-            "rotateHint": "Trage stânga / dreapta ca să-l întorci, sus / jos ca să-l înclini; Shift = rotire pe ecran (obiecte AR)",
+            "rotateHint": "Trage stânga / dreapta ca să-l întorci, sus / jos ca să-l înclini; Shift = aplecare",
+            "roll": "Aplecare (roll)",
+            "rollHint": "Trage în jurul centrului ca să-l apleci stânga sau dreapta (tastele ; și ')",
             "scale": "Redimensionează",
             "release": "Eliberează",
             "pinHint": "rămâne unde îl lași",
@@ -676,6 +681,37 @@
             "laptop": "Webcam de laptop",
             "custom": "Personalizat / calibrat"
         }
+    },
+    "gestures": {
+        "title": "Gesturile și ce fac",
+        "enabled": "Acțiuni la gesturi pornite",
+        "enabledHint": "Pornește sau oprește toate regulile de gesturi deodată.",
+        "add": "Gest nou",
+        "newName": "Gestul meu",
+        "list": "Reguli pentru gesturi",
+        "toggle": "Pornește sau oprește {{name}}",
+        "name": "Nume",
+        "gesture": "Gest",
+        "when": "Când",
+        "on": {
+            "start": "Imediat ce e văzut",
+            "hold": "Ținut o vreme"
+        },
+        "holdFor": "Ține-l",
+        "action": "Atunci",
+        "effect": "Efect",
+        "petReaction": "Reacția animăluțului",
+        "camera": "Cameră",
+        "studio": "Studio",
+        "control": "Control live",
+        "cooldown": "Pauză până poate porni din nou",
+        "arm": "Doar când e armat",
+        "armHint": "Cere întâi gestul de armare (✋ palma deschisă ținută), ca să nu pornească din greșeală.",
+        "armed": "armat",
+        "complex": "Regula are mai mulți pași sau condiții: editeaz-o în aplicație (Vision → Reguli). O poți totuși porni, opri și testa de aici.",
+        "test": "Testează",
+        "tested": "{{name}} a pornit",
+        "delete": "Șterge {{name}}"
     },
     "captions": {
         "label": "Transcriere în timp real",

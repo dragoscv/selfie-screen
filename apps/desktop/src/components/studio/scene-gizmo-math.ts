@@ -1,6 +1,6 @@
 /** Pure drag maths for the in-view 3D gizmo (scene-gizmo.tsx), unit-tested. */
 
-export type GizmoMode = "move" | "x" | "y" | "z" | "scale" | "rotate";
+export type GizmoMode = "move" | "x" | "y" | "z" | "scale" | "rotate" | "roll";
 
 export interface GizmoStart {
     /** Output-normalised centre (x right, y down), metres from the camera, size, yaw/roll degrees. */
@@ -49,7 +49,7 @@ export const PET_SCALE_MAX = 2.5;
 export function startOf(
     s: {
         arObjects: readonly { id: string; x: number; y: number; z: number; size: number; yaw: number; pitch: number; rotation: number }[];
-        petPins: Readonly<Record<string, { x: number; y: number; z: number; yaw: number; pitch: number }>>;
+        petPins: Readonly<Record<string, { x: number; y: number; z: number; yaw: number; pitch: number; roll?: number }>>;
         petHands: { scale: Readonly<Record<string, number>> };
     },
     o: { kind: "ar" | "pet"; id: string; box: { x: number; y: number; w: number; h: number }; z: number },
@@ -68,7 +68,7 @@ export function startOf(
         yaw: pin?.yaw ?? 0,
         pitch: pin?.pitch ?? 0,
         pitchMax: 60,
-        roll: 0,
+        roll: pin?.roll ?? 0,
         sizeMin: PET_SCALE_MIN,
         sizeMax: PET_SCALE_MAX,
     };
@@ -85,6 +85,7 @@ export function wrapDeg(d: number): number {
  * move = screen plane; x / y = one axis; z = depth only along the up-right arrow (up-right =
  * farther, multiplicative so it feels the same near and far, the object stays on its screen spot);
  * scale = pointer distance from the centre, 1:1; rotate = horizontal drag turns yaw (or roll).
+ * roll = the pointer's angle around the centre (like a steering wheel; counter-clockwise = +).
  */
 export function gizmoDrag(s: GizmoStart & { mode: GizmoMode }, px: number, py: number, w: number, h: number, roll = false): GizmoResult {
     const dx = px - (s.px ?? px);
@@ -114,12 +115,20 @@ export function gizmoDrag(s: GizmoStart & { mode: GizmoMode }, px: number, py: n
         case "rotate":
             // Like orbiting a model: left/right turns (yaw, both ways, wraps), up/down tilts
             // (pitch: drag down = top comes towards you). Shift = roll on screen instead.
-            if (roll) out.roll = clamp(Math.round(s.roll + dx * DEG_PER_PX), -180, 180);
+            if (roll) out.roll = Math.round(wrapDeg(s.roll + dx * DEG_PER_PX));
             else {
                 out.yaw = Math.round(wrapDeg(s.yaw + dx * DEG_PER_PX));
                 out.pitch = clamp(Math.round(s.pitch + dy * DEG_PER_PX), -s.pitchMax, s.pitchMax);
             }
             break;
+        case "roll": {
+            const cx = s.cx ?? px;
+            const cy = s.cy ?? py;
+            const a0 = Math.atan2(-((s.py ?? py) - cy), (s.px ?? px) - cx);
+            const a1 = Math.atan2(-(py - cy), px - cx);
+            out.roll = Math.round(wrapDeg(s.roll + ((a1 - a0) * 180) / Math.PI));
+            break;
+        }
     }
     return out;
 }

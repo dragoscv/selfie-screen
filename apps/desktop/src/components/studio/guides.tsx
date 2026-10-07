@@ -30,14 +30,14 @@ export function Guides() {
             <svg className="absolute inset-0 size-full" viewBox="0 0 1 1" preserveAspectRatio="none">
                 {m.safeZones &&
                     (portrait ? (
-                        PORTRAIT_SAFE_ZONES.map((z) => (
+                        PORTRAIT_SAFE_ZONES.map((z, i) => (
                             <rect
-                                key={z.id}
+                                key={`${z.id}${i}`}
                                 x={z.x}
                                 y={z.y}
                                 width={z.w}
                                 height={z.h}
-                                fill={guardian === z.id ? "rgb(251 113 133 / 0.28)" : "rgb(0 0 0 / 0.28)"}
+                                fill={guardian === z.id ? "rgb(251 113 133 / 0.28)" : z.id === "crop" ? "rgb(0 0 0 / 0.14)" : "rgb(0 0 0 / 0.28)"}
                                 stroke={guardian === z.id ? "rgb(251 113 133 / 0.9)" : "rgb(255 255 255 / 0.25)"}
                                 strokeDasharray="0.01 0.008"
                                 vectorEffect="non-scaling-stroke"
