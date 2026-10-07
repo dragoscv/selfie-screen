@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { error as logError, info } from "@tauri-apps/plugin-log";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { load } from "@tauri-apps/plugin-store";
-import { parseSettings, type IdentityProfile, type SignalEvent, type StudioSettings, type VisionSettings } from "@tiksee/core";
+import { MIC_PANEL_MODES, parseSettings, type IdentityProfile, type MicPanelMode, type SignalEvent, type StudioSettings, type VisionSettings } from "@tiksee/core";
 import { applyAppearance } from "@tiksee/ui";
 import type { FrameStatsSnapshot } from "@tiksee/pets";
 import { MotionConfig } from "motion/react";
@@ -43,14 +43,6 @@ function Studio() {
     const [stats, setStats] = useState<Stats | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [hud, setHud] = useState(false);
-    const [micHud, setMicHudState] = useState(() => sessionStorage.getItem("tiksee.micHud") === "1");
-    const setMicHud = useCallback((next: boolean | ((v: boolean) => boolean)) => {
-        setMicHudState((v) => {
-            const value = typeof next === "function" ? next(v) : next;
-            sessionStorage.setItem("tiksee.micHud", value ? "1" : "0");
-            return value;
-        });
-    }, []);
     const [live, setLive] = useState<{ engine: StudioEngine; canvas: HTMLCanvasElement } | null>(null);
     const [studio, setStudio] = useState<StudioSettings | null>(null);
     const [vision, setVision] = useState<VisionSettings | null>(null);
@@ -81,6 +73,16 @@ function Studio() {
         void engineRef.current?.applyVision(next);
         persistRef.current?.queue({ vision: patch });
     }, []);
+
+    /** Mic & transcription aid (Monitor panel, F4 cycles): persisted in studio.monitor.micPanel. */
+    const setMicPanel = useCallback(
+        (next: (mode: MicPanelMode) => MicPanelMode) => {
+            const cur = studioRef.current;
+            if (!cur) return;
+            patchStudio({ monitor: { ...cur.monitor, micPanel: next(cur.monitor.micPanel) } });
+        },
+        [patchStudio],
+    );
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -303,7 +305,7 @@ function Studio() {
 
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "F2") setHud((v) => !v);
-            else if (e.key === "F4") setMicHud((v) => !v);
+            else if (e.key === "F4") setMicPanel((m) => MIC_PANEL_MODES[(MIC_PANEL_MODES.indexOf(m) + 1) % MIC_PANEL_MODES.length] ?? "off");
         };
         window.addEventListener("keydown", onKey);
         // Closing the window or a full reload tears the page down without
@@ -335,7 +337,7 @@ function Studio() {
             engineRef.current?.stop();
             engineRef.current = null;
         };
-    }, [frames, setMicHud]);
+    }, [frames, setMicPanel]);
 
     return (
         <div className="dark" style={{ position: "relative", width: "100%", height: "100%", display: "grid", placeItems: "center" }}>
@@ -360,9 +362,9 @@ function Studio() {
                     patchVision={patchVision}
                 />
             )}
-            {micHud && (
+            {studio && studio.monitor.micPanel !== "off" && !studio.monitor.cleanFeed && (
                 <Suspense fallback={null}>
-                    <MicHud onClose={() => setMicHud(false)} />
+                    <MicHud mode={studio.monitor.micPanel} onClose={() => setMicPanel(() => "off")} />
                 </Suspense>
             )}
             {hud && (

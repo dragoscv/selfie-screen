@@ -1,4 +1,5 @@
 import { emitTo, listen } from "@tauri-apps/api/event";
+import type { MicPanelMode } from "@tiksee/core";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -21,6 +22,8 @@ interface Payload {
 
 const HISTORY = 60;
 const LOG = 8;
+/** Final lines kept for the transcript-only view. */
+const FINALS = 6;
 const db = (v: number): number => (v > 0 ? 20 * Math.log10(v) : -90);
 /** Meter scale -60..0 dBFS -> 0..100 %. */
 const pct = (v: number): number => Math.max(0, Math.min(100, ((db(v) + 60) / 60) * 100));
@@ -42,10 +45,11 @@ function advise(p: Payload | null, quietFrames: number, peaks: number): Advice {
     return "ok";
 }
 
-export function MicHud({ onClose }: { onClose: () => void }) {
+export function MicHud({ mode, onClose }: { mode: Exclude<MicPanelMode, "off">; onClose: () => void }) {
     const { t } = useTranslation();
     const [p, setP] = useState<Payload | null>(null);
     const [events, setEvents] = useState<MicEvent[]>([]);
+    const [finalLines, setFinalLines] = useState<MicEvent[]>([]);
     const [view, setView] = useState<{ history: number[]; advice: Advice }>({ history: [], advice: "starting" });
     const history = useRef<number[]>([]);
     const peaks = useRef<number[]>([]);
@@ -67,7 +71,11 @@ export function MicHud({ onClose }: { onClose: () => void }) {
                 if (peaks.current.length > 30) peaks.current.shift();
                 quiet.current = d.level < d.threshold * 0.6 ? quiet.current + 1 : 0;
             }
-            if (payload.events.length > 0) setEvents((prev) => [...prev, ...payload.events].slice(-LOG));
+            if (payload.events.length > 0) {
+                setEvents((prev) => [...prev, ...payload.events].slice(-LOG));
+                const finals = payload.events.filter((ev) => ev.kind === "final");
+                if (finals.length > 0) setFinalLines((prev) => [...prev, ...finals].slice(-FINALS));
+            }
             setP(payload);
             setView({
                 history: [...history.current],
@@ -84,8 +92,36 @@ export function MicHud({ onClose }: { onClose: () => void }) {
     const d = p?.diag ?? null;
     const advice = p ? view.advice : "off";
     const bad = advice !== "ok" && advice !== "starting";
-    const finals = events.filter((e) => e.kind === "final").slice(-3);
+    const finals = finalLines.slice(-3);
     const log = events.filter((e) => e.kind !== "final").slice(-4);
+
+    if (mode === "transcript") {
+        return (
+            <section
+                aria-label={t("studio.mic.transcriptTitle")}
+                className="pointer-events-auto absolute left-3 top-14 z-40 w-[min(92%,420px)] rounded-xl border border-white/15 bg-neutral-950/75 p-3 text-white shadow-xl backdrop-blur-xl"
+            >
+                <header className="mb-1.5 flex items-center gap-2 text-[12px]">
+                    <span aria-hidden className={`size-2 rounded-full ${d?.speaking ? "bg-emerald-400" : d?.ws === "open" ? "bg-sky-400" : "bg-neutral-500"}`} />
+                    <h2 className="font-semibold">{t("studio.mic.transcriptTitle")}</h2>
+                    {bad && <span className="truncate text-amber-200">{t(`studio.mic.advice.${advice}`)}</span>}
+                    <button type="button" onClick={onClose} className="ml-auto rounded px-1.5 text-white/70 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400" aria-label={t("studio.common.close")}>
+                        ×
+                    </button>
+                </header>
+                {finalLines.length > 0 && (
+                    <ul className="space-y-0.5 text-[13px] leading-snug text-white/75">
+                        {finalLines.map((f, i) => (
+                            <li key={`${f.at}-${i}`}>{f.text}</li>
+                        ))}
+                    </ul>
+                )}
+                <p className="mt-1 min-h-[1.4em] text-[15px] font-medium leading-snug" aria-live="polite">
+                    {d?.partial ? d.partial : <span className="text-[13px] font-normal text-white/40">{d?.streaming ? t("studio.mic.listening") : t("studio.mic.speakNow")}</span>}
+                </p>
+            </section>
+        );
+    }
 
     return (
         <section

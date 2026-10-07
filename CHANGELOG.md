@@ -4,6 +4,12 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 
 ## [Unreleased]
 
+### Changed
+- **Microphone & transcription is now a Monitor aid** in the Studio (Monitor → Audio), also in Settings → Studio: switch it on and choose **Full panel** or **Transcript only** (just your words, larger, without the meters). The choice is saved; F4 cycles off → full → transcript. Clean feed hides it.
+
+### Fixed
+- Empty transcription results no longer appear as "(empty transcript)" lines; they are listed only in the diagnostic log.
+
 ## [0.5.1] — 2026-10-07
 
 ### Added

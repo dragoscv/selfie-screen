@@ -436,7 +436,8 @@ export class Mic {
                     this.#event("final", text.trim());
                     this.#callbacks.onFinal(itemId, text.trim());
                 } else {
-                    this.#event("final", "(empty transcript)");
+                    // Diagnostic only: an empty result is not a transcript line.
+                    this.#event("skip", "empty transcript from the server");
                 }
                 break;
             }

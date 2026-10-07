@@ -148,6 +148,17 @@
             "clipping": "Avertizare de saturare",
             "scope": "Scop",
             "composition": "Compoziție",
+            "audioAids": "Audio",
+            "output": "Ieșire",
+            "mic": {
+                "label": "Microfon și transcriere",
+                "hint": "Ce aude transcrierea, în timp real (F4). Doar în previzualizare.",
+                "show": "Afișează",
+                "modes": {
+                    "full": "Panou complet",
+                    "transcript": "Doar transcrierea"
+                }
+            },
             "guides": "Ghidaje",
             "guideKinds": {
                 "none": "Niciunul",
@@ -647,6 +658,7 @@
     },
     "mic": {
         "title": "Microfon și transcriere",
+        "transcriptTitle": "Transcriere",
         "level": "Nivelul microfonului",
         "levelDb": "nivel {{db}} dB",
         "threshold": "Pragul de vorbire",

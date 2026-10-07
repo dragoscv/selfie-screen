@@ -1,4 +1,4 @@
-import { GUIDE_KINDS, PEAKING_COLORS, PET_CHOICES, SCOPE_KINDS, type StudioSettings } from "@tiksee/core";
+import { GUIDE_KINDS, MIC_PANEL_MODES, PEAKING_COLORS, PET_CHOICES, SCOPE_KINDS, type StudioSettings } from "@tiksee/core";
 import { ChipSelector, SliderRow, SwitchRow } from "@tiksee/ui";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import {
@@ -210,6 +210,25 @@ function MonitorPanel() {
                 <SwitchRow label={t("studio.controls.monitor.safeZones")} checked={m.safeZones} onChange={(safeZones) => set({ safeZones })} />
                 <SwitchRow label={t("studio.controls.monitor.horizon")} checked={m.horizon} onChange={(horizon) => set({ horizon })} />
                 <SwitchRow label={t("studio.controls.monitor.debug3d.label")} description={t("studio.controls.monitor.debug3d.hint")} checked={m.debug3d} onChange={(debug3d) => set({ debug3d })} />
+            </Section>
+            <Section title={t("studio.controls.monitor.audioAids")}>
+                <SwitchRow
+                    label={t("studio.controls.monitor.mic.label")}
+                    description={t("studio.controls.monitor.mic.hint")}
+                    checked={m.micPanel !== "off"}
+                    onChange={(on) => set({ micPanel: on ? "full" : "off" })}
+                />
+                {m.micPanel !== "off" && (
+                    <ChipSelector
+                        label={t("studio.controls.monitor.mic.show")}
+                        options={MIC_PANEL_MODES.filter((v) => v !== "off")}
+                        value={m.micPanel}
+                        onSelect={(micPanel) => set({ micPanel })}
+                        display={(v) => t(`studio.controls.monitor.mic.modes.${v}`)}
+                    />
+                )}
+            </Section>
+            <Section title={t("studio.controls.monitor.output")}>
                 <SwitchRow label={t("studio.controls.monitor.cleanFeed")} description={t("studio.controls.monitor.cleanFeedHint")} checked={m.cleanFeed} onChange={(cleanFeed) => set({ cleanFeed })} />
             </Section>
         </>
@@ -289,7 +308,7 @@ function usePillValue(id: PanelId): string {
             return studio.framing.autoReframe ? t("studio.controls.framing.autoShort") : studio.framing.dof ? "DoF" : t("studio.common.off");
         case "monitor": {
             if (m.cleanFeed) return t("studio.controls.monitor.clean");
-            const n = [m.peaking, m.zebra, m.falseColor, m.clipping, m.scope !== "none", m.guides !== "none", m.safeZones, m.debug3d].filter(Boolean).length;
+            const n = [m.peaking, m.zebra, m.falseColor, m.clipping, m.scope !== "none", m.guides !== "none", m.safeZones, m.debug3d, m.micPanel !== "off"].filter(Boolean).length;
             return t("studio.controls.monitor.aids", { count: n });
         }
         case "camera":

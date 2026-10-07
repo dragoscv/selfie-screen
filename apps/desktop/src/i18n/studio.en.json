@@ -148,6 +148,17 @@
             "clipping": "Clipping warning",
             "scope": "Scope",
             "composition": "Composition",
+            "audioAids": "Audio",
+            "output": "Output",
+            "mic": {
+                "label": "Microphone & transcription",
+                "hint": "What the transcription hears, live (F4). Preview only.",
+                "show": "Show",
+                "modes": {
+                    "full": "Full panel",
+                    "transcript": "Transcript only"
+                }
+            },
             "guides": "Guides",
             "guideKinds": {
                 "none": "None",
@@ -643,6 +654,7 @@
     },
     "mic": {
         "title": "Microphone & transcription",
+        "transcriptTitle": "Transcript",
         "level": "Microphone level",
         "levelDb": "level {{db}} dB",
         "threshold": "Speech threshold",

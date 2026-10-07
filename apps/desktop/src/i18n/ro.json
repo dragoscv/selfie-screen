@@ -577,7 +577,13 @@
                 "horizon": "Nivel orizont",
                 "loupeZoom": "Mărire lupă",
                 "debug3d": "Vizualizare 3D de depanare",
-                "debug3dHint": "Scheletul în metri, grila de adâncime, ancorele și traseele animalelor (F3 în studio). Doar în previzualizare"
+                "debug3dHint": "Scheletul în metri, grila de adâncime, ancorele și traseele animalelor (F3 în studio). Doar în previzualizare",
+                "micPanel": "Microfon și transcriere (F4 în studio)",
+                "micPanelModes": {
+                    "off": "Oprit",
+                    "full": "Panou complet",
+                    "transcript": "Doar transcrierea"
+                }
             },
             "framing": {
                 "title": "Încadrare",
