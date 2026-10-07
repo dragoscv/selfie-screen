@@ -135,6 +135,8 @@ export interface StudioContextValue {
     patchVision(patch: Partial<VisionSettings>): void;
     /** Persist voice/audio edits; the main window (which owns playback and the mic) applies them. */
     patchSound(patch: { voice?: Partial<VoiceSettings>; audio?: Partial<AudioSettings> }): void;
+    /** An in-place editor (caption move/resize) is busy: keep the chrome shown, do not idle-hide. */
+    setEditing?(on: boolean): void;
 }
 
 export const StudioContext = createContext<StudioContextValue | null>(null);

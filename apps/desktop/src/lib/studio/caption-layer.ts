@@ -149,6 +149,8 @@ export class CaptionLayer {
         this.#pop = empty ? Math.max(0, this.#pop - dt * 4) : Math.min(1, this.#pop + dt * 5);
         if (this.#alpha < 0.01 && empty) {
             this.#mesh.visible = false;
+            // Nothing on screen: the preview handles fall back to the settings position.
+            this.rect = { u: s.u, v: s.v, w: 0, h: 0 };
             if (this.#alpha < 0.002) this.#cur = { w: 0, h: 0 };
             return;
         }

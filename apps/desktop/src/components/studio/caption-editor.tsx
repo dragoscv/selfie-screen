@@ -4,6 +4,7 @@ import { Languages, Move, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
+import { clampCentre } from "../../lib/studio/caption-draw.js";
 import { FOCUS_RING, GLASS, INSTANT, SPRING, useStudio } from "./context.js";
 
 /** Defaults: centre between the face and TikTok's comment area (portrait), never under the top bar. */
@@ -11,8 +12,14 @@ const DEFAULT_POS = { u: 0.5, v: 0.54, scale: 1 } as const;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 2.5;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/** Hover grace so the pointer can travel from the pill to its toolbar. */
+const HOVER_OUT_MS = 350;
 
-type Drag = { mode: "move" | "resize"; x: number; y: number; u: number; v: number; scale: number; h: number };
+/**
+ * Drag start. Move: pointer offset from the DISPLAYED centre (the clamped one, so there is no
+ * dead zone after the strip was pushed against an edge). Resize: distance pointer -> centre.
+ */
+type Drag = { mode: "move" | "resize"; x: number; y: number; u: number; v: number; scale: number; dist: number; cx: number; cy: number; w: number; h: number };
 
 /**
  * Move / resize handles over the LIVE caption (it is drawn into the video by CaptionLayer):
@@ -21,12 +28,13 @@ type Drag = { mode: "move" | "resize"; x: number; y: number; u: number; v: numbe
  * animation frame. The outline follows the real pill (controller.captionRect()).
  */
 export function CaptionEditor() {
-    const { controller, rect, studio, patchStudio } = useStudio();
+    const { controller, rect, studio, patchStudio, setEditing } = useStudio();
     const { t } = useTranslation();
     const reduced = useReducedMotion();
     const c = studio.captions;
     const [box, setBox] = useState<{ u: number; v: number; w: number; h: number } | null>(null);
     const [hover, setHover] = useState(false);
+    const hoverTimer = useRef(0);
     const [dragging, setDragging] = useState<Drag["mode"] | null>(null);
     const drag = useRef<Drag | null>(null);
     const pending = useRef<Partial<CaptionSettings> | null>(null);
@@ -65,26 +73,67 @@ export function CaptionEditor() {
         });
     };
 
-    useEffect(() => () => cancelAnimationFrame(raf.current), []);
+    useEffect(
+        () => () => {
+            cancelAnimationFrame(raf.current);
+            window.clearTimeout(hoverTimer.current);
+        },
+        [],
+    );
+    const hoverOn = () => {
+        window.clearTimeout(hoverTimer.current);
+        setHover(true);
+    };
+    const hoverOff = () => {
+        window.clearTimeout(hoverTimer.current);
+        hoverTimer.current = window.setTimeout(() => setHover(false), HOVER_OUT_MS);
+    };
+
+    // Keep the studio chrome (and so this editor) shown while the pointer is on it or dragging:
+    // the 3 s idle timer used to hide the chrome mid-drag, unmounting the editor and dropping the drag.
+    const active = hover || dragging !== null;
+    useEffect(() => {
+        setEditing?.(active);
+    }, [active, setEditing]);
+    useEffect(() => () => setEditing?.(false), [setEditing]);
 
     if (rect.width <= 0) return null;
-    // Empty pill (nobody talking yet): show a placeholder outline where the caption will appear.
-    const shown = box ?? { u: c.u, v: c.v, w: 0.42 * c.scale, h: 0.05 * c.scale };
+    // Empty pill (nobody talking yet): a placeholder outline where the caption will appear,
+    // clamped exactly like the real strip.
+    const ph = { w: 0.42 * c.scale, h: 0.05 * c.scale };
+    const shown = box ?? { ...clampCentre(c.u, c.v, ph.w, ph.h), ...ph };
     const left = rect.left + (shown.u - shown.w / 2) * rect.width;
     const top = rect.top + (shown.v - shown.h / 2) * rect.height;
     const width = shown.w * rect.width;
     const height = shown.h * rect.height;
+    const centreX = left + width / 2;
+    const centreY = top + height / 2;
+
+    const begin = (e: ReactPointerEvent<HTMLElement>, mode: Drag["mode"]): Drag => ({
+        mode,
+        x: e.clientX,
+        y: e.clientY,
+        u: shown.u,
+        v: shown.v,
+        scale: c.scale,
+        cx: centreX,
+        cy: centreY,
+        dist: Math.max(12, Math.hypot(e.clientX - centreX, e.clientY - centreY)),
+        w: shown.w,
+        h: shown.h,
+    });
 
     const move = (e: ReactPointerEvent<HTMLElement>) => {
         const d = drag.current;
         if (!d) return;
-        const dx = e.clientX - d.x;
-        const dy = e.clientY - d.y;
-        if (d.mode === "move") commit({ u: clamp(d.u + dx / rect.width, 0, 1), v: clamp(d.v + dy / rect.height, 0, 1) });
-        else {
-            // Corner drag: scale with the vertical + horizontal pull, relative to the pill height.
-            const grow = (dy + dx * 0.5) / Math.max(d.h, 24);
-            commit({ scale: clamp(Math.round(d.scale * (1 + grow) * 100) / 100, MIN_SCALE, MAX_SCALE) });
+        if (d.mode === "move") {
+            // Saved position = the visible one (never beyond the frame clamp, so no dead zone later).
+            const p = clampCentre(d.u + (e.clientX - d.x) / rect.width, d.v + (e.clientY - d.y) / rect.height, d.w, d.h);
+            commit({ u: p.u, v: p.v });
+        } else {
+            // Corner drag: scale follows the pointer's distance from the centre (1:1 with the corner).
+            const ratio = Math.hypot(e.clientX - d.cx, e.clientY - d.cy) / d.dist;
+            commit({ scale: clamp(Math.round(d.scale * ratio * 100) / 100, MIN_SCALE, MAX_SCALE) });
         }
     };
     const end = () => {
@@ -92,7 +141,6 @@ export function CaptionEditor() {
         setDragging(null);
     };
 
-    const active = hover || dragging !== null;
     const style = c.style;
 
     return (
@@ -106,13 +154,13 @@ export function CaptionEditor() {
                 initial={false}
                 animate={{ left: left - 6, top: top - 6, width: width + 12, height: height + 12 }}
                 transition={dragging ? INSTANT : reduced ? INSTANT : { type: "spring", bounce: 0.1, visualDuration: 0.18 }}
-                onPointerEnter={() => setHover(true)}
-                onPointerLeave={() => setHover(false)}
+                onPointerEnter={hoverOn}
+                onPointerLeave={hoverOff}
                 onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     e.currentTarget.setPointerCapture(e.pointerId);
-                    drag.current = { mode: "move", x: e.clientX, y: e.clientY, u: c.u, v: c.v, scale: c.scale, h: height };
+                    drag.current = begin(e, "move");
                     setDragging("move");
                 }}
                 onPointerMove={move}
@@ -153,30 +201,29 @@ export function CaptionEditor() {
                         {t("studio.captions.placeholder")}
                     </span>
                 )}
-                {/* Resize handle (bottom-right corner). */}
-                <AnimatePresence>
-                    {active && (
-                        <motion.button
-                            type="button"
-                            aria-label={t("studio.captions.resize")}
-                            initial={reduced ? false : { scale: 0.4, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.4, opacity: 0 }}
-                            transition={reduced ? INSTANT : SPRING}
-                            className="absolute -bottom-2 -right-2 size-4 cursor-nwse-resize rounded-full border-2 border-white bg-sky-400 shadow-md"
-                            onPointerDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                e.currentTarget.setPointerCapture(e.pointerId);
-                                drag.current = { mode: "resize", x: e.clientX, y: e.clientY, u: c.u, v: c.v, scale: c.scale, h: height };
-                                setDragging("resize");
-                            }}
-                            onPointerMove={move}
-                            onPointerUp={end}
-                            onPointerCancel={end}
-                        />
-                    )}
-                </AnimatePresence>
+                {/* Resize handle (bottom-right corner): 28 px hit area, dot grows when active. */}
+                <button
+                    type="button"
+                    aria-label={t("studio.captions.resize")}
+                    className="absolute -bottom-3.5 -right-3.5 grid size-7 cursor-nwse-resize touch-none place-items-center"
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        drag.current = begin(e, "resize");
+                        setDragging("resize");
+                    }}
+                    onPointerMove={move}
+                    onPointerUp={end}
+                    onPointerCancel={end}
+                >
+                    <motion.span
+                        aria-hidden
+                        className="block rounded-full border-2 border-white bg-sky-400 shadow-md"
+                        animate={{ width: active ? 16 : 10, height: active ? 16 : 10, opacity: active ? 1 : 0.7 }}
+                        transition={reduced ? INSTANT : SPRING}
+                    />
+                </button>
             </motion.div>
 
             {/* Floating toolbar above the pill: style, translation badge, reset. */}
@@ -190,8 +237,8 @@ export function CaptionEditor() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 6, scale: 0.95 }}
                         transition={reduced ? INSTANT : SPRING}
-                        onPointerEnter={() => setHover(true)}
-                        onPointerLeave={() => setHover(false)}
+                        onPointerEnter={hoverOn}
+                        onPointerLeave={hoverOff}
                     >
                         <Move className="ml-1 size-3.5 text-white/70" aria-hidden />
                         {CAPTION_STYLES.map((s) => (

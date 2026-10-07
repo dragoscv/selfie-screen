@@ -93,6 +93,7 @@ export function StudioShell(props: StudioShellProps) {
     const [radial, setRadial] = useState<{ x: number; y: number } | null>(null);
     const [active, setActive] = useState(true);
     const [userHidden, setUserHidden] = useState(false);
+    const [editing, setEditing] = useState(false);
     const idleTimer = useRef(0);
     // Latest settings for the window keydown handler (F3) without re-binding it on every patch.
     const latest = useRef({ studio, patchStudio });
@@ -142,7 +143,7 @@ export function StudioShell(props: StudioShellProps) {
     }, [poke, openRadial, rectRef]);
 
     const ctx = useMemo<StudioContextValue>(
-        () => ({ controller, frames, studio, vision, profiles, petsHidden, rect, rectRef, canvas, patchStudio, patchVision, patchSound }),
+        () => ({ controller, frames, studio, vision, profiles, petsHidden, rect, rectRef, canvas, patchStudio, patchVision, patchSound, setEditing }),
         [controller, frames, studio, vision, profiles, petsHidden, rect, rectRef, canvas, patchStudio, patchVision, patchSound],
     );
 
@@ -171,7 +172,7 @@ export function StudioShell(props: StudioShellProps) {
 
     const clean = studio.monitor.cleanFeed;
     const blocking = modal !== null || arOpen;
-    const controlsShown = !userHidden && (active || panel !== null || radial !== null || arOpen);
+    const controlsShown = !userHidden && (active || editing || panel !== null || radial !== null || arOpen);
     const fade = reduced ? INSTANT : SPRING;
 
     return (
