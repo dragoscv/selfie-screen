@@ -13,6 +13,7 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 - **Monitor → Audio has two separate switches**: **Transcript** shows your words as captions just above the controls (part of the layout, never on top of the status bar, scopes or panels; it moves down when the controls hide and steps aside while a panel is open), and **Microphone diagnostics** opens the full panel (F4). Both are saved, also in Settings → Studio; Clean feed hides them.
 
 ### Fixed
+- **Exposure aids turned the Studio preview black**: switching on zebra, false colour, clipping or focus peaking broke the preview because the aids shader did not compile (an "infinite" false-colour band). All four aids work again.
 - Empty transcription results no longer appear as "(empty transcript)" lines; they are listed only in the diagnostic log.
 
 ## [0.5.1] — 2026-10-07

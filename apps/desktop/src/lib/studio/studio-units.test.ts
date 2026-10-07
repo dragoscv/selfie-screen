@@ -5,7 +5,7 @@ import { fadeToward, focalPx, personInFront, pixelHeight, NOMINAL_VFOV_DEG } fro
 import { bleCommand, bleRelease, cameraStatus, CameraRemote, type BleCommand } from "./camera-ble.js";
 import { effectOrigin, MAX_PARTICLES, ParticleField } from "./effects.js";
 import { DigitalFraming, Spring, ZOOM_MAX } from "./framing.js";
-import { falseColorFor, monitorActive } from "./monitor.js";
+import { FALSE_COLOR, bandBounds, falseColorFor, monitorActive } from "./monitor.js";
 import { BUFFER_USAGE, MAP_MODE, nv12Length, parseVcamStatus, rgbaToNv12, yuv } from "./output.js";
 import { computeScopes, scopeBuffers, scopeSize } from "./scopes.js";
 
@@ -245,6 +245,17 @@ describe("monitor + scopes", () => {
         expect(falseColorFor(54)).toEqual([1, 0.55, 0.75]);
         expect(falseColorFor(70)).toBeNull();
         expect(falseColorFor(100)).toEqual([1, 0.1, 0.1]);
+    });
+
+    it("false colour never puts a non-finite bound into the shader (WGSL has no Infinity)", () => {
+        let lo = -Infinity;
+        for (const band of FALSE_COLOR) {
+            const b = bandBounds(lo, band.below);
+            for (const v of [b.lo, b.below]) if (v !== undefined) expect(Number.isFinite(v)).toBe(true);
+            lo = band.below;
+        }
+        expect(bandBounds(97, Infinity)).toEqual({ lo: 97 });
+        expect(bandBounds(-Infinity, 2.5)).toEqual({ below: 2.5 });
     });
 
     it("clean feed disables every aid", () => {

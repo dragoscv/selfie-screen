@@ -27,6 +27,20 @@ export function falseColorFor(ire: number): [number, number, number] | null {
     return null;
 }
 
+/** Which bounds a band needs in the shader: only finite ones (WGSL has no Infinity literal). */
+export function bandBounds(lo: number, below: number): { lo?: number; below?: number } {
+    return { ...(Number.isFinite(lo) ? { lo } : {}), ...(Number.isFinite(below) ? { below } : {}) };
+}
+
+/** Shader condition `lo <= ire < below`, emitting only finite comparisons. */
+function falseColorBand(ire: FloatNode, lo: number, below: number): THREE.Node<"bool"> {
+    const b = bandBounds(lo, below);
+    if (b.lo !== undefined && b.below !== undefined) return ire.greaterThanEqual(b.lo).and(ire.lessThan(b.below));
+    if (b.below !== undefined) return ire.lessThan(b.below);
+    if (b.lo !== undefined) return ire.greaterThanEqual(b.lo);
+    return ire.greaterThanEqual(-1e9);
+}
+
 export const PEAKING_RGB: Readonly<Record<MonitorSettings["peakingColor"], [number, number, number]>> = {
     red: [1, 0.1, 0.1],
     yellow: [1, 0.95, 0.1],
@@ -81,12 +95,14 @@ export class PreviewPass {
         const y = lumaAt(0, 0);
         const ire = y.mul(100);
 
-        // False colour replaces the image with grey luma + bands.
+        // False colour replaces the image with grey luma + bands. Open-ended bands (the bottom one
+        // from -inf, the top one to +inf) use a single comparison: `Infinity` has no WGSL literal
+        // ("Infinity.0" made the whole aids shader fail to compile -> black preview, 2026-10-08).
         let fc: Vec3Node = vec3(y, y, y);
         let lo = -Infinity;
         for (const band of FALSE_COLOR) {
             if (band.rgb) {
-                const inBand = ire.lessThan(band.below).and(lo === -Infinity ? ire.greaterThanEqual(-1) : ire.greaterThanEqual(lo));
+                const inBand = falseColorBand(ire, lo, band.below);
                 fc = inBand.select(vec3(...band.rgb), fc);
             }
             lo = band.below;
