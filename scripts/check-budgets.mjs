@@ -23,6 +23,8 @@ const budgets = [
     // Live captions in the output video (canvas layer + transcript feed) and their move/resize handles.
     ["studio caption layer (lazy)", /^caption-layer-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
     ["studio caption editor (lazy)", /^caption-editor-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
+    // Simple dock panels (zoom, focus, look, framing, camera, pets), loaded on first open.
+    ["studio dock panels (lazy)", /^dock-panels-.*\.js$/, "apps/desktop/dist/assets", 5 * KB],
     // Separate window; three/webgpu + MediaPipe never load in the main window.
     // 0.3.0: engine (output RT, AR, monitor, scopes, vcam pump) + control surface = 38.5 KB measured;
     // tutorial / calibration / enrol / AR editor are lazy chunks.

@@ -728,8 +728,12 @@ export class StudioEngine implements StudioController {
         ] as const) {
             const pet = choice === "none" ? null : choice;
             if (this.#pets[side] !== pet) {
+                const was = this.#pets[side];
                 this.#pets[side] = pet;
                 await stage.setPet(side, pet).catch((e: unknown) => this.#cb.onError?.(`pet ${String(pet)}: ${String(e)}`));
+                // Switch (not first load / removal): a sparkle burst where the morph happens.
+                const at = was && pet ? stage.debug.find((d) => d.side === side)?.pose.p : undefined;
+                if (at) this.#effects?.spawn("sparkle", [at[0], at[1] + 0.12, at[2] + 0.05]);
             }
         }
         // Hand-resized sizes persist per pet (positions do not).

@@ -19,6 +19,7 @@ import { ANCHORS, PetRoamer, locomotionOf, onScreen, type AnchorId, type PalmPer
 import type { Side } from "./shoulders.js";
 import { DEFAULT_VFOV_DEG, project, unproject, type BodySnapshot, type Pinhole, type Vec3 } from "./space.js";
 import { PET_CLIPS, clipDurationMs, type PetClip, type PetEvent } from "./state-machine.js";
+import { SWAP_IN_S, SWAP_OUT_S, swapIn, swapOut } from "./swap.js";
 import { mouthWeights, type VisemeEvent } from "./visemes.js";
 
 export interface StageOptions {
@@ -78,6 +79,8 @@ interface Slot {
     command: { anchor: AnchorId; until: number } | null;
     /** An external clip (rule / director / event) the mind must not overwrite until this time. */
     clipHoldUntil: number;
+    /** Swap morph: when this pet appeared replacing another (ms), or null when not morphing in. */
+    swapInAt: number | null;
     /** Last mind action (chatter rising edge). */
     lastAction: ActionKind | null;
 }
@@ -203,6 +206,8 @@ export class PetStage {
     readonly camera: THREE.PerspectiveCamera;
     readonly #o: StageOptions;
     readonly #slots = new Map<Side, Slot>();
+    /** Pets morphing out after a switch: animated in place, then disposed. */
+    #departing: { slot: Slot; at: number }[] = [];
     readonly #loading = new Map<Side, PetId | null>();
     #loader: GLTFLoader | null = null;
     #speech: { visemes: readonly VisemeEvent[]; startMs: number } | null = null;
@@ -416,7 +421,12 @@ export class PetStage {
         const { root, animations, height } = await this.#load(pet);
         // A newer setPet for this side superseded us while loading.
         if (this.#loading.get(side) !== pet) return;
-        this.#remove(side);
+        // Switch: the old pet morphs out where it stands and the new one pops in at that spot.
+        const prev = this.#slots.get(side);
+        const from = prev ? (prev.roamer.position ?? prev.pose?.p ?? null) : null;
+        const swapping = prev !== undefined && prev.fade > 0.5 && !this.#hidden;
+        if (swapping && prev) this.#depart(side, prev);
+        else this.#remove(side);
         const front = uniform(0);
         const depth = uniform(1);
         const alpha = uniform(0);
@@ -447,13 +457,14 @@ export class PetStage {
         shadow.frustumCulled = false;
         this.scene.add(actor.root, shadow);
         const roamer = new PetRoamer({ side, family: PETS[pet].family, heightM: PETS[pet].heightM * scale });
+        if (swapping && from) roamer.place(from);
         const personality = this.#pendingPersonality.get(pet);
         const mind = new PetMind(pet, side, this.#seed++ * 7919, personality ? { personality, startMs: performance.now() } : { startMs: performance.now() });
         this.#slots.set(side, {
             actor,
             roamer,
             scaleM,
-            fade: 0,
+            fade: swapping ? 1 : 0,
             front,
             depth,
             alpha,
@@ -471,7 +482,56 @@ export class PetStage {
             command: null,
             clipHoldUntil: 0,
             lastAction: null,
+            swapInAt: swapping ? performance.now() : null,
         });
+    }
+
+    /** Detach a slot without disposing it yet: it plays the swap-out morph, then #flushDeparted frees it. */
+    #depart(side: Side, old: Slot): void {
+        this.#pendingPersonality.set(old.actor.pet, old.mind.personalityState);
+        this.#pendingScale.set(old.actor.pet, old.scale);
+        if (this.#grabState?.pet === old.actor.pet) {
+            this.#grab.cancel();
+            this.#grabState = null;
+        }
+        this.#wantsToTalk.delete(old.actor.pet);
+        old.bubble?.dispose();
+        old.bubble = null;
+        this.#reservations.release(old.actor.pet);
+        this.#slots.delete(side);
+        this.#departing.push({ slot: old, at: performance.now() });
+    }
+
+    #disposeSlot(old: Slot): void {
+        old.actor.dispose();
+        old.shadow.removeFromParent();
+        old.shadow.geometry.dispose();
+        (old.shadow.material as THREE.Material).dispose();
+    }
+
+    /** Swap-out morph of departing pets; frees them when done. */
+    #animateDeparted(now: number): void {
+        if (this.#departing.length === 0) return;
+        this.#departing = this.#departing.filter(({ slot, at }) => {
+            const t = (now - at) / 1000;
+            if (t >= SWAP_OUT_S) {
+                this.#disposeSlot(slot);
+                return false;
+            }
+            const s = swapOut(t);
+            this.#applyMorph(slot, s);
+            slot.alpha.value = s.alpha;
+            slot.shadowAlpha.value = s.alpha;
+            return true;
+        });
+    }
+
+    /** Morph on top of the actor's own scale/rotation (after its tick, so squash/stretch stays). */
+    #applyMorph(slot: Slot, s: { scale: number; stretch: number; spin: number }): void {
+        const r = slot.actor.root;
+        const side = 1 / Math.sqrt(Math.max(s.stretch, 0.05));
+        r.scale.set(r.scale.x * s.scale * side, r.scale.y * s.scale * s.stretch, r.scale.z * s.scale * side);
+        r.rotation.y += s.spin;
     }
 
     #remove(side: Side): void {
@@ -830,6 +890,12 @@ export class PetStage {
             const animate = visible && (px > 40 || Math.floor(now / 16) % 2 === 0);
             slot.actor.setArousal(slot.mind.mood.arousal);
             slot.actor.tick(pose, now, animate ? dtSec * (px > 40 ? 1 : 2) : 0, this.#petMouth(slot, now) ?? mouth, animate);
+            // Swap-in morph (the new pet appearing where the old one stood).
+            if (slot.swapInAt !== null) {
+                const t = (now - slot.swapInAt) / 1000;
+                if (t >= SWAP_IN_S) slot.swapInAt = null;
+                else this.#applyMorph(slot, swapIn(t));
+            }
             slot.alpha.value = slot.fade;
             const petM = s.depthM;
             slot.depth.value = petM;
@@ -856,6 +922,7 @@ export class PetStage {
             });
         }
         this.#debug = debug;
+        this.#animateDeparted(now);
         if (this.#pointAt && [...this.#slots.values()].every((s) => s.roamer.anchor !== "point")) this.#pointAt = null;
     }
 
@@ -935,6 +1002,8 @@ export class PetStage {
 
     dispose(): void {
         for (const side of [...this.#slots.keys()]) this.#remove(side);
+        for (const { slot } of this.#departing) this.#disposeSlot(slot);
+        this.#departing = [];
         this.renderer.dispose();
     }
 }

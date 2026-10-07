@@ -271,6 +271,12 @@ export class PetRoamer {
         return this.#p;
     }
 
+    /** Start at `p` (a pet that replaces another appears where the old one stood). */
+    place(p: Vec3): void {
+        this.#p = [...p];
+        this.#v = [0, 0, 0];
+    }
+
     #directed: AnchorId | null = null;
     #lastAnchors: Record<AnchorId, Vec3 | null> | null = null;
 

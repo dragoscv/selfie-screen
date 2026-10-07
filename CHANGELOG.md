@@ -5,6 +5,7 @@ All notable changes to TikSee. Format: [Keep a Changelog](https://keepachangelog
 ## [Unreleased]
 
 ### Added
+- **Pet switch morph**: changing a pet no longer cuts. The old pet grows a little, squashes and spins down into nothing where it stands while a sparkle burst covers the swap, and the new pet pops in at the same spot with an elastic stretch that settles (about 0.75 s, smooth at 60 fps).
 - **Live captions on the stream**: under Monitor → Audio → Transcript, **Show on the live** draws your words into the video your viewers see, as a modern caption strip that morphs to each sentence, pops in and fades out when you stop talking. **Second language** adds each sentence translated (pick the language: English, Spanish, Italian, French, German and more). Choose the look (Glass, Solid, Minimal), 1–3 lines and the size. By default it sits between your face and TikTok's comment area; in the preview drag it to move, pull the corner or use the mouse wheel to resize, double-click to reset, with a small floating toolbar for the look.
 - **Sound button in the Studio dock**: choose the voice output and the microphone, the co-host's voice, volume, speed and pitch, how much it lowers while you talk, and for each pet on screen its own voice, speed and pitch, each with a ▶ Test button. Changes apply at once and also show in Settings.
 - **Pitch now works with the codai voice** (co-host and pets), independent of speed: the pitch slider in Settings → Voice is no longer limited to Windows voices.
