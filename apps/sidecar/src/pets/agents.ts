@@ -207,6 +207,7 @@ export class PetAgents {
         const now = this.#now();
         this.#add("streamer", clean, Math.min(at, now));
         const named = this.#pets().filter((p) => mentionsPet(clean, [p]));
+        this.#deps.log.info(`pets heard the streamer (${clean.length} chars${named.length > 0 ? `, named ${named.join(",")}` : ""})`);
         if (named.length > 0) this.#floor.push("streamerNamed", { at: now, text: "the streamer talked to you or about you" }, named);
         else this.#floor.push("streamerSpoke", { at: now, text: "the streamer said something" });
     }

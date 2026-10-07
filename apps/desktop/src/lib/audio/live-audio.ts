@@ -148,6 +148,7 @@ class LiveAudio {
             {
                 onPhase: (phase, error) =>
                     useAppStore.getState().patchTranscript({ mic: phase, error: error ?? null }),
+                onWarning: (message) => useAppStore.getState().patchTranscript({ error: message }),
                 onSpeaking: (speaking) => {
                     useAppStore.getState().patchTranscript({ speaking });
                     this.#speaker?.setDucked(speaking);
@@ -167,6 +168,34 @@ class LiveAudio {
         this.#mic = mic;
         this.#micLoading = false;
         await mic.start();
+    }
+
+    #diagTimer = 0;
+    #diagUntil = 0;
+
+    /**
+     * Studio mic HUD: while the studio keeps asking (`mic://watch` every few seconds), send it a
+     * diagnostics snapshot + new events every 100 ms. Costs nothing when nobody watches.
+     */
+    watchDiagnostics(emit: (payload: unknown) => void): void {
+        this.#diagUntil = Date.now() + 5_000;
+        if (this.#diagTimer) return;
+        this.#diagTimer = window.setInterval(() => {
+            if (Date.now() > this.#diagUntil) {
+                window.clearInterval(this.#diagTimer);
+                this.#diagTimer = 0;
+                return;
+            }
+            const t = useAppStore.getState().transcript;
+            const mic = this.#mic;
+            emit({
+                enabled: this.#inputs?.settings.assistant.transcribe ?? false,
+                loading: this.#micLoading,
+                error: t.error,
+                diag: mic?.diag() ?? null,
+                events: mic?.drainEvents() ?? [],
+            });
+        }, 100);
     }
 }
 

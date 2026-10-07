@@ -640,5 +640,55 @@
             "laptop": "Laptop webcam",
             "custom": "Custom / calibrated"
         }
+    },
+    "mic": {
+        "title": "Microphone & transcription",
+        "level": "Microphone level",
+        "levelDb": "level {{db}} dB",
+        "threshold": "Speech threshold",
+        "thresholdDb": "speech above {{db}} dB",
+        "peakDb": "peak {{db}} dB",
+        "listening": "Listening…",
+        "speakNow": "Speak: your words appear here as you talk.",
+        "ws": "Connection",
+        "device": "Device",
+        "turn": "Audio",
+        "turnValue": "this turn {{turn}} ms · sent {{sent}} s · {{commits}} turns · {{finals}} texts",
+        "latency": "Text after",
+        "phase": {
+            "off": "off",
+            "starting": "starting",
+            "connecting": "connecting",
+            "live": "live",
+            "reconnecting": "reconnecting",
+            "error": "error"
+        },
+        "wsState": {
+            "open": "open",
+            "connecting": "connecting",
+            "closed": "closed"
+        },
+        "event": {
+            "commit": "sent",
+            "skip": "skipped",
+            "final": "text",
+            "error": "error",
+            "open": "connected",
+            "close": "disconnected",
+            "server-commit": "server"
+        },
+        "advice": {
+            "off": "Transcription is off: Settings → AI co-host → Transcribe my microphone.",
+            "starting": "Starting the microphone…",
+            "noSignal": "No audio from the microphone: check the input device in Settings → Audio devices and the Windows privacy settings.",
+            "tooQuiet": "Too quiet: speak closer to the microphone or raise its volume in Windows.",
+            "clipping": "Too loud, the sound is distorting: lower the microphone gain.",
+            "noisy": "Lots of background noise: the speech threshold went up; reduce the noise or move the microphone closer.",
+            "waitingKey": "Push to talk is on: hold the hotkey while you speak.",
+            "offline": "Not connected to codai: reconnecting. Check the internet connection and the codai key.",
+            "noText": "Your speech is sent but no text comes back: check the language and the codai transcription model.",
+            "ok": "Hearing you well."
+        },
+        "server": "Server sent"
     }
 }

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -79,6 +79,15 @@ export function useLiveStudio(): void {
     const sidecarConnected = useAppStore((s) => s.sidecarConnected);
 
     useEffect(() => liveAudio.attach(), []);
+
+    // Studio mic HUD (F4): the studio asks, the main window (which owns the mic) streams diagnostics.
+    useEffect(
+        () =>
+            listenSafely<unknown>("mic://watch", () =>
+                liveAudio.watchDiagnostics((payload) => void emitTo("studio", "mic://diag", payload).catch(() => undefined)),
+            ),
+        [],
+    );
 
     useEffect(() => {
         if (loaded) liveAudio.update({ settings, control });

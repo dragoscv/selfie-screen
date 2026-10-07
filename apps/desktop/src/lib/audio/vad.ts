@@ -32,6 +32,16 @@ export class EnergyVad {
         return this.#lastVoiceAt;
     }
 
+    /** Adaptive noise floor (RMS). */
+    get floor(): number {
+        return this.#floor;
+    }
+
+    /** Level a block must exceed to count as speech (RMS). */
+    get threshold(): number {
+        return Math.max(this.#options.minLevel, this.#floor * this.#options.ratio);
+    }
+
     /** Feed one block level (RMS 0..1) at time `now` (ms); returns the speaking state. */
     update(level: number, now: number): boolean {
         const threshold = Math.max(this.#options.minLevel, this.#floor * this.#options.ratio);

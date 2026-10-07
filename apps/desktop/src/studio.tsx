@@ -7,7 +7,7 @@ import { parseSettings, type IdentityProfile, type SignalEvent, type StudioSetti
 import { applyAppearance } from "@tiksee/ui";
 import type { FrameStatsSnapshot } from "@tiksee/pets";
 import { MotionConfig } from "motion/react";
-import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, StrictMode, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster, toast } from "sonner";
 
@@ -21,6 +21,9 @@ import { sidecarClient } from "./lib/sidecar-client.js";
 import "./styles.css";
 
 type Stats = FrameStatsSnapshot & { backend: string; tracking: boolean; video: VideoHealth };
+
+/** Mic/transcription diagnostics (F4), its own chunk: preview only, loaded on first open. */
+const MicHud = lazy(() => import("./components/studio/mic-hud.js").then((m) => ({ default: m.MicHud })));
 
 const SIGNAL_FLUSH_MS = 100;
 const SNAPSHOT_MS = 500;
@@ -40,6 +43,14 @@ function Studio() {
     const [stats, setStats] = useState<Stats | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [hud, setHud] = useState(false);
+    const [micHud, setMicHudState] = useState(() => sessionStorage.getItem("tiksee.micHud") === "1");
+    const setMicHud = useCallback((next: boolean | ((v: boolean) => boolean)) => {
+        setMicHudState((v) => {
+            const value = typeof next === "function" ? next(v) : next;
+            sessionStorage.setItem("tiksee.micHud", value ? "1" : "0");
+            return value;
+        });
+    }, []);
     const [live, setLive] = useState<{ engine: StudioEngine; canvas: HTMLCanvasElement } | null>(null);
     const [studio, setStudio] = useState<StudioSettings | null>(null);
     const [vision, setVision] = useState<VisionSettings | null>(null);
@@ -292,6 +303,7 @@ function Studio() {
 
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "F2") setHud((v) => !v);
+            else if (e.key === "F4") setMicHud((v) => !v);
         };
         window.addEventListener("keydown", onKey);
         // Closing the window or a full reload tears the page down without
@@ -323,7 +335,7 @@ function Studio() {
             engineRef.current?.stop();
             engineRef.current = null;
         };
-    }, [frames]);
+    }, [frames, setMicHud]);
 
     return (
         <div className="dark" style={{ position: "relative", width: "100%", height: "100%", display: "grid", placeItems: "center" }}>
@@ -347,6 +359,11 @@ function Studio() {
                     patchStudio={patchStudio}
                     patchVision={patchVision}
                 />
+            )}
+            {micHud && (
+                <Suspense fallback={null}>
+                    <MicHud onClose={() => setMicHud(false)} />
+                </Suspense>
             )}
             {hud && (
                 <output

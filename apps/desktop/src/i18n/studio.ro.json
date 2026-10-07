@@ -644,5 +644,55 @@
             "laptop": "Webcam de laptop",
             "custom": "Personalizat / calibrat"
         }
+    },
+    "mic": {
+        "title": "Microfon și transcriere",
+        "level": "Nivelul microfonului",
+        "levelDb": "nivel {{db}} dB",
+        "threshold": "Pragul de vorbire",
+        "thresholdDb": "vorbire peste {{db}} dB",
+        "peakDb": "vârf {{db}} dB",
+        "listening": "Ascult…",
+        "speakNow": "Vorbește: cuvintele tale apar aici pe măsură ce vorbești.",
+        "ws": "Conexiune",
+        "device": "Dispozitiv",
+        "turn": "Audio",
+        "turnValue": "replica asta {{turn}} ms · trimis {{sent}} s · {{commits}} replici · {{finals}} texte",
+        "latency": "Text după",
+        "phase": {
+            "off": "oprit",
+            "starting": "pornește",
+            "connecting": "se conectează",
+            "live": "activ",
+            "reconnecting": "se reconectează",
+            "error": "eroare"
+        },
+        "wsState": {
+            "open": "deschisă",
+            "connecting": "se conectează",
+            "closed": "închisă"
+        },
+        "event": {
+            "commit": "trimis",
+            "skip": "sărit",
+            "final": "text",
+            "error": "eroare",
+            "open": "conectat",
+            "close": "deconectat",
+            "server-commit": "server"
+        },
+        "advice": {
+            "off": "Transcrierea e oprită: Setări → Co-host AI → Transcrie microfonul.",
+            "starting": "Pornesc microfonul…",
+            "noSignal": "Nu vine sunet din microfon: verifică dispozitivul de intrare în Setări → Dispozitive audio și setările de confidențialitate Windows.",
+            "tooQuiet": "Prea încet: vorbește mai aproape de microfon sau mărește volumul lui în Windows.",
+            "clipping": "Prea tare, sunetul se distorsionează: scade amplificarea microfonului.",
+            "noisy": "Mult zgomot de fundal: pragul de vorbire a crescut; redu zgomotul sau apropie microfonul.",
+            "waitingKey": "Push to talk e pornit: ține apăsată tasta cât vorbești.",
+            "offline": "Nu sunt conectat la codai: reîncerc. Verifică internetul și cheia codai.",
+            "noText": "Vocea ta se trimite, dar nu vine text înapoi: verifică limba și modelul de transcriere codai.",
+            "ok": "Te aud bine."
+        },
+        "server": "Serverul a trimis"
     }
 }

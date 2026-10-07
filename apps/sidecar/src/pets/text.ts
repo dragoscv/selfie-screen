@@ -11,14 +11,18 @@ import { speakable } from "../cohost/templates.js";
 export const MAX_LINE_CHARS = 110;
 export const MAX_MEMORY_CHARS = 160;
 
-/** Spoken names (EN + RO, no diacritics) that count as a mention of a pet. */
+/**
+ * Spoken name STEMS (EN + RO, no diacritics) that count as a mention of a pet. Matching is a
+ * word-start prefix, so Romanian inflections and vocatives match too ("Vulpițo" -> vulpito,
+ * "papagalule", "bufnițo", "pisicuțo"); live 2026-10-07: whole names missed the vocative.
+ */
 const PET_NAMES: Readonly<Record<string, readonly string[]>> = {
     parrot: ["parrot", "papagal"],
-    cat: ["cat", "pisica", "pisic", "motan"],
-    dragon: ["dragon", "dragonul"],
-    drone: ["drone", "drona"],
-    fox: ["fox", "vulpe", "vulpita"],
-    owl: ["owl", "bufnita"],
+    cat: ["cat", "kitty", "pisic", "motan"],
+    dragon: ["dragon"],
+    drone: ["drone", "dron"],
+    fox: ["fox", "vulp"],
+    owl: ["owl", "bufnit"],
     redpanda: ["red panda", "redpanda", "panda"],
 };
 
@@ -27,7 +31,10 @@ const fold = (text: string): string => text.normalize("NFD").replace(/[\u0300-\u
 /** The text names one of `pets` (species names, RO + EN). */
 export function mentionsPet(text: string, pets: readonly string[]): boolean {
     const folded = ` ${fold(text).replace(/[^a-z0-9 ]+/g, " ")} `;
-    return pets.some((pet) => (PET_NAMES[pet.split(/[-:#]/)[0] ?? pet] ?? [pet]).some((name) => folded.includes(` ${name}`)));
+    // Stems of 4+ letters match a word start (inflections); short names must be whole words
+    // ("cat" must not match the Romanian "catre").
+    const hit = (name: string): boolean => folded.includes(name.length >= 4 ? ` ${name}` : ` ${name} `);
+    return pets.some((pet) => (PET_NAMES[pet.split(/[-:#]/)[0] ?? pet] ?? [pet]).some(hit));
 }
 
 /** One untrusted string for a prompt: no control chars, URLs or @handles; truncated. */

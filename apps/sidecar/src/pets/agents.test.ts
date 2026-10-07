@@ -8,6 +8,7 @@ import { AGENT_RULES, parseAgentReply } from "./agent.js";
 import { PetAgents } from "./agents.js";
 import { MIN_GAP_MS, PET_COOLDOWN_MS } from "./floor.js";
 import { parseReflection } from "./reflection.js";
+import { mentionsPet } from "./text.js";
 
 const mind = (pet: string): PetMindState => ({
     pet,
@@ -211,6 +212,20 @@ describe("pet agents", () => {
         h.replies.push('{"memories":[{"text":"Ana chatted with me all stream","importance":0.7},{"text":"x"}]}');
         expect(await h.agents.reflect(0)).toBe(1);
         expect(store.ensure("fox").memories.map((m) => m.text)).toContain("Ana chatted with me all stream");
+    });
+});
+
+describe("pet name mentions", () => {
+    it("matches Romanian inflections and vocatives, not unrelated words", () => {
+        expect(mentionsPet("Vulpițo, ce faci azi?", ["fox"])).toBe(true);
+        expect(mentionsPet("vulpea e superbă", ["fox"])).toBe(true);
+        expect(mentionsPet("papagalule, salut", ["parrot"])).toBe(true);
+        expect(mentionsPet("bufnițo!", ["owl"])).toBe(true);
+        expect(mentionsPet("pisicuța mea", ["cat"])).toBe(true);
+        expect(mentionsPet("hey fox", ["fox-2"])).toBe(true);
+        expect(mentionsPet("merg către casă", ["cat"])).toBe(false);
+        expect(mentionsPet("foxtrot", ["fox"])).toBe(false);
+        expect(mentionsPet("vulpea", ["cat"])).toBe(false);
     });
 });
 
