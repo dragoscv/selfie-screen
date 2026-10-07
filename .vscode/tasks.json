@@ -1,0 +1,66 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "TikSee: dev app",
+            "detail": "pnpm dev:app (Vite HMR + sidecar watch + tauri dev), mirrored to .copilot-tmp/devapp.log",
+            "type": "shell",
+            "command": "New-Item -ItemType Directory -Force .copilot-tmp | Out-Null; pnpm dev:app 2>&1 | Tee-Object -FilePath .copilot-tmp/devapp.log",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": { "executable": "pwsh", "args": ["-NoProfile", "-Command"] }
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "tiksee-dev",
+                "pattern": { "regexp": "^__never_matches__$" },
+                "background": {
+                    "activatesOnStart": true,
+                    "beginsPattern": "\\[dev-app\\]|VITE v|Compiling tiksee",
+                    "endsPattern": "Running `.*tiksee(\\.exe)?`|TIKSEE_SIDECAR_READY"
+                }
+            },
+            "presentation": { "reveal": "always", "panel": "dedicated", "group": "tiksee", "clear": true },
+            "group": { "kind": "build", "isDefault": true }
+        },
+        {
+            "label": "TikSee: dev app (bench camera)",
+            "detail": "pnpm dev:app --bench camera",
+            "type": "shell",
+            "command": "New-Item -ItemType Directory -Force .copilot-tmp | Out-Null; pnpm dev:app --bench camera 2>&1 | Tee-Object -FilePath .copilot-tmp/devapp.log",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": { "executable": "pwsh", "args": ["-NoProfile", "-Command"] }
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "tiksee-dev",
+                "pattern": { "regexp": "^__never_matches__$" },
+                "background": {
+                    "activatesOnStart": true,
+                    "beginsPattern": "\\[dev-app\\]|VITE v|Compiling tiksee",
+                    "endsPattern": "Running `.*tiksee(\\.exe)?`|TIKSEE_SIDECAR_READY"
+                }
+            },
+            "presentation": { "reveal": "always", "panel": "dedicated", "group": "tiksee", "clear": true }
+        },
+        {
+            "label": "TikSee: trace report (last 20)",
+            "detail": "node scripts/trace-report.mjs .copilot-tmp/devapp.log --last 20",
+            "type": "shell",
+            "command": "node scripts/trace-report.mjs .copilot-tmp/devapp.log --last 20",
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+        },
+        {
+            "label": "TikSee: kill orphan WebView2",
+            "detail": "Frees the capture card when a WebView2 outlived tiksee.exe",
+            "type": "shell",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/kill-orphan-webview.ps1 -Kill",
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+        }
+    ]
+}
