@@ -47,25 +47,45 @@ describe("two-hand pinch zoom (wish)", () => {
     });
 });
 
-/** A pointing hand whose index tip is at angle `a` on a circle (output px, y down). */
-function dialHand(a: number, shape = "point_up", side: "left" | "right" = "right"): DialHand {
+/** World landmarks: index straight, others curled (or all straight / all curled). */
+function world(kind: "point" | "open" | "fist"): { x: number; y: number; z: number }[] {
+    const w = Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 }));
+    const finger = (ids: readonly number[], x: number, straight: boolean) => {
+        ids.forEach((id, k) => {
+            // Straight: bones in a line; curled: folds back toward the palm.
+            w[id] = straight ? { x, y: -0.03 * (k + 1), z: 0 } : { x, y: [-0.03, -0.045, -0.035, -0.02][k] ?? 0, z: [0, 0.02, 0.035, 0.03][k] ?? 0 };
+        });
+    };
+    finger([5, 6, 7, 8], 0, kind !== "fist");
+    finger([9, 10, 11, 12], 0.02, kind === "open");
+    finger([13, 14, 15, 16], 0.04, kind === "open");
+    finger([17, 18, 19, 20], 0.06, kind === "open");
+    return w;
+}
+
+/**
+ * A hand whose index tip is at angle `a` on a circle in RAW camera px (y down). The camera
+ * faces the user: a user-clockwise circle is counter-clockwise in the image (a decreasing).
+ */
+function dialHand(a: number, shape: string | null = "point_up", side: "left" | "right" = "right", kind: "point" | "open" | "fist" = "point"): DialHand {
     const lm = Array.from({ length: 21 }, () => ({ x: 500, y: 600 }));
     lm[0] = { x: 500, y: 700 }; // wrist
     lm[9] = { x: 500, y: 640 }; // middle MCP (palm = 60 px)
     lm[8] = { x: 500 + 40 * Math.cos(a), y: 500 + 40 * Math.sin(a) };
-    return { side, shape, lm };
+    return { side, shape, lm, world: world(kind) };
 }
 
-/** Turn the tip by `turns` (+ = clockwise on screen) over `ms`, 30 Hz hand results. */
-function turn(d: IndexDial, from: number, startA: number, turns: number, ms: number, shape = "point_up") {
-    let r = d.update(from, [dialHand(startA, shape)], () => false);
-    const n = Math.round(ms / 33);
-    for (let i = 1; i <= n; i++) r = d.update(from + i * 33, [dialHand(startA + (turns * 2 * Math.PI * i) / n, shape)], () => false);
-    return { r, end: from + n * 33, a: startA + turns * 2 * Math.PI };
+/** Turn by `turns` (+ = clockwise from the USER's view) over `ms`, at `hz` hand results. */
+function turn(d: IndexDial, from: number, startA: number, turns: number, ms: number, shape: string | null = "point_up", kind: "point" | "open" | "fist" = "point", hz = 30) {
+    const dt = 1000 / hz;
+    let r = d.update(from, [dialHand(startA, shape, "right", kind)], () => false);
+    const n = Math.round(ms / dt);
+    for (let i = 1; i <= n; i++) r = d.update(from + i * dt, [dialHand(startA - (turns * 2 * Math.PI * i) / n, shape, "right", kind)], () => false);
+    return { r, end: from + n * dt };
 }
 
 describe("index-finger dial zoom", () => {
-    it("clockwise circles zoom in, counter-clockwise zoom out, ~x1.6 per turn", () => {
+    it("clockwise (from your view) zooms in, counter-clockwise out, ~x1.6 per turn", () => {
         const d = new IndexDial();
         const cw = turn(d, 0, 0, 1.5, 1500);
         expect(cw.r.active).toBe(true);
@@ -76,7 +96,28 @@ describe("index-finger dial zoom", () => {
 
     it("does not start from a small wiggle or without pointing", () => {
         expect(turn(new IndexDial(), 0, 0, 0.15, 600).r.active).toBe(false);
-        expect(turn(new IndexDial(), 0, 0, 1.5, 1500, "open_palm").r.active).toBe(false);
+        expect(turn(new IndexDial(), 0, 0, 1.5, 1500, "open_palm", "open").r.active).toBe(false);
+        expect(turn(new IndexDial(), 0, 0, 1.5, 1500, "fist", "fist").r.active).toBe(false);
+    });
+
+    it("works when the classifier mislabels the circling hand (victory / ok / none) and at 6 Hz", () => {
+        expect(turn(new IndexDial(), 0, 0, 1.5, 1500, "victory").r.active).toBe(true);
+        expect(turn(new IndexDial(), 0, 0, 1.5, 1500, null).r.active).toBe(true);
+        expect(turn(new IndexDial(), 0, 0, 1.5, 2000, "ok", "point", 6).r.active).toBe(true);
+    });
+
+    it("reports the circling hand so its other gestures can be suppressed (both hands once dialling)", () => {
+        const d = new IndexDial();
+        // A short turn below the start threshold: only that hand is busy.
+        let t = 0;
+        // ~1.25 rad turned (2 samples are needed before steps count): above "circling" (pi/3), below the start (0.42 pi).
+        for (let i = 0; i <= 6; i++, t += 100) d.update(t, [dialHand(-1.6 * (i / 6), null)], () => false);
+        expect(d.active).toBe(false);
+        expect(d.circling(t).right).toBe(true);
+        expect(d.circling(t).left).toBe(false);
+        const { end } = turn(d, t, -Math.PI / 2, 1, 1000, null);
+        expect(d.active).toBe(true);
+        expect(d.circling(end)).toEqual({ left: true, right: true });
     });
 
     it("does not start from a hand in a blocked zone", () => {
@@ -90,7 +131,7 @@ describe("index-finger dial zoom", () => {
         const d = new IndexDial();
         const { end } = turn(d, 0, 0, 1.2, 1200);
         let ended = false;
-        for (let t = end + 33; t < end + 600; t += 33) if (d.update(t, [dialHand(0, "fist")], () => false).ended) ended = true;
+        for (let t = end + 33; t < end + 3000; t += 33) if (d.update(t, [dialHand(0, "fist", "right", "fist")], () => false).ended) ended = true;
         expect(ended).toBe(true);
         expect(d.active).toBe(false);
     });

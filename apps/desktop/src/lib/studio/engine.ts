@@ -383,6 +383,8 @@ export class StudioEngine implements StudioController {
     #zoomBy: "pinch" | "dial" | null = null;
     #zoomLastT = 0;
     readonly #zoneGate = new ZoneGate();
+    /** Same gate, keyed on the hand that is circling the index dial. */
+    readonly #dialGate = new ZoneGate();
     /** Which owner hands are inside a gesture-blocking safe zone right now. */
     #handZones: HandZones = {};
     /** Lens hold the pinch zoom is driving right now (so it only releases its own hold). */
@@ -1223,7 +1225,18 @@ export class StudioEngine implements StudioController {
             backdrop.setDepth(frame.depth.data, frame.depth.width, frame.depth.height, inv * (frame.ownerDistanceM ?? DEFAULT_OWNER_M), inv);
         } else backdrop.setDepth(null, 0, 0);
         if (frame.events.length > 0) this.#petGestures(frame.events);
-        const events = this.#zoneGate.filter(frame.events, this.#handZones, this.#visionSettings.gestureZones.enabled);
+        const circling = this.#zg && this.#settings.framing.dialZoom ? this.#zg.dial.circling(performance.now()) : null;
+        const events = this.#dialGate.filter(
+            this.#zoneGate.filter(frame.events, this.#handZones, this.#visionSettings.gestureZones.enabled),
+            circling ?? {},
+            circling !== null && (circling.left || circling.right),
+        );
+        if (this.#trace) {
+            for (const e of frame.events) {
+                if (e.phase === "end" || !e.subject.owner) continue;
+                console.error(`[sig] t=${Math.round(performance.now())} ${e.signal} ${e.phase} hand=${e.hand ?? "-"} conf=${e.confidence.toFixed(2)} zoomBy=${this.#zoomBy ?? "-"} pass=${events.includes(e) ? 1 : 0}`);
+            }
+        }
         const armedChanged = frame.armed !== this.#armed;
         this.#armed = frame.armed;
         if (events.length > 0 || armedChanged) for (const cb of this.#signalSubs) cb(events, frame.armed);
@@ -1369,15 +1382,14 @@ export class StudioEngine implements StudioController {
             pinchOn: cal.pinchOn,
             pinchOff: cal.pinchOff,
         });
-        // Dial input: the owner's fresh hand landmarks in OUTPUT pixels (round circles, as seen in the preview).
+        // Dial input: the owner's fresh hand landmarks in RAW camera pixels (round circles,
+        // independent of the preview mirroring) + world landmarks for finger straightness.
         const dialHands: DialHand[] | null = freshHands
             ? freshHands.hands.map((h) => ({
                   side: h.side,
                   shape: h.shape,
-                  lm: h.raw.map((p) => {
-                      const [u, v] = rawToOutput(f, rotation, p.x, p.y);
-                      return { x: u * W, y: v * H };
-                  }),
+                  lm: h.raw.map((p) => ({ x: p.x * freshHands.rawW, y: p.y * freshHands.rawH })),
+                  world: h.world,
               }))
             : null;
         const zooming = this.#updateZoomGestures(
@@ -1404,6 +1416,7 @@ export class StudioEngine implements StudioController {
             );
             const calib = this.#trace.calibLine(this.#visionSettings.calibration.hands);
             if (calib !== this.#traceCalib) console.error((this.#traceCalib = calib));
+            if (this.#zg) console.error(`[dial] t=${Math.round(now)} zoomBy=${this.#zoomBy ?? "-"} ${this.#zg.dial.debug(now)}`);
         }
 
         // Pass 1: graded camera. Pass 2: output composite. Pass 3: preview to the canvas.

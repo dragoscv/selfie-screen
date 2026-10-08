@@ -420,6 +420,7 @@ export class VisionPipeline {
             this.#tasks[key] = await withModuleFactory(make);
         }
         ema(this.#timings, `load.${key}`, performance.now() - t0);
+        this.#timings[`gpu.${key}`] = this.#delegates[key] === "GPU" ? 1 : 0;
     }
 
     setProfiles(profiles: IdentityProfile[]): void {
