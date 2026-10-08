@@ -277,10 +277,14 @@ export interface EngineOptions {
     vcamCpu?: boolean;
 }
 
-/** Dev telemetry switch (see trace.ts): `vite dev`, or localStorage "tiksee.trace" = "1". */
+/**
+ * Dev telemetry switch (see trace.ts), OPT-IN: `pnpm dev:app --trace` (VITE_TIKSEE_TRACE=1) or
+ * localStorage "tiksee.trace" = "1". It used to be on in every `vite dev`, which flooded the log
+ * with [trace]/[dial] lines at 10 Hz (forwarded as errors, the only level the log plugin keeps).
+ */
 function traceWanted(): boolean {
     try {
-        return import.meta.env.DEV || globalThis.localStorage?.getItem("tiksee.trace") === "1";
+        return import.meta.env["VITE_TIKSEE_TRACE"] === "1" || globalThis.localStorage?.getItem("tiksee.trace") === "1";
     } catch {
         return false;
     }

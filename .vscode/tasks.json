@@ -54,6 +54,27 @@
             "presentation": { "reveal": "always", "panel": "shared", "clear": true }
         },
         {
+            "label": "TikSee: dev app (trace)",
+            "detail": "pnpm dev:app --trace: 10 Hz [trace]/[dial]/[sig]/[beauty] telemetry for debugging",
+            "type": "shell",
+            "command": "New-Item -ItemType Directory -Force .copilot-tmp | Out-Null; pnpm dev:app --trace 2>&1 | Tee-Object -FilePath .copilot-tmp/devapp.log",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": { "executable": "pwsh", "args": ["-NoProfile", "-Command"] }
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "tiksee-dev",
+                "pattern": { "regexp": "^__never_matches__$" },
+                "background": {
+                    "activatesOnStart": true,
+                    "beginsPattern": "\\[dev-app\\]|VITE v|Compiling tiksee",
+                    "endsPattern": "Running `.*tiksee(\\.exe)?`|TIKSEE_SIDECAR_READY"
+                }
+            },
+            "presentation": { "reveal": "always", "panel": "dedicated", "group": "tiksee", "clear": true }
+        },
+        {
             "label": "TikSee: kill orphan WebView2",
             "detail": "Frees the capture card when a WebView2 outlived tiksee.exe",
             "type": "shell",

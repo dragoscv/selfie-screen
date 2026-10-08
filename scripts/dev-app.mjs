@@ -2,7 +2,8 @@
 //   renderer  -> Vite HMR, workspace packages resolved from src ("source" condition)
 //   sidecar   -> node --watch + tsx on apps/sidecar/src (restarts on save, windows reconnect)
 //   Rust      -> tauri dev rebuilds and relaunches on src-tauri changes
-// Usage: pnpm dev:app [--bench synthetic|camera]
+// Usage: pnpm dev:app [--bench synthetic|camera] [--trace]
+//   --trace: 10 Hz [trace]/[dial]/[sig]/[beauty] telemetry in the log (scripts/trace-report.mjs)
 import { spawn, spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,7 @@ const args = process.argv.slice(2);
 const env = { ...process.env, TIKSEE_SIDECAR_WATCH: "1" };
 const bench = args.indexOf("--bench");
 if (bench >= 0) env.TIKSEE_STUDIO_BENCH = args[bench + 1] ?? "camera";
+if (args.includes("--trace")) env.VITE_TIKSEE_TRACE = "1";
 
 /** A TikSee WebView2 whose tiksee.exe parent died keeps the capture card locked. */
 function killOrphans(when) {

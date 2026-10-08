@@ -7,7 +7,7 @@ import type { DebugHand } from "./controller.js";
 /**
  * Dev telemetry for the pets + hands: one compact line every TRACE_MS on the dev log
  * (console.error is the only level tauri-plugin-log forwards). The engine imports this module
- * only in `vite dev` or with localStorage "tiksee.trace" = "1". Lines start with "[trace]" so
+ * only with `pnpm dev:app --trace` or localStorage "tiksee.trace" = "1". Lines start with "[trace]" so
  * `node scripts/trace-report.mjs <log>` can parse them (fields `key=value`, parts " | ").
  */
 export const TRACE_MS = 100;
