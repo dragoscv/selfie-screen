@@ -642,7 +642,17 @@ export class VisionPipeline {
 
         // Bodies first, hands onto pose wrists; the owner's hands go out early (before face/objects).
         const people = this.#posePeople(this.#poses, disp);
-        const loose = this.#attachHands(people, hands, disp);
+        let loose = this.#attachHands(people, hands, disp);
+        // Only hands in view (body and face out of frame, e.g. the camera framed on the desk):
+        // they become a hands-only person so gestures still work. Built only when nobody else is
+        // seen, and kept while that holds (faces are attached to it later only if they match).
+        if (people.length === 0 && loose.length > 0 && !this.#faceSeenRecently(tMs)) {
+            const handsOnly = handsOnlyPerson(loose, disp);
+            if (handsOnly) {
+                people.push(handsOnly);
+                loose = [];
+            }
+        }
         if (t.gesture) this.#emitHands(people, tMs, uw, uh, rawW, rawH, disp);
 
         let faces: FaceDet[] | null = null;
@@ -901,6 +911,14 @@ export class VisionPipeline {
     #lastFaces: FaceDet[] = [];
     /** tMs of the frame that produced `#lastFaces` (-Infinity before the first face run). */
     #lastFacesAt = -Infinity;
+
+    /**
+     * A face was found in the latest face run (it runs every frame or every other one): the
+     * hands then belong to that face-only person (#attachLoose), not to a hands-only one.
+     */
+    #faceSeenRecently(tMs: number): boolean {
+        return this.#lastFaces.length > 0 && tMs - this.#lastFacesAt < 300;
+    }
     #worldPoses: WorldLandmark[][] = [];
 
     /**
@@ -1141,6 +1159,13 @@ export class VisionPipeline {
             }
             if (best) best.face = f;
             else {
+                // A hands-only person (no pose, no face): the face joins it rather than becoming a
+                // second person, so the gestures keep their subject.
+                const handsOnly = people.find((p) => !p.pose && !p.face && p.hands.length > 0);
+                if (handsOnly) {
+                    handsOnly.face = f;
+                    continue;
+                }
                 const w = f.box.w * 3;
                 people.push({ box: { x: fc.x - w / 2, y: f.box.y - f.box.h * 0.3, w, h: f.box.h * 4 }, pose: null, poseDisp: null, face: f, hands: [] });
             }
@@ -1401,6 +1426,34 @@ function pulse(signal: SignalId, tMs: number, subject: Subject): SignalEvent {
 }
 
 type DispFn = (p: { x: number; y: number }, w?: number, h?: number) => Pt;
+
+/**
+ * Hands seen without any body or face: one person made of at most one hand per side (the
+ * biggest per MediaPipe handedness), boxed around them (display-normalised) with a margin so the
+ * tracker keeps the identity while they move. Null when no hand qualifies.
+ */
+export function handsOnlyPerson(loose: readonly HandDet[], disp: DispFn): Person | null {
+    const bySide = new Map<Side, { h: HandDet; area: number }>();
+    for (const h of loose) {
+        if (!h.inFrame) continue;
+        const pts = h.raw.map((p) => disp(p, 1, 1));
+        const b = boxOfPoints(pts.map((p) => ({ ...p, visibility: 1 })), 0);
+        if (!b) continue;
+        const area = b.w * b.h;
+        const cur = bySide.get(h.mpSide);
+        if (!cur || area > cur.area) bySide.set(h.mpSide, { h, area });
+    }
+    if (bySide.size === 0) return null;
+    const hands = [...bySide.values()].map((x) => {
+        x.h.side = x.h.mpSide;
+        return x.h;
+    });
+    const all = hands.flatMap((h) => h.raw.map((p) => ({ ...disp(p, 1, 1), visibility: 1 })));
+    const b = boxOfPoints(all, 0);
+    if (!b) return null;
+    const m = Math.max(b.w, b.h) * 0.6;
+    return { box: { x: b.x - m, y: b.y - m, w: b.w + 2 * m, h: b.h + 2 * m }, pose: null, poseDisp: null, face: null, hands };
+}
 
 /** 2D fallback when world landmarks are missing: thumb-index / (index MCP - pinky MCP), display px. */
 function legacyImagePinchRatio(d: readonly Pt[]): number {
