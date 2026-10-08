@@ -470,6 +470,8 @@ export const framingSchema = z.object({
     afIntervalS: z.number().int().min(0).max(120).default(0),
     /** Both hands pinched: pull apart = zoom in, together = zoom out. */
     pinchZoom: z.boolean().default(true),
+    /** Index finger drawing circles: clockwise = zoom in, counter-clockwise = zoom out. */
+    dialZoom: z.boolean().default(true),
     /** Pinch zoom drives the optical zoom (BLE remote) first, then crops digitally. */
     pinchOptical: z.boolean().default(true),
     /** Lens zoom range (tele / wide focal length): 16-50 mm = 3.1. */

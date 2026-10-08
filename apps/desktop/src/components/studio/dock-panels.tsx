@@ -61,7 +61,13 @@ export function ZoomPanel() {
                     checked={studio.framing.pinchZoom}
                     onChange={(pinchZoom) => patchStudio({ framing: { ...studio.framing, pinchZoom } })}
                 />
-                {studio.framing.pinchZoom && (
+                <SwitchRow
+                    label={t("studio.controls.zoom.pinch.dial")}
+                    description={t("studio.controls.zoom.pinch.dialHint")}
+                    checked={studio.framing.dialZoom}
+                    onChange={(dialZoom) => patchStudio({ framing: { ...studio.framing, dialZoom } })}
+                />
+                {(studio.framing.pinchZoom || studio.framing.dialZoom) && (
                     <>
                         <SwitchRow
                             label={t("studio.controls.zoom.pinch.optical")}

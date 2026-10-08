@@ -71,7 +71,8 @@ import { cameraVfov, uprightVfov } from "./camera-fov.js";
 import { HandSpace, palmPerches } from "./hand-space.js";
 import { MetricDistance, type MetricConfig, type PoseForDistance } from "./metric-distance.js";
 import { DigitalFraming } from "./framing.js";
-import { PinchZoom } from "./pinch-zoom.js";
+import type { DialHand } from "./index-dial.js";
+import type { ZoomGestures } from "./zoom-gestures.js";
 import { ZoneGate, handCentre, inGateZone, type HandZones } from "./zone-gate.js";
 import { PreviewPass } from "./monitor.js";
 import { VcamPump } from "./output.js";
@@ -376,7 +377,11 @@ export class StudioEngine implements StudioController {
     readonly #hands = new HandSpace();
     #handsSeq = -1;
     #debugHands: readonly DebugHand[] = [];
-    readonly #pinchZoom = new PinchZoom();
+    /** Zoom gesture controllers (lazy chunk, loaded on start). */
+    #zg: ZoomGestures | null = null;
+    /** Which gesture owns the zoom right now. */
+    #zoomBy: "pinch" | "dial" | null = null;
+    #zoomLastT = 0;
     readonly #zoneGate = new ZoneGate();
     /** Which owner hands are inside a gesture-blocking safe zone right now. */
     #handZones: HandZones = {};
@@ -466,6 +471,9 @@ export class StudioEngine implements StudioController {
     }
 
     async start(): Promise<void> {
+        void import("./zoom-gestures.js").then((m) => {
+            this.#zg = m.createZoomGestures();
+        });
         const size = this.#wantedSize(this.#settings);
         this.#canvas.width = size.width;
         this.#canvas.height = size.height;
@@ -932,7 +940,7 @@ export class StudioEngine implements StudioController {
         const monitor = (p: Partial<StudioSettings["monitor"]>) => this.#patch({ monitor: { ...s.monitor, ...p } });
         // Pinching both hands moves them apart/together too: the stepwise spread/squeeze rules
         // must not add zoom steps on top of the continuous pinch zoom (or right after it).
-        if ((a === "digitalZoomIn" || a === "digitalZoomOut") && (this.#pinchZoom.active || performance.now() - this.#pinchEndedAt < 400)) return;
+        if ((a === "digitalZoomIn" || a === "digitalZoomOut") && (this.#zoomBy !== null || performance.now() - this.#pinchEndedAt < 400)) return;
         switch (a) {
             case "digitalZoomIn":
                 return framing({ zoom: this.#framing.stepZoom(1) });
@@ -1089,6 +1097,7 @@ export class StudioEngine implements StudioController {
                 continue;
             }
             // Pointing: a spot 0.35 m beside the head (or above it), at the owner's depth.
+            if (this.#zoomBy === "dial") continue;
             const b = this.#bodySnap;
             if (!b?.present) continue;
             const dx = g === "point_left" ? -0.35 : g === "point_right" ? 0.35 : 0;
@@ -1102,30 +1111,39 @@ export class StudioEngine implements StudioController {
     }
 
     /**
-     * Both hands pinched: apart = zoom in, together = zoom out. Optical first (BLE lens hold
-     * until its estimated tele end), then the digital crop; out unwinds the crop first.
-     * Returns whether the gesture owns the hands this frame (pets must not grab then).
+     * Zoom gestures: both hands pinched (apart = in, together = out) or the index-finger dial
+     * (clockwise = in). One owns the zoom at a time; the ZoomDriver eases and caps the speed,
+     * drives the lens first, then the crop. Returns whether pinch zoom owns the hands (pets
+     * must not grab then).
      */
-    #updatePinchZoom(now: number, petHeld: boolean): boolean {
+    #updateZoomGestures(now: number, blocked: boolean, dialHands: readonly DialHand[] | null, zoneOf: (side: "left" | "right") => boolean): boolean {
         const f = this.#settings.framing;
         const remote = this.#remote;
         remote.optical.travelMs = f.opticalTravelS * 1000;
-        if (!f.pinchZoom) {
-            if (this.#pinchZoom.active) this.#endPinchZoom();
+        const dt = Math.min(Math.max((now - this.#zoomLastT) / 1000, 0), 0.1);
+        this.#zoomLastT = now;
+        const ctx = () => ({ opticalPos: remote.optical.position(now), opticalReady: remote.status.connected, digital: this.#framing.targetZoom });
+        const cfg = { optical: f.pinchOptical, opticalMax: f.opticalRange, digitalMax: 2.5 };
+        const zg = this.#zg;
+        if (!zg) return false;
+        const pinch = f.pinchZoom && this.#zoomBy !== "dial" ? zg.pinch.update(now, this.#debugHands, blocked) : null;
+        const dial = f.dialZoom && this.#zoomBy !== "pinch" ? zg.dial.update(now, dialHands, (s) => zoneOf(s) || zg.pinch.active) : null;
+        if ((!f.pinchZoom && this.#zoomBy === "pinch") || (!f.dialZoom && this.#zoomBy === "dial") || pinch?.ended || dial?.ended) {
+            this.#endZoomGesture();
             return false;
         }
-        const r = this.#pinchZoom.update(
-            now,
-            this.#debugHands,
-            { opticalPos: remote.optical.position(now), opticalReady: remote.status.connected, digital: this.#framing.targetZoom, blocked: petHeld },
-            { optical: f.pinchOptical, opticalMax: f.opticalRange, digitalMax: 2.5, gain: 1.5 },
-        );
-        this.#pinchTarget = r.active ? r.target : null;
-        if (r.ended) {
-            this.#endPinchZoom();
-            return false;
-        }
-        if (!r.active) return false;
+        let wish: number;
+        if (pinch?.active) {
+            if (this.#zoomBy !== "pinch") zg.driver.begin(ctx(), cfg);
+            this.#zoomBy = "pinch";
+            wish = pinch.wish;
+        } else if (dial?.active) {
+            if (this.#zoomBy !== "dial") zg.driver.begin(ctx(), cfg);
+            this.#zoomBy = "dial";
+            wish = dial.wish;
+        } else return false;
+        const r = zg.driver.step(wish, dt, ctx(), cfg);
+        this.#pinchTarget = r.target;
         const key = r.optical ? `${r.optical.action}${r.optical.speed}` : null;
         if (key !== this.#pinchLens) {
             if (r.optical) remote.hold(r.optical.action, r.optical.speed);
@@ -1133,15 +1151,17 @@ export class StudioEngine implements StudioController {
             this.#pinchLens = key;
         }
         if (r.digital !== null) this.#framing.setZoom(r.digital);
-        return true;
+        return this.#zoomBy === "pinch";
     }
 
-    #endPinchZoom(): void {
+    #endZoomGesture(): void {
         if (this.#pinchLens) this.#remote.release();
         this.#pinchLens = null;
         this.#pinchTarget = null;
         this.#pinchEndedAt = performance.now();
-        this.#pinchZoom.reset();
+        this.#zoomBy = null;
+        this.#zg?.pinch.reset();
+        this.#zg?.dial.reset();
         const zoom = Math.round(this.#framing.targetZoom * 100) / 100;
         if (zoom !== this.#settings.framing.zoom) void this.#patch({ framing: { ...this.#settings.framing, zoom } });
     }
@@ -1349,7 +1369,23 @@ export class StudioEngine implements StudioController {
             pinchOn: cal.pinchOn,
             pinchOff: cal.pinchOff,
         });
-        const zooming = this.#updatePinchZoom(now, stage.grabState !== null || handZones.left === true || handZones.right === true);
+        // Dial input: the owner's fresh hand landmarks in OUTPUT pixels (round circles, as seen in the preview).
+        const dialHands: DialHand[] | null = freshHands
+            ? freshHands.hands.map((h) => ({
+                  side: h.side,
+                  shape: h.shape,
+                  lm: h.raw.map((p) => {
+                      const [u, v] = rawToOutput(f, rotation, p.x, p.y);
+                      return { x: u * W, y: v * H };
+                  }),
+              }))
+            : null;
+        const zooming = this.#updateZoomGestures(
+            now,
+            stage.grabState !== null || handZones.left === true || handZones.right === true,
+            dialHands,
+            (s) => handZones[s] === true,
+        );
         stage.setHands(
             this.#settings.petHands.enabled && this.#settings.petAi.level !== "off" && !zooming
                 ? this.#debugHands.map((h) => ({ side: h.side, present: h.present, pinching: h.pinching, point: h.point, strength: h.strength, sizePx: h.sizePx }))

@@ -95,9 +95,11 @@
             "digital": "Zoom digital",
             "digitalLabel": "Decupaj",
             "pinch": {
-                "title": "Zoom cu ambele mâini (pinch)",
+                "title": "Gesturi de zoom",
                 "label": "Zoom cu ambele mâini",
                 "hint": "Fă pinch cu ambele mâini, apoi depărtează-le ca să mărești sau apropie-le ca să micșorezi. Ține-le nemișcate ca să oprești.",
+                "dial": "Zoom cu cerc din deget",
+                "dialHint": "Arată cu degetul arătător și desenează cercuri: în sensul acelor de ceasornic (cum se vede în previzualizare) mărește, invers micșorează. Cam x1,6 pe tură; oprește rotirea sau coboară degetul ca să oprești.",
                 "optical": "Întâi zoom optic",
                 "opticalHint": "Mișcă obiectivul (telecomanda Bluetooth) până la capătul tele înainte de decupaj; la micșorare scoate întâi decupajul, apoi obiectivul.",
                 "range": "Plaja de zoom a obiectivului",

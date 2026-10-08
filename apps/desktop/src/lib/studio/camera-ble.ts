@@ -2,7 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CAMERA_ACTIONS } from "@tiksee/core";
 
-import { OpticalEstimate } from "./pinch-zoom.js";
+import { OpticalEstimate } from "./optical-estimate.js";
 
 export type CameraAction = (typeof CAMERA_ACTIONS)[number];
 export type HoldAction = Extract<CameraAction, "zoomIn" | "zoomOut" | "focusNear" | "focusFar">;

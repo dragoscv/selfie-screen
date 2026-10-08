@@ -95,9 +95,11 @@
             "digital": "Digital zoom",
             "digitalLabel": "Crop",
             "pinch": {
-                "title": "Two-hand pinch zoom",
+                "title": "Zoom gestures",
                 "label": "Zoom with both hands",
                 "hint": "Pinch with both hands, then pull them apart to zoom in or bring them together to zoom out. Hold still to stop.",
+                "dial": "Zoom with a finger circle",
+                "dialHint": "Point with your index finger and draw circles: clockwise (as in the preview) zooms in, counter-clockwise zooms out. About x1.6 per turn; stop turning or lower the finger to stop.",
                 "optical": "Optical zoom first",
                 "opticalHint": "Moves the lens (Bluetooth remote) to its tele end before cropping; zooming out removes the crop first, then the lens.",
                 "range": "Lens zoom range",

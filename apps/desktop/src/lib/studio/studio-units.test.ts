@@ -18,6 +18,7 @@ const framingSettings = {
     dofStrength: 0.5,
     afIntervalS: 0,
     pinchZoom: true,
+    dialZoom: true,
     pinchOptical: true,
     opticalRange: 3.1,
     opticalTravelS: 3,
