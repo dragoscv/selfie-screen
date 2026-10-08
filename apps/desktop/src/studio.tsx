@@ -18,6 +18,7 @@ import { StudioShell, type StudioModal } from "./components/studio/shell.js";
 import i18n, { setLocale } from "./i18n/index.js";
 import { StudioEngine, type VideoHealth } from "./lib/studio/engine.js";
 import { sidecarClient } from "./lib/sidecar-client.js";
+import { safeUnlisten } from "./lib/unloading.js";
 import "./styles.css";
 
 type Stats = FrameStatsSnapshot & { backend: string; tracking: boolean; video: VideoHealth };
@@ -334,7 +335,7 @@ function Studio() {
             window.clearInterval(petTalkTimer);
             window.clearTimeout(flushTimer);
             flushSignals();
-            unlisten.forEach((stop) => stop());
+            unlisten.forEach((stop) => safeUnlisten(stop));
             window.removeEventListener("keydown", onKey);
             window.removeEventListener("pagehide", release);
             window.removeEventListener("beforeunload", release);

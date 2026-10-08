@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CAMERA_ACTIONS } from "@tiksee/core";
 
+import { safeUnlisten } from "../unloading.js";
 import { OpticalEstimate } from "./optical-estimate.js";
 
 export type CameraAction = (typeof CAMERA_ACTIONS)[number];
@@ -132,7 +133,7 @@ export class CameraRemote {
 
     dispose(): void {
         this.release();
-        this.#unlisten?.();
+        safeUnlisten(this.#unlisten);
         this.#unlisten = null;
     }
 }

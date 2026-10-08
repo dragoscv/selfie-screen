@@ -1,6 +1,7 @@
 import { emitTo, listen } from "@tauri-apps/api/event";
 
 import type { MicDiag, MicEvent } from "../audio/mic.js";
+import { safeUnlisten } from "../unloading.js";
 
 /** One `mic://diag` tick from the main window (10 Hz while watched). */
 export interface MicPayload {
@@ -29,6 +30,6 @@ export function subscribeMicFeed(onPayload: (payload: MicPayload) => void): () =
     return () => {
         disposed = true;
         window.clearInterval(timer);
-        stop?.();
+        safeUnlisten(stop);
     };
 }

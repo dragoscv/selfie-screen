@@ -1,5 +1,8 @@
 import { VisionPipeline } from "./pipeline.js";
 import type { FromWorker, ToWorker } from "./protocol.js";
+import { quietMediaPipe } from "./quiet-console.js";
+
+quietMediaPipe();
 
 /**
  * Vision worker. Loaded by runtime.ts with
@@ -51,6 +54,7 @@ scope.onmessage = (ev: MessageEvent<ToWorker>) => {
                         const transfer: Transferable[] = [];
                         if (frame.mask) transfer.push(frame.mask.data.buffer);
                         if (frame.depth) transfer.push(frame.depth.data.buffer);
+                        if (frame.ownerFace) transfer.push(frame.ownerFace.lm.buffer);
                         reply({ id: m.id, type: "frame", frame }, transfer);
                     },
                     (e: unknown) => fail(m.id, e),

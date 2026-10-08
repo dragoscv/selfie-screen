@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu";
-import { abs, exp, float, length, max, mix, positionGeometry, texture, uniform, uv, vec2, vec3, vec4 } from "three/tsl";
+import { abs, dot, exp, float, length, max, mix, positionGeometry, texture, uniform, uv, vec2, vec3, vec4 } from "three/tsl";
 
 import { uprightToRawAffine, type Framing, type Rotation } from "./framing.js";
 
@@ -23,6 +23,41 @@ export interface BackdropDof {
     focusY: number;
     /** Sharp radius around the focus point, as a fraction of the output height. */
     radius: number;
+}
+
+/**
+ * Beauty on the owner's face: strengths 0..1 (shape -1..1), anchors in OUTPUT uv (y down). The
+ * region mask (R skin, G eyes / under-eye, B lips, A mouth opening) is an output-space texture.
+ */
+export interface BackdropBeauty {
+    on: number;
+    smooth: number;
+    even: number;
+    brighten: number;
+    blush: number;
+    eyeBright: number;
+    darkCircles: number;
+    teeth: number;
+    lips: number;
+    /** Lip colour, linear-ish RGB 0..1. */
+    lipColor: [number, number, number];
+    enlarge: number;
+    slim: number;
+    jaw: number;
+    nose: number;
+    chin: number;
+    anchors: {
+        eyeL: [number, number, number];
+        eyeR: [number, number, number];
+        centre: [number, number];
+        faceW: number;
+        cheekL: [number, number];
+        cheekR: [number, number];
+        jawL: [number, number];
+        jawR: [number, number];
+        nose: [number, number];
+        chin: [number, number];
+    } | null;
 }
 
 function makeUniforms() {
@@ -49,6 +84,35 @@ function makeUniforms() {
         /** Upright -> raw camera uv: raw = (rx · (u, v, 1), ry · (u, v, 1)). */
         rx: uniform(new THREE.Vector3(1, 0, 0)),
         ry: uniform(new THREE.Vector3(0, 1, 0)),
+        // Beauty.
+        bOn: uniform(0),
+        bSmooth: uniform(0),
+        bEven: uniform(0),
+        bBright: uniform(0),
+        bBlush: uniform(0),
+        bEye: uniform(0),
+        bUnder: uniform(0),
+        bTeeth: uniform(0),
+        bLips: uniform(0),
+        bLipColor: uniform(new THREE.Vector3(0.75, 0.2, 0.3)),
+        bEnlarge: uniform(0),
+        bSlim: uniform(0),
+        bJaw: uniform(0),
+        bNose: uniform(0),
+        bChin: uniform(0),
+        /** Eye centres (xy) + radius (z), output uv. */
+        eyeL: uniform(new THREE.Vector3(-9, -9, 0.01)),
+        eyeR: uniform(new THREE.Vector3(-9, -9, 0.01)),
+        /** Face centre (xy) and face width (z). */
+        faceC: uniform(new THREE.Vector3(-9, -9, 0.2)),
+        cheekL: uniform(new THREE.Vector2(-9, -9)),
+        cheekR: uniform(new THREE.Vector2(-9, -9)),
+        jawL: uniform(new THREE.Vector2(-9, -9)),
+        jawR: uniform(new THREE.Vector2(-9, -9)),
+        noseP: uniform(new THREE.Vector2(-9, -9)),
+        chinP: uniform(new THREE.Vector2(-9, -9)),
+        /** Mask texel (half-res render target). */
+        maskTexel: uniform(new THREE.Vector2(1 / 540, 1 / 960)),
     };
 }
 
@@ -60,6 +124,12 @@ function placeholder(): THREE.DataTexture {
     const t = new THREE.DataTexture(new Float32Array([1]), 1, 1, THREE.RedFormat, THREE.FloatType);
     t.minFilter = THREE.LinearFilter;
     t.magFilter = THREE.LinearFilter;
+    t.needsUpdate = true;
+    return t;
+}
+
+function emptyRgba(): THREE.DataTexture {
+    const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1, THREE.RGBAFormat);
     t.needsUpdate = true;
     return t;
 }
@@ -92,6 +162,9 @@ export class Backdrop {
     readonly #video: THREE.VideoTexture;
     readonly #mask = placeholder();
     readonly #depth = placeholder();
+    readonly #beautyEmpty = emptyRgba();
+    /** Every beauty mask tap; `.value` is swapped to the live mask target (no shader rebuild). */
+    readonly #maskTaps: THREE.TextureNode[] = [];
     readonly #u = makeUniforms();
 
     constructor(video: HTMLVideoElement) {
@@ -102,7 +175,9 @@ export class Backdrop {
 
         // Output uv, y down: the plane's uv has v = 1 at the top, so flip it.
         const out = vec2(uv().x, float(1).sub(uv().y));
-        const [vx, vy] = this.#upright(out);
+        // Beauty warps first (where to SAMPLE the camera for this output pixel), then grading.
+        const warped = this.#warp(out);
+        const [vx, vy] = this.#upright(warped);
         // Video textures are flipY: v=0 is the bottom row of the frame. Texel offsets are in upright pixels.
         const at = (dx: number, dy: number) => {
             const px: FloatNode = vx.add(u.texel.x.mul(dx));
@@ -126,6 +201,7 @@ export class Backdrop {
             }
         }
         const smoothed = mix(centre, sum.div(max(wsum, 1e-4)), u.smoothing);
+        const bilateral = sum.div(max(wsum, 1e-4));
 
         // Blur: a 16-tap ring at two radii, shared by background blur and DoF.
         let bg: Vec3Node = vec3(0);
@@ -136,6 +212,58 @@ export class Backdrop {
             bg = bg.add(at(Math.cos(a) * r, Math.sin(a) * r));
         }
         bg = bg.div(taps);
+
+        // --- Beauty: region mask (output space, feathered 5-tap) and per-region grading.
+        const mt = u.maskTexel.mul(1.5);
+        // Render targets are sampled with y up: flip the output uv (y down).
+        const tap = (o: Vec2Node) => {
+            const t = texture(this.#beautyEmpty, vec2(o.x, float(1).sub(o.y)));
+            this.#maskTaps.push(t);
+            return t;
+        };
+        const mask = tap(out)
+            .add(tap(out.add(vec2(mt.x, 0))))
+            .add(tap(out.sub(vec2(mt.x, 0))))
+            .add(tap(out.add(vec2(0, mt.y))))
+            .add(tap(out.sub(vec2(0, mt.y))))
+            .div(5);
+        const skin: FloatNode = mask.r.mul(u.bOn);
+        const eyes: FloatNode = mask.g.mul(float(1).sub(mask.r)).mul(u.bOn);
+        const under: FloatNode = mask.g.mul(mask.r).mul(u.bOn);
+        // B: lips = 1, mouth opening (teeth) = 0.5, elsewhere 0 (feathered in between).
+        const teethM: FloatNode = float(1).sub(abs(mask.b.sub(0.5)).mul(4)).clamp(0, 1).mul(u.bOn);
+        const lipsM: FloatNode = mask.b.sub(0.5).mul(2).clamp(0, 1).mul(u.bOn);
+        const lumW = vec3(0.2126, 0.7152, 0.0722);
+        // Skin smoothing: with beauty on, smoothing is the face skin only (strength bSmooth).
+        const smoothAmt: FloatNode = mix(u.smoothing, skin.mul(u.bSmooth), u.bOn);
+        let c: Vec3Node = mix(centre, bilateral, smoothAmt);
+        // Tone evening: keep the pixel's luminance, take the local average's colour (less redness/blotches).
+        const lc = dot(c, lumW);
+        const lb = max(dot(bg, lumW), 1e-3);
+        const evened = bg.mul(lc.div(lb));
+        c = mix(c, evened, skin.mul(u.bEven).mul(0.6));
+        c = c.mul(float(1).add(skin.mul(u.bBright).mul(0.22)));
+        // Blush: warm rose on the cheeks (skin x falloff around the cheek points).
+        const aspectV = vec2(u.aspect, float(1));
+        const cheekW = max(this.#falloff(out, u.cheekL, u.faceC.z.mul(0.32), aspectV), this.#falloff(out, u.cheekR, u.faceC.z.mul(0.32), aspectV));
+        const blushed = c.mul(vec3(1.06, 0.95, 0.96)).add(vec3(0.035, 0.0, 0.012));
+        c = mix(c, blushed, skin.mul(cheekW).mul(u.bBlush));
+        // Eyes: brighter and crisper (local contrast vs the blur ring).
+        const eyeLift = c.mul(1.12).add(c.sub(bg).mul(0.6));
+        c = mix(c, eyeLift, eyes.mul(u.bEye));
+        // Under-eye: lift the shadow with a touch of warmth.
+        const underLift = c.mul(1.14).add(vec3(0.02, 0.012, 0.0));
+        c = mix(c, underLift, under.mul(u.bUnder).mul(0.85));
+        // Teeth: only the bright part of the mouth opening, desaturated and lifted.
+        const lt = dot(c, lumW);
+        const teethW: FloatNode = teethM.mul(lt.smoothstep(0.22, 0.45));
+        const white = mix(c, vec3(lt.mul(1.15)), 0.7).add(vec3(-0.008, 0.0, 0.015));
+        c = mix(c, white, teethW.mul(u.bTeeth));
+        // Lips: colour by luminance-preserving tint.
+        const lipTint = u.bLipColor.mul(dot(c, lumW).mul(1.9));
+        c = mix(c, lipTint, lipsM.mul(u.bLips).mul(0.55));
+        const beautified: Vec3Node = c.clamp(0, 1);
+        const base: Vec3Node = mix(smoothed, beautified, u.bOn.greaterThan(0).select(float(1), float(0)));
         const [mx, my] = this.#raw(vx, vy);
         // Mask rows are top-down and the DataTexture is not flipped: sample y as-is.
         const person = texture(this.#mask, vec2(mx, my)).r;
@@ -148,7 +276,7 @@ export class Backdrop {
         const radial = length(d).smoothstep(u.focusR, u.focusR.mul(3)).mul(0.6);
         const byMask = max(float(1).sub(keep), radial);
         const dofAmount: FloatNode = u.dof.mul(u.hasDepth.greaterThan(0.5).select(byDepth, byMask));
-        const background = mix(smoothed, bg, max(blurAmount, dofAmount).clamp(0, 1));
+        const background = mix(base, bg, max(blurAmount, dofAmount).clamp(0, 1));
 
         const gain = float(2).pow(u.exposure);
         const wb = vec3(float(1).add(u.warmth.mul(0.08)), float(1), float(1).sub(u.warmth.mul(0.08)));
@@ -171,6 +299,46 @@ export class Backdrop {
     }
 
     /** Output uv -> upright camera uv (cover crop + mirror). */
+    /** Smooth bump 1 at `c` -> 0 at radius `r` (aspect-corrected output uv). */
+    #falloff(p: Vec2Node, c: Vec2Node, r: FloatNode, aspect: Vec2Node): FloatNode {
+        const d = p.sub(c).mul(aspect);
+        const t = float(1).sub(d.dot(d).div(max(r.mul(r), 1e-6))).clamp(0, 1);
+        return t.mul(t);
+    }
+
+    /**
+     * Beauty warps in OUTPUT uv: where to sample the camera for the output pixel `p`. Eye enlarge
+     * pulls samples toward the eye centre (magnifies); slim/jaw/nose push samples outward from the
+     * face centre line (content moves in = narrower); chin pulls content down (longer).
+     */
+    #warp(p: Vec2Node): Vec2Node {
+        const u = this.#u;
+        const aspect = vec2(u.aspect, float(1));
+        let q: Vec2Node = p;
+        for (const eye of [u.eyeL, u.eyeR]) {
+            const c = eye.xy;
+            const r = eye.z.mul(2.3);
+            const w = this.#falloff(p, c, r, aspect);
+            q = q.sub(p.sub(c).mul(w.mul(u.bEnlarge).mul(0.28)));
+        }
+        const fw = u.faceC.z;
+        const centre = u.faceC.xy;
+        const push = (pt: Vec2Node, radius: FloatNode, amount: FloatNode): Vec2Node => {
+            const w = this.#falloff(p, pt, radius, aspect);
+            const dir = vec2(pt.x.sub(centre.x), float(0));
+            return dir.mul(w.mul(amount));
+        };
+        q = q.add(push(u.cheekL, fw.mul(0.3), u.bSlim.mul(0.16)));
+        q = q.add(push(u.cheekR, fw.mul(0.3), u.bSlim.mul(0.16)));
+        q = q.add(push(u.jawL, fw.mul(0.26), u.bJaw.mul(0.18)));
+        q = q.add(push(u.jawR, fw.mul(0.26), u.bJaw.mul(0.18)));
+        const nw = this.#falloff(p, u.noseP, fw.mul(0.14), aspect);
+        q = q.add(vec2(p.x.sub(u.noseP.x).mul(nw.mul(u.bNose).mul(0.35)), float(0)));
+        const cw = this.#falloff(p, u.chinP, fw.mul(0.22), aspect);
+        q = q.sub(vec2(float(0), cw.mul(u.bChin).mul(fw).mul(0.05)));
+        return q;
+    }
+
     #upright(out: Vec2Node): [FloatNode, FloatNode] {
         const u = this.#u;
         const ux = mix(out.x, float(1).sub(out.x), u.mirror);
@@ -229,6 +397,47 @@ export class Backdrop {
         this.#u.focusR.value = dof.radius;
     }
 
+    /**
+     * Beauty: uniforms from the settings x anchors, and the live region mask (`null` = none).
+     * `maskSize` = mask target size in px (for the feather taps).
+     */
+    setBeauty(b: BackdropBeauty | null, mask: THREE.Texture | null, maskSize?: { width: number; height: number }): void {
+        const u = this.#u;
+        const tex = b && b.on > 0 && mask ? mask : this.#beautyEmpty;
+        for (const t of this.#maskTaps) if (t.value !== tex) t.value = tex;
+        if (maskSize) u.maskTexel.value.set(1 / Math.max(maskSize.width, 1), 1 / Math.max(maskSize.height, 1));
+        if (!b || b.on <= 0 || !b.anchors) {
+            u.bOn.value = 0;
+            u.bEnlarge.value = u.bSlim.value = u.bJaw.value = u.bNose.value = u.bChin.value = 0;
+            return;
+        }
+        u.bOn.value = b.on;
+        u.bSmooth.value = b.smooth;
+        u.bEven.value = b.even;
+        u.bBright.value = b.brighten;
+        u.bBlush.value = b.blush;
+        u.bEye.value = b.eyeBright;
+        u.bUnder.value = b.darkCircles;
+        u.bTeeth.value = b.teeth;
+        u.bLips.value = b.lips;
+        u.bLipColor.value.set(...b.lipColor);
+        u.bEnlarge.value = b.enlarge;
+        u.bSlim.value = b.slim;
+        u.bJaw.value = b.jaw;
+        u.bNose.value = b.nose;
+        u.bChin.value = b.chin;
+        const a = b.anchors;
+        u.eyeL.value.set(a.eyeL[0], a.eyeL[1], a.eyeL[2]);
+        u.eyeR.value.set(a.eyeR[0], a.eyeR[1], a.eyeR[2]);
+        u.faceC.value.set(a.centre[0], a.centre[1], a.faceW);
+        u.cheekL.value.set(...a.cheekL);
+        u.cheekR.value.set(...a.cheekR);
+        u.jawL.value.set(...a.jawL);
+        u.jawR.value.set(...a.jawR);
+        u.noseP.value.set(...a.nose);
+        u.chinP.value.set(...a.chin);
+    }
+
     /** Person mask in camera space, row 0 = top, values 0..1. Null disables blur masking. */
     setMask(mask: Float32Array | null, width: number, height: number): void {
         if (!mask) {
@@ -258,6 +467,7 @@ export class Backdrop {
         this.#video.dispose();
         this.#mask.dispose();
         this.#depth.dispose();
+        this.#beautyEmpty.dispose();
         this.mesh.geometry.dispose();
         (this.mesh.material as THREE.Material).dispose();
     }

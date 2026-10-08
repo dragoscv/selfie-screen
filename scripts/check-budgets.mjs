@@ -19,12 +19,16 @@ const budgets = [
     // 0.5.2: Sound panel (devices, co-host + per-pet voice/speed/pitch), Monitor panel, transcript captions.
     ["studio sound panel (lazy)", /^sound-panel-.*\.js$/, "apps/desktop/dist/assets", 6 * KB],
     ["studio monitor panel (lazy)", /^monitor-panel-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
+    ["studio beauty panel (lazy)", /^beauty-panel-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
+    // Face regions (MediaPipe mesh triangles) + mask pass, loaded the first time beauty is on.
+    ["studio beauty engine (lazy)", /^beauty-(?!panel|color).*\.js$/, "apps/desktop/dist/assets", 12 * KB],
     ["studio captions (lazy)", /^captions-.*\.js$/, "apps/desktop/dist/assets", 3 * KB],
     // Live captions in the output video (canvas layer + transcript feed) and their move/resize handles.
     ["studio caption layer (lazy)", /^caption-layer-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
     ["studio caption editor (lazy)", /^caption-editor-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
     // Simple dock panels (zoom, focus, look, framing, camera, pets), loaded on first open.
     ["studio dock panels (lazy)", /^dock-panels-.*\.js$/, "apps/desktop/dist/assets", 5 * KB],
+    ["studio camera exposure (lazy)", /^camera-exposure-.*\.js$/, "apps/desktop/dist/assets", 5 * KB],
     // In-view 3D editor (AR objects + pets), loaded when "Edit in view" is switched on.
     ["studio scene gizmo (lazy)", /^scene-gizmo-.*\.js$/, "apps/desktop/dist/assets", 6 * KB],
     ["studio zoom gestures (lazy)", /^zoom-gestures-.*\.js$/, "apps/desktop/dist/assets", 4 * KB],
@@ -42,7 +46,11 @@ const budgets = [
     // Space calibration, ChArUco, MoGe-2, the F3 overlay and the MP4 muxer are lazy chunks.
     // 0.5.2: + two-hand pinch zoom (per-frame controller + lens estimate, cannot be lazy), roll
     //   pins, gestures/captions strings: 71.2 KB. Gestures panel and scene gizmo are lazy chunks.
-    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 72 * KB],
+    // 0.5.2 (later): + beauty in the camera shader (warps + region grading are TSL nodes built in
+    //   the Backdrop constructor, part of the per-frame camera pass, so not lazy-loadable without
+    //   rebuilding the material) and the beauty schema: 73.8 KB. Beauty mask pass, face regions
+    //   and the panel are lazy chunks.
+    ["desktop studio", /^studio-[^v].*\.js$/, "apps/desktop/dist/assets", 75 * KB],
     ["desktop studio vendor", /^studio-vendor-.*\.js$/, "apps/desktop/dist/assets", 380 * KB],
     // Vision worker (MediaPipe + ONNX glue) and its main-thread fallback pipeline; measured 211 / 113 KB.
     ["studio vision worker", /^worker-.*\.js$/, "apps/desktop/dist/assets", 230 * KB],

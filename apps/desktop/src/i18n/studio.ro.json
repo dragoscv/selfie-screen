@@ -3,6 +3,7 @@
         "close": "Închide",
         "dismiss": "Ascunde",
         "off": "Oprit",
+        "on": "Pornit",
         "yes": "Da",
         "no": "Nu"
     },
@@ -123,12 +124,15 @@
             "locked": "Blocat"
         },
         "look": {
-            "name": "Aspect",
-            "title": "Imagine",
-            "exposure": "Expunere",
-            "warmth": "Căldură",
+            "name": "Aspect (digital)",
+            "title": "Imagine (digitală)",
+            "exposure": "Expunere digitală",
+            "warmth": "Căldură digitală",
             "smoothing": "Netezirea pielii",
             "blur": "Fundal estompat"
+        },
+        "beauty": {
+            "name": "Beauty"
         },
         "framing": {
             "name": "Încadrare",
@@ -697,6 +701,45 @@
             "custom": "Personalizat / calibrat"
         }
     },
+    "beauty": {
+        "title": "Beauty",
+        "enabled": "Beauty pe fața mea",
+        "enabledHint": "Se aplică doar pe fața ta (ten, ochi, gură) și o urmărește când te miști. Dispare lin când fața iese din cadru.",
+        "presets": "Stiluri",
+        "preset": {
+            "natural": "Natural",
+            "fresh": "Proaspăt",
+            "glam": "Glam"
+        },
+        "reset": "Resetează",
+        "skin": {
+            "title": "Ten",
+            "smooth": "Netezire",
+            "even": "Ton uniform",
+            "brighten": "Luminozitate",
+            "blush": "Fard de obraz"
+        },
+        "eyes": {
+            "title": "Ochi",
+            "enlarge": "Mărire",
+            "brighten": "Luminozitate",
+            "darkCircles": "Cearcăne"
+        },
+        "mouth": {
+            "title": "Gură",
+            "teeth": "Albire dinți",
+            "lips": "Culoare buze",
+            "lipHue": "Nuanță buze"
+        },
+        "shape": {
+            "title": "Forma feței",
+            "slim": "Față mai subțire",
+            "jaw": "Maxilar",
+            "nose": "Nas",
+            "chin": "Bărbie",
+            "hint": "Modificările de formă se atenuează când te miști repede, ca să nu tremure pe live."
+        }
+    },
     "gestures": {
         "title": "Gesturile și ce fac",
         "enabled": "Acțiuni la gesturi pornite",
@@ -850,5 +893,31 @@
             "ok": "Te aud bine."
         },
         "server": "Serverul a trimis"
+    },
+    "camera": {
+        "exposure": {
+            "title": "Expunerea camerei (USB)",
+            "connectProbe": "Conectează (păstrează HDMI)",
+            "connectFull": "Conectare completă (HDMI devine negru)",
+            "disconnect": "Deconectează",
+            "status": {
+                "off": "Oprit — neconectat prin USB",
+                "probe": "Probă (HDMI păstrat)",
+                "full": "Complet (HDMI devine negru)",
+                "probeFailed": "Camera a refuzat proba ({{code}}). Folosește conectarea completă când nu ești live."
+            },
+            "props": {
+                "iso": "ISO",
+                "shutterSpeed": "Timp de expunere",
+                "fNumber": "Diafragmă",
+                "exposureBias": "Compensare expunere",
+                "whiteBalance": "Balans de alb",
+                "colorTemp": "Temperatură de culoare",
+                "exposureMode": "Mod de expunere"
+            },
+            "decrease": "Scade {{name}}",
+            "increase": "Crește {{name}}",
+            "lookNote": "Panoul Aspect este digital (aplicat pe imagine); acestea schimbă camera însăși."
+        }
     }
 }

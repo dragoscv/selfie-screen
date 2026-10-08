@@ -19,7 +19,7 @@ export { PERSONALITIES, PetMind, pickSpotlight, seeded, type Decision, type Mind
 export type { SayOptions, SpeechBubble } from "./bubble.js";
 export { bodyCapsules, type Capsule } from "./constraints.js";
 export { PetActor } from "./pet-actor.js";
-export { Backdrop, type BackdropDof, type BackdropLook } from "./backdrop.js";
+export { Backdrop, type BackdropBeauty, type BackdropDof, type BackdropLook } from "./backdrop.js";
 export {
 	PetStage,
 	inlineAces,

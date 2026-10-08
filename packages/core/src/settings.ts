@@ -520,6 +520,55 @@ export const clipsSchema = z.object({
 });
 export type ClipSettings = z.infer<typeof clipsSchema>;
 
+const unit = (d = 0) => z.number().min(0).max(1).default(d);
+const signed = () => z.number().min(-1).max(1).default(0);
+export const beautySchema = z.object({
+    enabled: z.boolean().default(false),
+    skin: z
+        .object({
+            /** Edge-preserving smoothing on the face skin only. */
+            smooth: unit(0.45),
+            /** Evens out blotches / redness toward the local average tone. */
+            even: unit(0.25),
+            /** Lifts the skin luminance. */
+            brighten: unit(0.1),
+            /** Warm rose on the cheeks. */
+            blush: unit(0),
+        })
+        .prefault({}),
+    eyes: z
+        .object({
+            enlarge: unit(0),
+            /** Brighter, crisper iris and whites. */
+            brighten: unit(0.15),
+            /** Lifts the under-eye shadow. */
+            darkCircles: unit(0.2),
+        })
+        .prefault({}),
+    teeth: z.object({ whiten: unit(0) }).prefault({}),
+    lips: z
+        .object({
+            /** Colour strength. */
+            amount: unit(0),
+            /** Hue 0..1 around the colour wheel (0 = red). */
+            hue: z.number().min(0).max(1).default(0.97),
+        })
+        .prefault({}),
+    shape: z
+        .object({
+            /** + slimmer cheeks, - fuller. */
+            slim: signed(),
+            /** + narrower jaw. */
+            jaw: signed(),
+            /** + narrower nose. */
+            nose: signed(),
+            /** + longer chin, - shorter. */
+            chin: signed(),
+        })
+        .prefault({}),
+});
+export type BeautySettings = z.infer<typeof beautySchema>;
+
 export const studioSchema = z.object({
     enabled: z.boolean().default(false),
     /** MediaDeviceInfo.deviceId; empty picks a device labelled "USB3.0 Video", else the first camera. */
@@ -577,6 +626,11 @@ export const studioSchema = z.object({
         .prefault({}),
     /** 0..1 skin smoothing strength (bilateral). */
     smoothing: z.number().min(0).max(1).default(0.35),
+    /**
+     * Beauty on the owner's face (face landmarks -> region masks + warps in the camera shader).
+     * Strengths 0..1; shape sliders -1..1 (0 = untouched). Off = the whole-frame `smoothing` above.
+     */
+    beauty: beautySchema.prefault({}),
     /** 0..1 background blur, needs the person segmentation mask. */
     backgroundBlur: z.number().min(0).max(1).default(0),
     /** Exposure in stops, -2..2. */

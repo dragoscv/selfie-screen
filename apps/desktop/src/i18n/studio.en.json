@@ -3,6 +3,7 @@
         "close": "Close",
         "dismiss": "Dismiss",
         "off": "Off",
+        "on": "On",
         "yes": "Yes",
         "no": "No"
     },
@@ -123,12 +124,15 @@
             "locked": "Locked"
         },
         "look": {
-            "name": "Look",
-            "title": "Image",
-            "exposure": "Exposure",
-            "warmth": "Warmth",
+            "name": "Look (digital)",
+            "title": "Image (digital)",
+            "exposure": "Digital exposure",
+            "warmth": "Digital warmth",
             "smoothing": "Skin smoothing",
             "blur": "Background blur"
+        },
+        "beauty": {
+            "name": "Beauty"
         },
         "framing": {
             "name": "Framing",
@@ -693,6 +697,45 @@
             "custom": "Custom / calibrated"
         }
     },
+    "beauty": {
+        "title": "Beauty",
+        "enabled": "Beauty on my face",
+        "enabledHint": "Applies only to your face (skin, eyes, mouth), following it as you move. Fades out when your face leaves the picture.",
+        "presets": "Looks",
+        "preset": {
+            "natural": "Natural",
+            "fresh": "Fresh",
+            "glam": "Glam"
+        },
+        "reset": "Reset",
+        "skin": {
+            "title": "Skin",
+            "smooth": "Smoothing",
+            "even": "Even tone",
+            "brighten": "Brighten",
+            "blush": "Blush"
+        },
+        "eyes": {
+            "title": "Eyes",
+            "enlarge": "Enlarge",
+            "brighten": "Brighten",
+            "darkCircles": "Dark circles"
+        },
+        "mouth": {
+            "title": "Mouth",
+            "teeth": "Whiten teeth",
+            "lips": "Lip colour",
+            "lipHue": "Lip shade"
+        },
+        "shape": {
+            "title": "Face shape",
+            "slim": "Slim face",
+            "jaw": "Jaw",
+            "nose": "Nose",
+            "chin": "Chin",
+            "hint": "Shape changes ease off while you move quickly, so they never wobble on the live."
+        }
+    },
     "gestures": {
         "title": "Gestures and what they do",
         "enabled": "Gesture actions on",
@@ -845,5 +888,31 @@
             "ok": "Hearing you well."
         },
         "server": "Server sent"
+    },
+    "camera": {
+        "exposure": {
+            "title": "Camera exposure (USB)",
+            "connectProbe": "Connect (keep HDMI)",
+            "connectFull": "Connect full (HDMI goes black)",
+            "disconnect": "Disconnect",
+            "status": {
+                "off": "Off — not connected over USB",
+                "probe": "Probe (HDMI kept)",
+                "full": "Full (HDMI goes black)",
+                "probeFailed": "Probe refused by the camera ({{code}}). Use Connect full while not live."
+            },
+            "props": {
+                "iso": "ISO",
+                "shutterSpeed": "Shutter",
+                "fNumber": "Aperture",
+                "exposureBias": "Exposure comp.",
+                "whiteBalance": "White balance",
+                "colorTemp": "Colour temperature",
+                "exposureMode": "Exposure mode"
+            },
+            "decrease": "Decrease {{name}}",
+            "increase": "Increase {{name}}",
+            "lookNote": "The Look panel is digital (applied to the video); these change the camera itself."
+        }
     }
 }

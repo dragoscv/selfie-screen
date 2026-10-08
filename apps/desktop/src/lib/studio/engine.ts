@@ -73,6 +73,9 @@ import { MetricDistance, type MetricConfig, type PoseForDistance } from "./metri
 import { DigitalFraming } from "./framing.js";
 import type { DialHand } from "./index-dial.js";
 import type { ZoomGestures } from "./zoom-gestures.js";
+import type { BeautyMask } from "./beauty.js";
+import type * as BeautyModule from "./beauty.js";
+import { lipColor } from "./beauty-color.js";
 import { ZoneGate, handCentre, inGateZone, type HandZones } from "./zone-gate.js";
 import { PreviewPass } from "./monitor.js";
 import { VcamPump } from "./output.js";
@@ -379,6 +382,11 @@ export class StudioEngine implements StudioController {
     #debugHands: readonly DebugHand[] = [];
     /** Zoom gesture controllers (lazy chunk, loaded on start). */
     #zg: ZoomGestures | null = null;
+    /** Beauty (lazy chunk, loaded the first time beauty is switched on). */
+    #beautyMod: typeof BeautyModule | null = null;
+    #beauty: BeautyMask | null = null;
+    #beautyLoading = false;
+    #beautyTraceAt = 0;
     /** Which gesture owns the zoom right now. */
     #zoomBy: "pinch" | "dial" | null = null;
     #zoomLastT = 0;
@@ -525,7 +533,7 @@ export class StudioEngine implements StudioController {
         if (!this.#synthetic) {
             const vision = new StudioVision();
             try {
-                await vision.init(this.#visionSettings, this.#settings.rotation, this.#settings.mirror);
+                await vision.init(this.#visionSettings, this.#settings.rotation, this.#settings.mirror, this.#settings.beauty.enabled);
                 this.#vision = vision;
                 this.#cb.onStep?.("vision ready");
             } catch (e) {
@@ -736,9 +744,10 @@ export class StudioEngine implements StudioController {
         this.#ar?.set(settings.arObjects);
         void this.#syncCaptions(settings);
         this.#updateWantScopes();
-        if (this.#vision && (prev.rotation !== settings.rotation || prev.mirror !== settings.mirror)) {
+        if (settings.beauty.enabled) this.#ensureBeauty();
+        if (this.#vision && (prev.rotation !== settings.rotation || prev.mirror !== settings.mirror || prev.beauty.enabled !== settings.beauty.enabled)) {
             await this.#vision
-                .apply(this.#visionSettings, settings.rotation, settings.mirror)
+            .apply(this.#visionSettings, settings.rotation, settings.mirror, settings.beauty.enabled)
                 .catch((e: unknown) => this.#cb.onError?.(`vision: ${String(e)}`));
         }
         for (const [side, choice] of [
@@ -769,7 +778,44 @@ export class StudioEngine implements StudioController {
     async applyVision(settings: VisionSettings): Promise<void> {
         this.#visionSettings = settings;
         this.#updateWantScopes();
-        await this.#vision?.apply(settings, this.#settings.rotation, this.#settings.mirror);
+        await this.#vision?.apply(settings, this.#settings.rotation, this.#settings.mirror, this.#settings.beauty.enabled);
+    }
+
+    #ensureBeauty(): void {
+        if (this.#beautyMod || this.#beautyLoading) return;
+        this.#beautyLoading = true;
+        void import("./beauty.js")
+            .then((m) => {
+                this.#beautyMod = m;
+                const stage = this.#stage;
+                if (stage) this.#beauty = new m.BeautyMask(stage.width, stage.height);
+            })
+            .catch((e: unknown) => this.#cb.onError?.(`beauty: ${String(e)}`))
+            .finally(() => {
+                this.#beautyLoading = false;
+            });
+    }
+
+    /** Beauty mask + uniforms for this frame (before the camera pass). */
+    #updateBeauty(now: number, dt: number, f: Framing, rotation: Rotation, W: number, H: number): void {
+        const backdrop = this.#backdrop;
+        const stage = this.#stage;
+        if (!backdrop || !stage) return;
+        const b = this.#settings.beauty;
+        const mod = this.#beautyMod;
+        const mask = this.#beauty;
+        if (!b.enabled || !mod || !mask) {
+            backdrop.setBeauty(null, null);
+            return;
+        }
+        if (mask.target.width !== Math.max(1, W >> 1) || mask.target.height !== Math.max(1, H >> 1)) mask.resize(W, H);
+        mask.render(stage.renderer, now, (x, y) => rawToOutput(f, rotation, x, y), dt);
+        if (this.#trace && now - this.#beautyTraceAt > 1000) {
+            this.#beautyTraceAt = now;
+            void mask.debugLine(stage.renderer).then((l) => console.error(l), (e: unknown) => console.error(`[beauty] readback ${String(e)}`));
+        }
+        const p = mod.beautyUniforms(b, mask.anchors, mask.presence);
+        backdrop.setBeauty({ ...p, lipColor: lipColor(b.lips.hue) }, mask.target.texture, { width: mask.target.width, height: mask.target.height });
     }
 
     setProfiles(profiles: IdentityProfile[]): void {
@@ -1215,6 +1261,7 @@ export class StudioEngine implements StudioController {
         if (!backdrop) return;
         if (frame.mask) backdrop.setMask(frame.mask.data, frame.mask.width, frame.mask.height);
         else backdrop.setMask(null, 0, 0);
+        if (frame.ownerFace) this.#beauty?.push(frame.ownerFace.lm, frame.ownerFace.tMs);
         // Metric distance comes from MetricDistance (whole-body solve + iris + Kalman) when
         // the early pose carries world landmarks; the pipeline's body-scale value is the fallback.
         this.#ownerM = this.#metric.reading?.distanceM ?? frame.ownerDistanceM;
@@ -1421,6 +1468,7 @@ export class StudioEngine implements StudioController {
 
         // Pass 1: graded camera. Pass 2: output composite. Pass 3: preview to the canvas.
         const r = stage.renderer;
+        this.#updateBeauty(now, dt, f, rotation, W, H);
         r.setRenderTarget(camRT);
         r.render(this.#camScene, stage.camera);
         r.setRenderTarget(outRT);

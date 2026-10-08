@@ -133,6 +133,10 @@ export interface PumpTimings {
     /** Frames actually delivered per second. */
     vcamFps: number;
     vcamDropped: number;
+    /** Drops by cause: no free GPU staging buffer / socket backed up / invoke still busy. */
+    vcamDropSlot: number;
+    vcamDropWs: number;
+    vcamDropIpc: number;
 }
 
 interface BackendInternals {
@@ -167,7 +171,7 @@ const ema = (prev: number, v: number): number => (prev === 0 ? v : prev * 0.9 + 
  * pending IPC call drops the frame.
  */
 export class VcamPump {
-    readonly timings: PumpTimings = { vcamConvert: 0, vcamReadback: 0, vcamIpc: 0, vcamFps: 0, vcamDropped: 0 };
+    readonly timings: PumpTimings = { vcamConvert: 0, vcamReadback: 0, vcamIpc: 0, vcamFps: 0, vcamDropped: 0, vcamDropSlot: 0, vcamDropWs: 0, vcamDropIpc: 0 };
     readonly #renderer: THREE.WebGPURenderer;
     readonly #onError: (m: string) => void;
     readonly #ipc: boolean;
@@ -296,6 +300,7 @@ export class VcamPump {
         const slot = g.staging.find((s) => !s.busy);
         if (!tex || !g.out || !slot) {
             this.timings.vcamDropped++;
+            this.timings.vcamDropSlot++;
             return;
         }
         const t0 = performance.now();
@@ -331,8 +336,21 @@ export class VcamPump {
                     buf.destroy();
                     return;
                 }
+                const mapped = new Uint8Array(buf.getMappedRange());
+                // Socket path: copy the mapped range straight into the wire buffer (one 3 MB copy
+                // per frame instead of two); otherwise into the frame pool for invoke.
+                if (this.#socketReady(mapped.byteLength)) {
+                    const t2 = performance.now();
+                    const msg = this.#wire(mapped, w, h);
+                    buf.unmap();
+                    slot.busy = false;
+                    this.#ws?.send(msg);
+                    this.#delivered++;
+                    this.timings.vcamIpc = ema(this.timings.vcamIpc, performance.now() - t2);
+                    return;
+                }
                 const frame = this.#nextFrame();
-                frame.set(new Uint8Array(buf.getMappedRange()));
+                frame.set(mapped);
                 buf.unmap();
                 slot.busy = false;
                 this.#send(frame, w, h);
@@ -346,6 +364,7 @@ export class VcamPump {
     #cpuFrame(target: THREE.RenderTarget, w: number, h: number): void {
         if (this.#cpuBusy || this.#ipcBusy) {
             this.timings.vcamDropped++;
+            this.timings.vcamDropIpc++;
             return;
         }
         this.#resize(w, h);
@@ -401,6 +420,14 @@ export class VcamPump {
             });
     }
 
+    /** True when a frame of `bytes` can go out on the socket now (open, not backed up). */
+    #socketReady(bytes: number): boolean {
+        if (!this.#ipc) return false;
+        this.#ensureSocket();
+        const ws = this.#ws;
+        return ws !== null && ws.readyState === WebSocket.OPEN && ws.bufferedAmount <= bytes * 2;
+    }
+
     #send(frame: Uint8Array, w: number, h: number): void {
         if (!this.#ipc) {
             this.#delivered++;
@@ -412,6 +439,7 @@ export class VcamPump {
             // Back-pressure: never queue more than ~2 frames in the socket.
             if (ws.bufferedAmount > frame.byteLength * 2) {
                 this.timings.vcamDropped++;
+                this.timings.vcamDropWs++;
                 return;
             }
             const t0 = performance.now();
@@ -423,6 +451,7 @@ export class VcamPump {
         }
         if (this.#ipcBusy) {
             this.timings.vcamDropped++;
+            this.timings.vcamDropIpc++;
             return;
         }
         this.#ipcBusy = true;

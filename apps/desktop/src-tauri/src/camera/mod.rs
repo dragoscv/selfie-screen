@@ -1,8 +1,10 @@
 //! Native camera control (decision Q42). Two transports:
 //! - `ble`: Sony Bluetooth remote. Default while live: it leaves HDMI alone.
 //! - USB PC Remote (PTP + Sony SDIO): full property access, but on ZV-E10 the
-//!   SDIO session blanks HDMI output, so it is opt-in (`TIKSEE_CAMERA_CTL=usb`)
-//!   and meant for setup before going live.
+//!   SDIO session blanks HDMI output, so it is opt-in (`TIKSEE_CAMERA_CTL=usb`
+//!   or `camera_usb_start`) and meant for setup before going live.
+//!   `probe` mode skips SDIO GetExtDeviceInfo (0x9202), the op that blanks
+//!   HDMI (Q43), and reports `probeFailed` if the camera then refuses SDIO.
 
 pub mod ble;
 pub mod ptp;
@@ -11,6 +13,7 @@ mod usbk;
 
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -97,12 +100,84 @@ pub struct PropView {
 pub struct CameraState {
     /// "usb" when connected, "none" otherwise.
     pub transport: String,
+    /// Which USB session is running: off, full (HDMI blanks) or probe (no 0x9202).
+    pub mode: Mode,
     pub connected: bool,
     pub model: String,
     pub firmware: String,
     pub error: Option<String>,
+    /// Probe mode only: the camera refused SDIO without 0x9202 (PTP response
+    /// code such as "0x2005", or the transport error). The session is closed.
+    pub probe_failed: Option<String>,
     pub props: Vec<PropView>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    #[default]
+    Off,
+    Full,
+    Probe,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbStatus {
+    pub running: bool,
+    pub mode: Mode,
+    pub state: Option<CameraState>,
+}
+
+/// SDIO ops sent after OpenSession (libgphoto2 / Sony Camera Remote Command
+/// order). Probe mode drops GetExtDeviceInfo (0x9202), which blanks HDMI (Q43).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn handshake_ops(probe: bool) -> Vec<(u16, Vec<u32>)> {
+    let mut ops = vec![
+        (ptp::OP_SDIO_CONNECT, vec![1, 0, 0]),
+        (ptp::OP_SDIO_CONNECT, vec![2, 0, 0]),
+    ];
+    if !probe {
+        ops.push((ptp::OP_SDIO_GET_EXT_DEVICE_INFO, vec![ptp::SDIO_VERSION]));
+    }
+    ops.push((ptp::OP_SDIO_CONNECT, vec![3, 0, 0]));
+    ops
+}
+
+/// PTP response code from a `Session::call` error ("op 0x9209 -> 0x2005").
+#[cfg_attr(not(windows), allow(dead_code))]
+fn response_code(error: &str) -> Option<String> {
+    let code = error.rsplit_once("-> ")?.1.trim();
+    (code.starts_with("0x") && code.len() == 6).then(|| code.to_string())
+}
+
+/// Next (`dir > 0`) or previous option for a property: walks the camera's own
+/// option list for enumerations, or `value ± step` within a range. `None` at
+/// the end of the list or when the property is not writable.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn step_option(p: &PropView, dir: i32) -> Option<i64> {
+    if !p.writable || dir == 0 {
+        return None;
+    }
+    if !p.options.is_empty() {
+        let Some(i) = p.value.and_then(|v| p.options.iter().position(|o| *o == v)) else {
+            return p.options.first().copied();
+        };
+        let j = if dir > 0 {
+            i.checked_add(1)?
+        } else {
+            i.checked_sub(1)?
+        };
+        return p.options.get(j).copied();
+    }
+    let (min, max) = (p.min?, p.max?);
+    let step = p.step.filter(|s| *s > 0).unwrap_or(1);
+    let v = p.value.unwrap_or(min);
+    let next = (v + step * i64::from(dir.signum())).clamp(min, max);
+    (next != v).then_some(next)
+}
+
+static LAST: Mutex<Option<CameraState>> = Mutex::new(None);
 
 fn view(p: &Prop) -> PropView {
     let name = KNOWN
@@ -131,78 +206,156 @@ fn view(p: &Prop) -> PropView {
 enum Req {
     Control(Control, i32),
     SetProp(u16, i64),
+    Step(u16, i32),
     Refresh,
     Shutdown,
 }
 
-pub struct CameraCtl {
-    tx: Mutex<Option<Sender<Req>>>,
+struct Running {
+    tx: Sender<Req>,
+    mode: Mode,
+    handle: Option<JoinHandle<()>>,
 }
 
-impl Default for CameraCtl {
-    fn default() -> Self {
-        Self {
-            tx: Mutex::new(None),
-        }
-    }
+#[derive(Default)]
+pub struct CameraCtl {
+    run: Mutex<Option<Running>>,
 }
 
 impl CameraCtl {
     fn send(&self, r: Req) -> Result<(), String> {
-        let guard = self.tx.lock().map_err(|e| e.to_string())?;
+        let guard = self.run.lock().map_err(|e| e.to_string())?;
         guard
             .as_ref()
             .ok_or("camera control is not running")?
+            .tx
             .send(r)
             .map_err(|e| e.to_string())
     }
 
+    /// Env-var path (`TIKSEE_CAMERA_CTL=usb`): full handshake.
     pub fn start(&self, app: &AppHandle) {
-        let mut guard = self.tx.lock().unwrap();
-        if guard.is_some() {
-            return;
+        if let Err(e) = self.start_mode(app, Mode::Full) {
+            log::warn!("[camera] start failed: {e}");
         }
-        let (tx, rx) = channel();
-        *guard = Some(tx);
-        let app = app.clone();
-        std::thread::Builder::new()
-            .name("camera-ctl".into())
-            .spawn(move || worker(app, rx))
-            .ok();
     }
 
-    pub fn stop(&self) {
-        if let Ok(mut g) = self.tx.lock()
-            && let Some(tx) = g.take()
-        {
-            let _ = tx.send(Req::Shutdown);
+    /// Start (or switch to) a USB session in `mode`. Switching modes closes the
+    /// running session first so the camera sees a fresh handshake.
+    pub fn start_mode(&self, app: &AppHandle, mode: Mode) -> Result<(), String> {
+        let mut guard = self.run.lock().map_err(|e| e.to_string())?;
+        match guard.as_ref() {
+            Some(r) if r.mode == mode => return Ok(()),
+            Some(_) => halt(guard.take(), true),
+            None => {}
         }
+        if mode == Mode::Off {
+            return Ok(());
+        }
+        let (tx, rx) = channel();
+        let app = app.clone();
+        let probe = mode == Mode::Probe;
+        let handle = std::thread::Builder::new()
+            .name("camera-ctl".into())
+            .spawn(move || worker(app, rx, probe))
+            .map_err(|e| e.to_string())?;
+        *guard = Some(Running {
+            tx,
+            mode,
+            handle: Some(handle),
+        });
+        Ok(())
+    }
+
+    /// Stop without waiting (app exit).
+    pub fn stop(&self) {
+        if let Ok(mut g) = self.run.lock() {
+            halt(g.take(), false);
+        }
+    }
+
+    /// Stop and wait for the worker to close the PTP session.
+    pub fn stop_wait(&self) {
+        if let Ok(mut g) = self.run.lock() {
+            halt(g.take(), true);
+        }
+    }
+
+    pub fn status(&self) -> UsbStatus {
+        let mode = self
+            .run
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|r| r.mode))
+            .unwrap_or(Mode::Off);
+        UsbStatus {
+            running: mode != Mode::Off,
+            mode,
+            state: LAST.lock().ok().and_then(|g| g.clone()),
+        }
+    }
+}
+
+fn halt(run: Option<Running>, wait: bool) {
+    let Some(mut r) = run else { return };
+    let _ = r.tx.send(Req::Shutdown);
+    if wait && let Some(h) = r.handle.take() {
+        let _ = h.join();
     }
 }
 
 fn emit(app: &AppHandle, state: &CameraState) {
+    if let Ok(mut g) = LAST.lock() {
+        *g = Some(state.clone());
+    }
     let _ = app.emit("camera://state", state);
 }
 
+/// Final state once the worker exits.
+fn emit_off(app: &AppHandle) {
+    emit(
+        app,
+        &CameraState {
+            transport: "none".into(),
+            ..Default::default()
+        },
+    );
+}
+
 #[cfg(windows)]
-fn worker(app: AppHandle, rx: Receiver<Req>) {
+fn worker(app: AppHandle, rx: Receiver<Req>, probe: bool) {
     use session::Session;
-    let mut state = CameraState {
+    let mode = if probe { Mode::Probe } else { Mode::Full };
+    let idle = |error: Option<String>| CameraState {
         transport: "none".into(),
+        mode,
+        error,
         ..Default::default()
     };
+    let mut state = idle(None);
+    emit(&app, &state);
     let mut session: Option<Session> = None;
+    // Probe refused by the camera: stay disconnected (never fall back to 0x9202).
+    let mut refused = false;
     let mut last_try = Instant::now() - Duration::from_secs(10);
     let mut last_poll = Instant::now();
     loop {
         // Connect (or reconnect) every 3 s while disconnected.
-        if session.is_none() && last_try.elapsed() >= Duration::from_secs(3) {
+        if session.is_none() && !refused && last_try.elapsed() >= Duration::from_secs(3) {
             last_try = Instant::now();
-            match Session::open_usb() {
+            let opened = Session::open_usb(probe).and_then(|(mut s, model, fw)| {
+                if probe && let Err(e) = s.props() {
+                    s.close();
+                    return Err(e);
+                }
+                Ok((s, model, fw))
+            });
+            match opened {
                 Ok((s, model, fw)) => {
-                    log::info!("[camera] connected over USB: {model} fw {fw}");
+                    log::info!("[camera] connected over USB ({mode:?}): {model} fw {fw}");
                     state = CameraState {
                         transport: "usb".into(),
+                        mode,
                         connected: true,
                         model,
                         firmware: fw,
@@ -211,14 +364,19 @@ fn worker(app: AppHandle, rx: Receiver<Req>) {
                     session = Some(s);
                     last_poll = Instant::now() - Duration::from_secs(5);
                 }
+                Err(e) if probe && response_code(&e).is_some() => {
+                    log::warn!("[camera] probe refused: {e}");
+                    refused = true;
+                    state = CameraState {
+                        probe_failed: response_code(&e),
+                        ..idle(Some(e))
+                    };
+                    emit(&app, &state);
+                }
                 Err(e) => {
                     if state.error.as_deref() != Some(e.as_str()) {
                         log::info!("[camera] not connected: {e}");
-                        state = CameraState {
-                            transport: "none".into(),
-                            error: Some(e),
-                            ..Default::default()
-                        };
+                        state = idle(Some(e));
                         emit(&app, &state);
                     }
                 }
@@ -232,28 +390,37 @@ fn worker(app: AppHandle, rx: Receiver<Req>) {
         let req = rx.recv_timeout(wait);
         let Some(s) = session.as_mut() else {
             match req {
-                Ok(Req::Shutdown) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                Ok(Req::Shutdown) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    emit_off(&app);
+                    return;
+                }
                 _ => continue,
             }
+        };
+        let set = |s: &mut Session, code: u16, v: i64| match s.dtype(code).and_then(|t| t.encode(v))
+        {
+            Some(bytes) => s.set_prop(code, &bytes),
+            None => Err(format!("property 0x{code:04x} is unknown or not numeric")),
         };
         let result = match req {
             Ok(Req::Shutdown) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 s.close();
+                emit_off(&app);
                 return;
             }
             Ok(Req::Control(c, v)) => s.control(c.code(), &c.payload(v)),
-            Ok(Req::SetProp(code, v)) => {
-                let dtype = state
-                    .props
-                    .iter()
-                    .find(|p| p.code == code)
-                    .map(|_| s.dtype(code))
-                    .unwrap_or(None);
-                match dtype.and_then(|t| t.encode(v)) {
-                    Some(bytes) => s.set_prop(code, &bytes),
-                    None => Err(format!("property 0x{code:04x} is unknown or not numeric")),
-                }
-            }
+            Ok(Req::SetProp(code, v)) => set(s, code, v),
+            Ok(Req::Step(code, dir)) => match state.props.iter().find(|p| p.code == code) {
+                None => Err(format!(
+                    "property 0x{code:04x} is not reported by the camera"
+                )),
+                Some(p) => match step_option(p, dir) {
+                    Some(v) => set(s, code, v).map(|()| {
+                        last_poll = Instant::now() - Duration::from_secs(5);
+                    }),
+                    None => Err(format!("0x{code:04x}: no further value")),
+                },
+            },
             Ok(Req::Refresh) => {
                 last_poll = Instant::now() - Duration::from_secs(5);
                 Ok(())
@@ -277,11 +444,7 @@ fn worker(app: AppHandle, rx: Receiver<Req>) {
                 Err(e) => {
                     log::warn!("[camera] lost: {e}");
                     session = None;
-                    state = CameraState {
-                        transport: "none".into(),
-                        error: Some(e),
-                        ..Default::default()
-                    };
+                    state = idle(Some(e));
                     emit(&app, &state);
                 }
             }
@@ -290,7 +453,7 @@ fn worker(app: AppHandle, rx: Receiver<Req>) {
 }
 
 #[cfg(not(windows))]
-fn worker(app: AppHandle, _rx: Receiver<Req>) {
+fn worker(app: AppHandle, _rx: Receiver<Req>, _probe: bool) {
     emit(
         &app,
         &CameraState {
@@ -318,7 +481,7 @@ mod session {
     }
 
     impl Session {
-        pub fn open_usb() -> Result<(Self, String, String), String> {
+        pub fn open_usb(probe: bool) -> Result<(Self, String, String), String> {
             let path = find_paths(SONY_PC_REMOTE)
                 .into_iter()
                 .next()
@@ -341,11 +504,12 @@ mod session {
             }
             let info = s.call(ptp::OP_GET_DEVICE_INFO, &[], None)?;
             let (model, fw) = device_strings(&info);
-            // SDIO handshake (libgphoto2 / Sony Camera Remote Command order).
-            s.call(ptp::OP_SDIO_CONNECT, &[1, 0, 0], None)?;
-            s.call(ptp::OP_SDIO_CONNECT, &[2, 0, 0], None)?;
-            s.call(ptp::OP_SDIO_GET_EXT_DEVICE_INFO, &[ptp::SDIO_VERSION], None)?;
-            s.call(ptp::OP_SDIO_CONNECT, &[3, 0, 0], None)?;
+            for (op, params) in super::handshake_ops(probe) {
+                if let Err(e) = s.call(op, &params, None) {
+                    s.close();
+                    return Err(e);
+                }
+            }
             Ok((s, model, fw))
         }
 
@@ -475,6 +639,46 @@ pub fn camera_refresh(state: tauri::State<'_, CameraCtl>) -> Result<(), String> 
     state.send(Req::Refresh)
 }
 
+/// Step a property to the next (`dir = 1`) or previous (`dir = -1`) value the
+/// camera offers, so the UI never needs to know Sony's encodings.
+#[tauri::command]
+pub fn camera_set_step(
+    state: tauri::State<'_, CameraCtl>,
+    code: u16,
+    dir: i32,
+) -> Result<(), String> {
+    if !KNOWN.iter().any(|(c, _)| *c == code) {
+        return Err(format!("property 0x{code:04x} is not exposed"));
+    }
+    if dir != 1 && dir != -1 {
+        return Err("dir must be 1 or -1".into());
+    }
+    state.send(Req::Step(code, dir))
+}
+
+/// Start the USB PC Remote session at runtime. `probe = true` skips SDIO
+/// GetExtDeviceInfo (0x9202, blanks HDMI); `false` is the full handshake.
+#[tauri::command]
+pub fn camera_usb_start(
+    app: AppHandle,
+    state: tauri::State<'_, CameraCtl>,
+    probe: bool,
+) -> Result<(), String> {
+    state.start_mode(&app, if probe { Mode::Probe } else { Mode::Full })
+}
+
+/// Close the USB session (HDMI comes back after a full session).
+#[tauri::command]
+pub async fn camera_usb_stop(state: tauri::State<'_, CameraCtl>) -> Result<(), String> {
+    state.stop_wait();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn camera_usb_status(state: tauri::State<'_, CameraCtl>) -> UsbStatus {
+    state.status()
+}
+
 #[tauri::command]
 pub fn camera_ble(
     state: tauri::State<'_, ble::BleCtl>,
@@ -528,5 +732,69 @@ mod tests {
         assert_eq!(v.name, "iso");
         assert_eq!(v.options, vec![100, 200, 800]);
         assert_eq!(v.value, Some(800));
+    }
+
+    fn prop(value: Option<i64>, options: Vec<i64>) -> PropView {
+        PropView {
+            code: 0xD21E,
+            name: "iso".into(),
+            writable: true,
+            enabled: true,
+            value,
+            options,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn step_walks_enum_options_and_stops_at_the_ends() {
+        let p = prop(Some(200), vec![100, 200, 800]);
+        assert_eq!(step_option(&p, 1), Some(800));
+        assert_eq!(step_option(&p, -1), Some(100));
+        assert_eq!(step_option(&prop(Some(800), vec![100, 200, 800]), 1), None);
+        assert_eq!(step_option(&prop(Some(100), vec![100, 200, 800]), -1), None);
+        // Current value outside the list: jump to the first option.
+        assert_eq!(step_option(&prop(Some(5), vec![100, 200]), 1), Some(100));
+    }
+
+    #[test]
+    fn step_respects_ranges_and_read_only() {
+        let mut p = prop(Some(5600), vec![]);
+        p.min = Some(2500);
+        p.max = Some(9900);
+        p.step = Some(100);
+        assert_eq!(step_option(&p, 1), Some(5700));
+        assert_eq!(step_option(&p, -1), Some(5500));
+        p.value = Some(9900);
+        assert_eq!(step_option(&p, 1), None);
+        p.writable = false;
+        assert_eq!(step_option(&p, -1), None);
+    }
+
+    #[test]
+    fn probe_handshake_skips_get_ext_device_info() {
+        let full: Vec<u16> = handshake_ops(false).iter().map(|(op, _)| *op).collect();
+        let probe: Vec<u16> = handshake_ops(true).iter().map(|(op, _)| *op).collect();
+        assert_eq!(full, vec![0x9201, 0x9201, 0x9202, 0x9201]);
+        assert_eq!(probe, vec![0x9201, 0x9201, 0x9201]);
+        assert_eq!(handshake_ops(true)[2].1, vec![3, 0, 0]);
+    }
+
+    #[test]
+    fn response_code_parses_ptp_errors_only() {
+        assert_eq!(
+            response_code("op 0x9209 -> 0x2005").as_deref(),
+            Some("0x2005")
+        );
+        assert_eq!(
+            response_code("no Sony camera in PC Remote (USB) mode"),
+            None
+        );
+    }
+
+    #[test]
+    fn mode_serialises_lowercase() {
+        assert_eq!(serde_json::to_string(&Mode::Probe).unwrap(), "\"probe\"");
+        assert_eq!(serde_json::to_string(&Mode::Off).unwrap(), "\"off\"");
     }
 }

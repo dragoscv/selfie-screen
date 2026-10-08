@@ -315,14 +315,19 @@ export interface VisionFrame {
     ownerDistanceM?: number;
     /** Owner's hands (at most one per side), present when the hand models ran. */
     ownerHands?: OwnerHand[];
+    /**
+     * Owner's 478 face landmarks (x, y pairs, RAW camera coords 0..1) from THIS frame's face run,
+     * only while beauty is on. `tMs` = capture time of that face run.
+     */
+    ownerFace?: { lm: Float32Array; tMs: number };
     armed: boolean;
     /** Per-task latency, ms (EMA). */
     timings: Record<string, number>;
 }
 
 export interface VisionRuntime {
-    init(settings: VisionSettings, rotation: 0 | 90 | 180 | 270, mirror: boolean): Promise<void>;
-    apply(settings: VisionSettings, rotation: 0 | 90 | 180 | 270, mirror: boolean): Promise<void>;
+    init(settings: VisionSettings, rotation: 0 | 90 | 180 | 270, mirror: boolean, beauty?: boolean): Promise<void>;
+    apply(settings: VisionSettings, rotation: 0 | 90 | 180 | 270, mirror: boolean, beauty?: boolean): Promise<void>;
     /** Attach the camera <video>; frames are then pulled per NEW camera frame (requestVideoFrameCallback). */
     attach?(video: HTMLVideoElement): void;
     /** Legacy: attaches `video` on first call, otherwise a no-op. */

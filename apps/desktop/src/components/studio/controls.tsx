@@ -1,5 +1,5 @@
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import { Box, Camera, Focus, Frame, Hand, MonitorCog, PawPrint, Search, Sparkles, SunMedium, Volume2, X, type LucideIcon } from "lucide-react";
+import { Box, Camera, Focus, Frame, Hand, MonitorCog, PawPrint, Search, Smile, Sparkles, SunMedium, Volume2, X, type LucideIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,6 +9,7 @@ const AiPanel = lazy(() => import("./ai-panel.js").then((m) => ({ default: m.AiP
 const MonitorPanel = lazy(() => import("./monitor-panel.js").then((m) => ({ default: m.MonitorPanel })));
 const SoundPanel = lazy(() => import("./sound-panel.js").then((m) => ({ default: m.SoundPanel })));
 const GesturesPanel = lazy(() => import("./gestures-panel.js").then((m) => ({ default: m.GesturesPanel })));
+const BeautyPanel = lazy(() => import("./beauty-panel.js").then((m) => ({ default: m.BeautyPanel })));
 // Simple panels share one lazy chunk (they used to sit in the studio entry chunk).
 const dock = () => import("./dock-panels.js");
 const ZoomPanel = lazy(() => dock().then((m) => ({ default: m.ZoomPanel })));
@@ -18,13 +19,14 @@ const FramingPanel = lazy(() => dock().then((m) => ({ default: m.FramingPanel })
 const CameraPanel = lazy(() => dock().then((m) => ({ default: m.CameraPanel })));
 const PetsPanel = lazy(() => dock().then((m) => ({ default: m.PetsPanel })));
 
-const PANELS = ["zoom", "focus", "look", "framing", "monitor", "camera", "pets", "ai", "gestures", "sound", "ar"] as const;
+const PANELS = ["zoom", "focus", "look", "beauty", "framing", "monitor", "camera", "pets", "ai", "gestures", "sound", "ar"] as const;
 export type PanelId = (typeof PANELS)[number];
 
 const ICONS: Record<PanelId, LucideIcon> = {
     zoom: Search,
     focus: Focus,
     look: SunMedium,
+    beauty: Smile,
     framing: Frame,
     monitor: MonitorCog,
     camera: Camera,
@@ -54,6 +56,8 @@ function usePillValue(id: PanelId): string {
             return focused ? t("studio.controls.focus.locked") : studio.framing.afIntervalS > 0 ? "AF-C" : "AF";
         case "look":
             return `${signed(studio.exposure)} EV`;
+        case "beauty":
+            return studio.beauty.enabled ? t("studio.common.on") : t("studio.common.off");
         case "framing":
             return studio.framing.autoReframe ? t("studio.controls.framing.autoShort") : studio.framing.dof ? "DoF" : t("studio.common.off");
         case "monitor": {
@@ -164,6 +168,8 @@ function panelBody(id: PanelId, onLoupe: (on: boolean) => void, onSpace: () => v
             return <FocusPanel onLoupe={onLoupe} />;
         case "look":
             return <LookPanel />;
+        case "beauty":
+            return <BeautyPanel />;
         case "framing":
             return <FramingPanel />;
         case "monitor":
@@ -224,13 +230,13 @@ export function ControlDock({
 
     return (
         <LayoutGroup id="studio-dock">
-            <div ref={dock} className="relative w-full @[52rem]/studio:w-auto">
+            <div ref={dock} className="relative w-full @[56rem]/studio:w-auto">
                 <AnimatePresence>{open && <Panel key={open} id={open} onClose={() => onOpenChange(null)} onLoupe={onLoupe} onSpace={onSpace} />}</AnimatePresence>
                 <nav
                     aria-label={t("studio.controls.label")}
-                    // Two even rows (6 + 5) on narrow and portrait windows, one row from 52rem wide:
+                    // Two even rows (6 + 6) on narrow and portrait windows, one row from 56rem wide:
                     // a grid, so every pill keeps a fair share of the width and nothing is cut off.
-                    className={`${GLASS} grid w-full grid-cols-6 items-stretch gap-0.5 rounded-[1.375rem] p-1 @[52rem]/studio:w-auto @[52rem]/studio:grid-flow-col @[52rem]/studio:grid-cols-none @[52rem]/studio:auto-cols-[minmax(4.25rem,auto)]`}
+                    className={`${GLASS} grid w-full grid-cols-6 items-stretch gap-0.5 rounded-[1.375rem] p-1 @[56rem]/studio:w-auto @[56rem]/studio:grid-flow-col @[56rem]/studio:grid-cols-none @[56rem]/studio:auto-cols-[minmax(4.25rem,auto)]`}
                 >
                     {PANELS.map((id) =>
                         open === id ? (

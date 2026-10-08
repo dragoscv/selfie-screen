@@ -81,7 +81,11 @@ const ASSETS = {
     objects: "/mediapipe/efficientdet_lite0.tflite",
 };
 const OBJECT_LABELS = ["person", "dog", "cup", "bottle", "cell phone", "wine glass"];
-const OBJECT_INTERVAL_MS = 1000;
+/**
+ * Object detection (~45 ms) runs every 2 s and never on a face frame: on top of pose + hands +
+ * face it made one frame per second take ~90 ms (worst roundtrip 127 ms, measured 2026-10-08).
+ */
+const OBJECT_INTERVAL_MS = 2000;
 const OBJECT_TTL_MS = 2500;
 const DEPTH_INTERVAL_MS = 100;
 const IDENTITY_INTERVAL_MS = 2000;
@@ -326,7 +330,7 @@ export class VisionPipeline {
         const fam = s.families;
         const on = (f: SignalFamily) => s.enabled && fam[f] !== false;
         const needHands = on("hand") || on("twoHands") || on("motion");
-        const needFace = on("face") || on("state") || (s.enabled && s.identity);
+        const needFace = on("face") || on("state") || (s.enabled && s.identity) || cfg.beauty === true;
         const needObjects = on("presence") || on("state");
 
         this.#signals.setArm(s.armHoldMs, s.armWindowMs);
@@ -558,8 +562,9 @@ export class VisionPipeline {
         const runPose = !stagger || frameNo % 2 === 0;
         const runGesture = !stagger || frameNo % 2 === 1;
         // Face (expressions) tolerates half rate; hands and pose drive the pets and need every frame.
-        const runFace = frameNo % 2 === 0;
-        const runObjects = stagger ? frameNo % 12 === 0 : tMs - this.#lastObjectRun >= OBJECT_INTERVAL_MS;
+        // Beauty masks follow the face every frame (a half-rate mask visibly trails the skin).
+        const runFace = cfg.beauty === true || frameNo % 2 === 0;
+        const runObjects = stagger ? frameNo % 12 === 0 : !runFace && tMs - this.#lastObjectRun >= OBJECT_INTERVAL_MS;
 
         let mask: VisionFrame["mask"] = null;
         const t = this.#tasks;
@@ -877,7 +882,19 @@ export class VisionPipeline {
             });
         const hints = s.showGestureHud ? this.#hints(tMs, families) : [];
         ema(this.#timings, "total", performance.now() - tStart);
-        return this.#frame(tMs, events, faceBoxes, dogBoxes, mask, hints, ownerDistanceM, ownerHands);
+        const frame = this.#frame(tMs, events, faceBoxes, dogBoxes, mask, hints, ownerDistanceM, ownerHands);
+        if (cfg.beauty) {
+            const of = this.#people.tracks.find((tr) => tr.id === this.#ownerTrack && tr.visible)?.data.face;
+            if (of && this.#lastFacesAt === tMs) {
+                const lm = new Float32Array(of.raw.length * 2);
+                of.raw.forEach((p, i) => {
+                    lm[i * 2] = p.x;
+                    lm[i * 2 + 1] = p.y;
+                });
+                frame.ownerFace = { lm, tMs };
+            }
+        }
+        return frame;
     }
 
     #lastHands: HandDet[] = [];

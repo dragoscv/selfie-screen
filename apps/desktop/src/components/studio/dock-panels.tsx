@@ -1,13 +1,15 @@
 import { PET_CHOICES, type StudioSettings } from "@tiksee/core";
 import { ChipSelector, SliderRow, SwitchRow } from "@tiksee/ui";
 import { Aperture, Circle, Crosshair, Minus, Plus, Ruler, ScanFace, ZoomIn, ZoomOut } from "lucide-react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { sidecarClient } from "../../lib/sidecar-client.js";
 import { useFrame, useStudio } from "./context.js";
 import { ActionButton, Section } from "./controls-parts.js";
 import { HoldButton } from "./hold-button.js";
+
+const CameraExposureSection = lazy(() => import("./camera-exposure.js").then((m) => ({ default: m.CameraExposureSection })));
 
 /** Studio dock panels (lazy chunk, opened on demand): zoom, focus, look, framing, camera, pets. */
 
@@ -202,22 +204,27 @@ export function CameraPanel({ onSpace }: { onSpace: () => void }) {
         }
     };
     return (
-        <Section title={t("studio.controls.camera.title")}>
-            <div className="grid grid-cols-2 gap-2">
-                <ActionButton icon={<Aperture className="size-4" aria-hidden />} label={counting ? t("studio.controls.camera.counting") : t("studio.controls.camera.photo")} onClick={() => void photo()} />
-                <ActionButton
-                    icon={<Circle className={`size-4 ${recording ? "fill-white" : "fill-red-500 text-red-500"}`} aria-hidden />}
-                    label={recording ? t("studio.controls.camera.stop") : t("studio.controls.camera.record")}
-                    active={recording}
-                    onClick={() => void controller.run({ type: "camera", action: "record" })}
-                />
-            </div>
-            <p className="text-[0.6875rem] text-white/70">{t("studio.controls.camera.hint")}</p>
-            <ActionButton icon={<Ruler className="size-4" aria-hidden />} label={t("studio.space.open")} onClick={onSpace} />
-            <p className="text-[0.6875rem] text-white/70">
-                {studio.space.calibratedAt > 0 ? t("studio.space.calibratedShort", { vfov: Math.round(studio.vfovDeg) }) : t("studio.space.notCalibrated")}
-            </p>
-        </Section>
+        <>
+            <Section title={t("studio.controls.camera.title")}>
+                <div className="grid grid-cols-2 gap-2">
+                    <ActionButton icon={<Aperture className="size-4" aria-hidden />} label={counting ? t("studio.controls.camera.counting") : t("studio.controls.camera.photo")} onClick={() => void photo()} />
+                    <ActionButton
+                        icon={<Circle className={`size-4 ${recording ? "fill-white" : "fill-red-500 text-red-500"}`} aria-hidden />}
+                        label={recording ? t("studio.controls.camera.stop") : t("studio.controls.camera.record")}
+                        active={recording}
+                        onClick={() => void controller.run({ type: "camera", action: "record" })}
+                    />
+                </div>
+                <p className="text-[0.6875rem] text-white/70">{t("studio.controls.camera.hint")}</p>
+                <ActionButton icon={<Ruler className="size-4" aria-hidden />} label={t("studio.space.open")} onClick={onSpace} />
+                <p className="text-[0.6875rem] text-white/70">
+                    {studio.space.calibratedAt > 0 ? t("studio.space.calibratedShort", { vfov: Math.round(studio.vfovDeg) }) : t("studio.space.notCalibrated")}
+                </p>
+            </Section>
+            <Suspense fallback={<div className="h-24" aria-busy />}>
+                <CameraExposureSection />
+            </Suspense>
+        </>
     );
 }
 

@@ -63,6 +63,8 @@ export interface PipelineConfig {
     mirror: boolean;
     /** Main-thread fallback: run the heavy tasks on alternating frames. */
     stagger: boolean;
+    /** Beauty is on: load the face model even without face rules, run it every frame, send the owner's landmarks. */
+    beauty?: boolean;
 }
 
 /** Main thread -> vision worker. */

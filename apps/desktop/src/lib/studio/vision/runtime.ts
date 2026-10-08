@@ -92,8 +92,8 @@ export class StudioVision implements VisionRuntime {
         this.#intervalMs = intervalMs;
     }
 
-    async init(settings: VisionSettings, rotation: Rotation, mirror: boolean): Promise<void> {
-        this.#config = { settings, rotation, mirror, stagger: false };
+    async init(settings: VisionSettings, rotation: Rotation, mirror: boolean, beauty = false): Promise<void> {
+        this.#config = { settings, rotation, mirror, stagger: false, beauty };
         if (typeof Worker !== "undefined" && typeof OffscreenCanvas !== "undefined") {
             const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module", name: "tiksee-vision" });
             worker.onmessage = (ev: MessageEvent<FromWorker>) => this.#onMessage(ev.data);
@@ -112,7 +112,8 @@ export class StudioVision implements VisionRuntime {
                 this.#backend = null;
             }
         }
-        const { VisionPipeline } = await import("./pipeline.js");
+        const [{ VisionPipeline }, { quietMediaPipe }] = await Promise.all([import("./pipeline.js"), import("./quiet-console.js")]);
+        quietMediaPipe();
         const pipeline = new VisionPipeline();
         pipeline.onPose = (early) => this.#onPose(early);
         pipeline.onHands = (early) => this.#onHands(early);
@@ -121,10 +122,10 @@ export class StudioVision implements VisionRuntime {
         this.#backend = { kind: "main", pipeline };
     }
 
-    async apply(settings: VisionSettings, rotation: Rotation, mirror: boolean): Promise<void> {
+    async apply(settings: VisionSettings, rotation: Rotation, mirror: boolean, beauty = false): Promise<void> {
         const b = this.#backend;
-        if (!b) return this.init(settings, rotation, mirror);
-        this.#config = { settings, rotation, mirror, stagger: b.kind === "main" };
+        if (!b) return this.init(settings, rotation, mirror, beauty);
+        this.#config = { settings, rotation, mirror, stagger: b.kind === "main", beauty };
         if (b.kind === "worker") await this.#call({ id: 0, type: "apply", config: this.#config });
         else await b.pipeline.apply(this.#config);
     }
@@ -200,7 +201,10 @@ export class StudioVision implements VisionRuntime {
                 frame.timings["mode.worker"] = b.kind === "worker" ? 1 : 0;
                 this.#latest = frame;
             })
-            .catch((e: unknown) => console.warn("[vision] frame failed:", e))
+            .catch((e: unknown) => {
+                // Frames in flight when the runtime closes are rejected on purpose.
+                if (!this.#closed) console.warn("[vision] frame failed:", e);
+            })
             .finally(() => {
                 this.#inFlight = false;
                 const next = this.#pendingCapture;

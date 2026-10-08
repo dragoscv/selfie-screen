@@ -6,76 +6,10 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-/** Mirrors `PropView` / `CameraState` in src-tauri/src/camera/mod.rs (event `camera://state`). */
-interface PropView {
-    code: number;
-    name: string;
-    writable: boolean;
-    enabled: boolean;
-    value: number | null;
-    min: number | null;
-    max: number | null;
-    step: number | null;
-    options: number[];
-}
-
-interface CameraState {
-    transport: string;
-    connected: boolean;
-    model: string;
-    firmware: string;
-    error: string | null;
-    props: PropView[];
-}
+import { formatProp, type CameraState, type PropView } from "../lib/camera-format.js";
 
 /** Read-only or noisy properties shown as values, never as controls. */
 const READ_ONLY = new Set(["battery", "focusFound", "movieRecording", "zoomPosition", "zoomScale"]);
-
-const WB: Record<number, string> = {
-    0x0002: "AWB",
-    0x0004: "Daylight",
-    0x0006: "Incandescent",
-    0x0010: "Cloudy",
-    0x0011: "Shade",
-    0x0012: "C.Temp",
-    0x8001: "Fluor. warm",
-    0x8002: "Fluor. cool",
-    0x8003: "Fluor. day white",
-    0x8004: "Fluor. daylight",
-    0x8030: "Underwater",
-    0x8020: "Custom 1",
-};
-
-/** Sony SDIO value encodings (Camera Remote SDK docs). */
-function formatProp(name: string, v: number | null): string {
-    if (v === null) return "—";
-    switch (name) {
-        case "iso":
-            return (v & 0xffffff) === 0xffffff ? "ISO AUTO" : `ISO ${v & 0xffffff}`;
-        case "fNumber":
-            return v === 0 || v === 0xfffe || v === 0xffff ? "F--" : `F${(v / 100).toFixed(1).replace(/\.0$/, "")}`;
-        case "exposureBias": {
-            const signed = v > 0x7fff ? v - 0x10000 : v;
-            return `${signed > 0 ? "+" : ""}${(signed / 1000).toFixed(1)} EV`;
-        }
-        case "shutterSpeed": {
-            if (v === 0) return "BULB";
-            const num = Math.floor(v / 0x10000);
-            const den = v & 0xffff;
-            if (den === 0) return String(v);
-            if (num === 1) return `1/${den}`;
-            return `${(num / den).toFixed(num % den === 0 ? 0 : 1)}″`;
-        }
-        case "colorTemp":
-            return `${v} K`;
-        case "whiteBalance":
-            return WB[v] ?? `0x${v.toString(16)}`;
-        case "battery":
-            return `${v}%`;
-        default:
-            return String(v);
-    }
-}
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
