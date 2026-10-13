@@ -26,7 +26,8 @@ const PET_NAMES: Readonly<Record<string, readonly string[]>> = {
     redpanda: ["red panda", "redpanda", "panda"],
 };
 
-const fold = (text: string): string => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+/** Lower-case, diacritics removed (ș/ş -> s, ț/ţ -> t, ă/â -> a, î -> i). */
+export const fold = (text: string): string => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 /** The text names one of `pets` (species names, RO + EN). */
 export function mentionsPet(text: string, pets: readonly string[]): boolean {

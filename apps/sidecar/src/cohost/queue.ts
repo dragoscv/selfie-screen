@@ -22,6 +22,8 @@ export interface QueueEntry {
     /** Tempo / pitch for this entry (a pet's prosody); absent = settings.voice.speed / 1. */
     speed?: number;
     pitch?: number;
+    /** Spoken ahead of other entries at the next sentence boundary (a pet answering the streamer). */
+    priority?: boolean;
 }
 
 const ACTIVE: ReadonlySet<ReplyStatus> = new Set(["pending", "drafting", "ready", "speaking"]);

@@ -1,9 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
 import { load } from "@tauri-apps/plugin-store";
-import { parseSettings, VOICES, type AudioSettings, type VoiceSettings } from "@tiksee/core";
+import { parseSettings, STT_LANGUAGES, VOICES, type AudioSettings, type VoiceSettings } from "@tiksee/core";
 import { ChipSelector, SliderRow, SwitchRow } from "@tiksee/ui";
 import { Play, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { listAudioDevices, requestDeviceAccess, type AudioDeviceList } from "../../lib/audio/devices.js";
@@ -139,6 +139,77 @@ function PetVoice({ pet, sample }: { pet: string; sample: string }) {
             <ChipSelector label={t("studio.sound.voice")} options={PET_VOICES} value={voice} onSelect={setVoice} display={(v) => t(`studio.sound.voices.${v}`)} />
             <SliderRow label={t("studio.sound.speed")} value={prosody.speed} min={0.5} max={1.5} step={0.05} format={times} onCommit={(speed) => setProsody({ speed })} />
             <SliderRow label={t("studio.sound.pitch")} value={prosody.pitch} min={0.6} max={1.6} step={0.05} format={times} onCommit={(pitch) => setProsody({ pitch })} />
+            <Nicknames pet={pet} petName={petName} />
+        </div>
+    );
+}
+
+/** Names the streamer calls this pet by, comma separated (so the pet knows it is being talked to). */
+function Nicknames({ pet, petName }: { pet: string; petName: string }) {
+    const { studio, patchStudio } = useStudio();
+    const { t } = useTranslation();
+    const id = useId();
+    const ai = studio.petAi;
+    const saved = (ai.nicknames[pet] ?? []).join(", ");
+    // null = not editing: show the saved value (stays in sync with other windows).
+    const [draft, setDraft] = useState<string | null>(null);
+    const text = draft ?? saved;
+    const commit = () => {
+        if (draft === null) return;
+        setDraft(null);
+        const names = [...new Set(text.split(",").map((s) => s.trim().slice(0, 30)).filter(Boolean))].slice(0, 6);
+        const nicknames = { ...ai.nicknames };
+        if (names.length === 0) delete nicknames[pet];
+        else nicknames[pet] = names;
+        patchStudio({ petAi: { ...ai, nicknames } });
+    };
+    return (
+        <div className="space-y-1">
+            <label htmlFor={id} className="block text-[0.8125rem] text-white/80">
+                {t("studio.sound.nicknames", { name: petName })}
+            </label>
+            <input
+                id={id}
+                value={text}
+                maxLength={200}
+                placeholder={t("studio.sound.nicknamesPlaceholder")}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") commit();
+                }}
+                className={`w-full rounded-xl border border-white/15 bg-neutral-900/80 px-2.5 py-1.5 text-xs text-white placeholder:text-white/40 ${FOCUS_RING}`}
+            />
+        </div>
+    );
+}
+
+/** The ONE language the streamer speaks (transcription hint); changing it restarts the session. */
+function SttLanguage({ value, onChange }: { value: AudioSettings["sttLanguage"]; onChange: (v: AudioSettings["sttLanguage"]) => void }) {
+    const { t, i18n } = useTranslation();
+    const id = useId();
+    const names = useMemo(() => {
+        const dn = new Intl.DisplayNames([i18n.language], { type: "language" });
+        return STT_LANGUAGES.map((l) => ({ value: l, label: dn.of(l) ?? l })).sort((a, b) => a.label.localeCompare(b.label, i18n.language));
+    }, [i18n.language]);
+    return (
+        <div className="space-y-1">
+            <label htmlFor={id} className="block text-[0.8125rem] text-white/80">
+                {t("studio.sound.sttLanguage")}
+            </label>
+            <select
+                id={id}
+                value={value}
+                onChange={(e) => onChange(e.target.value as AudioSettings["sttLanguage"])}
+                className={`w-full rounded-xl border border-white/15 bg-neutral-900/80 px-2.5 py-1.5 text-xs text-white ${FOCUS_RING}`}
+            >
+                {names.map((n) => (
+                    <option key={n.value} value={n.value}>
+                        {n.label}
+                    </option>
+                ))}
+            </select>
+            <p className="text-[0.6875rem] text-white/70">{t("studio.sound.sttLanguageHint")}</p>
         </div>
     );
 }
@@ -165,6 +236,9 @@ export function SoundPanel() {
     return (
         <>
             <Devices sound={sound} patch={audio} />
+            <Section title={t("studio.sound.transcription")}>
+                <SttLanguage value={sound.audio.sttLanguage} onChange={(sttLanguage) => audio({ sttLanguage })} />
+            </Section>
             <Section title={t("studio.sound.cohost")}>
                 <SwitchRow label={t("studio.sound.voiceOn")} checked={sound.voice.enabled} onChange={(enabled) => voice({ enabled })} />
                 <SliderRow label={t("studio.sound.volume")} value={sound.voice.volume} min={0} max={1} step={0.05} format={pct} onCommit={(volume) => voice({ volume })} />
@@ -184,6 +258,12 @@ export function SoundPanel() {
             </Section>
             <Section title={t("studio.sound.pets")}>
                 <SwitchRow label={t("studio.sound.petVoice")} description={t("studio.sound.petVoiceHint")} checked={ai.voice} onChange={(on) => patchStudio({ petAi: { ...ai, voice: on } })} />
+                <SwitchRow
+                    label={t("studio.sound.fastPath")}
+                    description={t("studio.sound.fastPathHint")}
+                    checked={ai.addressedFastPath}
+                    onChange={(addressedFastPath) => patchStudio({ petAi: { ...ai, addressedFastPath } })}
+                />
                 {pets.length === 0 ? (
                     <p className="text-[0.6875rem] text-white/70">{t("studio.sound.noPets")}</p>
                 ) : (

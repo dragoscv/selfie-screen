@@ -7,7 +7,10 @@ export class TranscriptWindow {
     #finals: Array<{ id: string; text: string; at: number }> = [];
     #partial: { id: string; text: string; at: number } | null = null;
     #windowMs: number;
+    /** Last frame of any kind (partials included): the co-host's quiet-after-streamer gate. */
     lastAt = 0;
+    /** Last FINAL segment: partials keep arriving during continuous speech and must not hold the pets' floor. */
+    lastFinalAt = 0;
 
     constructor(windowMs = 60_000) {
         this.#windowMs = windowMs;
@@ -17,6 +20,7 @@ export class TranscriptWindow {
         this.lastAt = Math.max(this.lastAt, at);
         const clean = text.trim();
         if (final) {
+            if (clean !== "") this.lastFinalAt = Math.max(this.lastFinalAt, at);
             if (this.#partial?.id === itemId) this.#partial = null;
             if (clean !== "") {
                 const existing = this.#finals.findIndex((s) => s.id === itemId);

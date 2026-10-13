@@ -157,4 +157,35 @@ describe("CoHost", () => {
         }
         expect(t.codai.streamChat).toHaveBeenCalledTimes(2);
     });
+
+    it("an addressed (priority) line goes ahead of a running reply at its next sentence boundary", async () => {
+        const t = setup((s) => (s.assistant.replyMode = "auto"), fakeCodai("Unu. Doi."));
+        engines.push(t.engine);
+        t.engine.onEvent(chat("ce faci codai?"));
+        await settle();
+        expect(t.says().map((m) => m.text)).toEqual(["Unu."]);
+        t.engine.speak("Normal.", {});
+        t.engine.speak("Sunt aici!", { voice: "emil", priority: "addressed" });
+        // Never cuts the running sentence.
+        expect(t.says()).toHaveLength(1);
+        t.engine.onSayState(t.says()[0]?.id ?? "", "done");
+        expect(t.says().at(-1)).toMatchObject({ text: "Sunt aici!", voice: "emil" });
+        t.engine.onSayState(t.says().at(-1)?.id ?? "", "done");
+        t.engine.onSayState(t.says().at(-1)?.id ?? "", "done");
+        expect(t.says().map((m) => m.text)).toEqual(["Unu.", "Sunt aici!", "Doi.", "Normal."]);
+    });
+
+    it("a priority line skips quietAfterStreamerMs (250 ms instead); a normal one waits", () => {
+        const t = setup((s) => {
+            s.assistant.transcribe = true;
+            s.assistant.quietAfterStreamerMs = 60_000;
+        });
+        engines.push(t.engine);
+        t.engine.onTranscript("1", "pisico, ce faci?", true, Date.now() - 400);
+        t.engine.speak("Normal.");
+        expect(t.says()).toHaveLength(0);
+        t.engine.speak("Bine, mersi!", { priority: "addressed" });
+        expect(t.says().map((m) => m.text)).toEqual(["Bine, mersi!"]);
+        expect(t.engine.lastStreamerAt).toBeLessThanOrEqual(Date.now() - 400);
+    });
 });

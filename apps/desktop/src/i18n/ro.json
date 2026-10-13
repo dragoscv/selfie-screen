@@ -356,6 +356,8 @@
             "output": "Ieșirea vocii",
             "input": "Microfon",
             "inputHint": "Anularea ecoului și reducerea zgomotului sunt mereu active.",
+            "sttLanguage": "Limba în care vorbești (transcriere)",
+            "sttLanguageHint": "O singură limbă, pentru transcrieri mai rapide și mai exacte. Și în Studio → Sunet.",
             "systemDefault": "Implicit sistem",
             "missing": "Dispozitiv indisponibil (deconectat?)",
             "unnamed": "Dispozitivul {{n}}",

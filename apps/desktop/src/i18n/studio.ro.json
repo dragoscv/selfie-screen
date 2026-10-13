@@ -841,6 +841,13 @@
         "pets": "Vocile animăluțelor",
         "petVoice": "Animăluțele vorbesc cu voce",
         "petVoiceHint": "Replicile lor trec prin coada vocii co-host-ului, fiecare cu vocea, viteza și tonul lui.",
+        "fastPath": "Răspunde imediat când e strigat",
+        "fastPathHint": "Când spui numele unui animăluț (sau o poreclă), răspunde pe loc în loc să-și aștepte rândul.",
+        "nicknames": "Cum îi spui lui {{name}}",
+        "nicknamesPlaceholder": "ex. Bubu, pisi",
+        "transcription": "Transcriere",
+        "sttLanguage": "Limba în care vorbești",
+        "sttLanguageHint": "O singură limbă: transcrierea e mai rapidă și mai exactă. La schimbare, sesiunea microfonului repornește.",
         "noPets": "Niciun animăluț pe ecran: alege-le din Animăluțe."
     },
     "mic": {

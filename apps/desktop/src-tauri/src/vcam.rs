@@ -13,6 +13,8 @@
 //! fallback.
 
 use serde::Serialize;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::ipc::Request;
 
 pub use imp::{VcamCtl, init};
@@ -28,6 +30,123 @@ pub struct VcamStatus {
     pub fps: f32,
     pub registered: bool,
     pub error: Option<String>,
+    /// Producer-side frame counters (totals since launch + last window's max gap).
+    pub stats: VcamStats,
+}
+
+/// Frame counters of the producer side.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VcamStats {
+    /// Frames that arrived from the studio (socket or IPC).
+    pub received: u64,
+    /// Frames written into the shared ring.
+    pub published: u64,
+    /// Frames dropped because no consumer had mapped the ring yet.
+    pub no_ring: u64,
+    /// Largest gap between two received frames in the last report window, ms.
+    pub max_gap_ms: u64,
+}
+
+/// How often [`Counters::take_report`] yields a summary.
+#[cfg_attr(not(windows), allow(dead_code))]
+const REPORT_EVERY_MS: u64 = 10_000;
+
+/// Lock-free per-frame counters; the 10 s report window is the only locked part
+/// and is touched once per window.
+#[derive(Debug, Default)]
+#[cfg_attr(not(windows), allow(dead_code))]
+struct Counters {
+    received: AtomicU64,
+    published: AtomicU64,
+    no_ring: AtomicU64,
+    /// `now_ms + 1` of the last received frame (0 = none yet).
+    last_received: AtomicU64,
+    /// Max gap in the current window.
+    max_gap_ms: AtomicU64,
+    /// Max gap of the last completed window (what `vcam_status` reports).
+    last_window_gap_ms: AtomicU64,
+    /// Start of the current window, `now_ms + 1` (0 = not started).
+    window_start: AtomicU64,
+    /// Totals at the start of the current window.
+    window_base: Mutex<VcamStats>,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl Counters {
+    fn on_received(&self, now_ms: u64) {
+        self.received.fetch_add(1, Ordering::Relaxed);
+        let prev = self.last_received.swap(now_ms + 1, Ordering::Relaxed);
+        if prev != 0 {
+            self.max_gap_ms
+                .fetch_max(now_ms.saturating_sub(prev - 1), Ordering::Relaxed);
+        }
+    }
+
+    fn on_published(&self) {
+        self.published.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn on_no_ring(&self) {
+        self.no_ring.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn totals(&self) -> VcamStats {
+        VcamStats {
+            received: self.received.load(Ordering::Relaxed),
+            published: self.published.load(Ordering::Relaxed),
+            no_ring: self.no_ring.load(Ordering::Relaxed),
+            max_gap_ms: self.last_window_gap_ms.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Counts of the window that just ended, once every [`REPORT_EVERY_MS`];
+    /// resets the window's max gap. `None` when not due (or another thread won).
+    fn take_report(&self, now_ms: u64) -> Option<VcamStats> {
+        let start = self.window_start.load(Ordering::Relaxed);
+        if start == 0 {
+            let _ = self.window_start.compare_exchange(
+                0,
+                now_ms + 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            );
+            return None;
+        }
+        if now_ms.saturating_sub(start - 1) < REPORT_EVERY_MS
+            || self
+                .window_start
+                .compare_exchange(start, now_ms + 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_err()
+        {
+            return None;
+        }
+        let gap = self.max_gap_ms.swap(0, Ordering::Relaxed);
+        self.last_window_gap_ms.store(gap, Ordering::Relaxed);
+        let totals = self.totals();
+        let mut base = self
+            .window_base
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let window = VcamStats {
+            received: totals.received - base.received,
+            published: totals.published - base.published,
+            no_ring: totals.no_ring - base.no_ring,
+            max_gap_ms: gap,
+        };
+        *base = totals;
+        Some(window)
+    }
+}
+
+impl std::fmt::Display for VcamStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "recv {} pub {} noRing {} maxGap {} ms",
+            self.received, self.published, self.no_ring, self.max_gap_ms
+        )
+    }
 }
 
 /// Raw NV12 frame in the body; `x-w` / `x-h` headers give its size.
@@ -88,6 +207,7 @@ mod imp {
     use windows::Win32::UI::Shell::{SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW};
     use windows::core::{HSTRING, PCWSTR, w};
 
+    use super::Counters;
     use super::VcamStatus;
 
     const RETRY_EVERY: Duration = Duration::from_secs(2);
@@ -162,6 +282,7 @@ mod imp {
     #[derive(Default)]
     pub struct VcamCtl {
         inner: std::sync::Arc<Mutex<Inner>>,
+        counters: std::sync::Arc<Counters>,
         endpoint: Mutex<Option<super::VcamEndpoint>>,
     }
 
@@ -171,7 +292,7 @@ mod imp {
         }
 
         fn publish(&self, width: u32, height: u32, frame: &[u8]) -> Result<(), String> {
-            publish(&self.inner, width, height, frame)
+            publish(&self.inner, &self.counters, width, height, frame)
         }
     }
 
@@ -179,11 +300,27 @@ mod imp {
         inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn publish(shared: &Mutex<Inner>, width: u32, height: u32, frame: &[u8]) -> Result<(), String> {
+    /// Logs the 10 s counter summary when due.
+    fn report(counters: &Counters) {
+        if let Some(window) = counters.take_report(tick_ms()) {
+            log::info!("vcam: {window}");
+        }
+    }
+
+    fn publish(
+        shared: &Mutex<Inner>,
+        counters: &Counters,
+        width: u32,
+        height: u32,
+        frame: &[u8],
+    ) -> Result<(), String> {
+        counters.on_received(tick_ms());
+        report(counters);
         {
             let mut inner = lock_inner(shared);
             let Some(ring) = inner.ring() else {
                 // No consumer has started the camera yet: nothing to feed.
+                counters.on_no_ring();
                 return Ok(());
             };
             let result = ring.publish_with(width, height, tick_ms(), |px| {
@@ -200,6 +337,7 @@ mod imp {
                 Ok(_) => {
                     inner.error = None;
                     inner.record_frame();
+                    counters.on_published();
                     Ok(())
                 }
                 Err(error) => {
@@ -214,6 +352,7 @@ mod imp {
     impl VcamCtl {
         fn status(&self) -> VcamStatus {
             let registered = registered();
+            report(&self.counters);
             let mut inner = self.lock();
             let ring = inner.ring();
             let consumer = ring.and_then(|r| r.active());
@@ -236,6 +375,7 @@ mod imp {
                 fps,
                 registered,
                 error: inner.error.clone(),
+                stats: self.counters.totals(),
             }
         }
 
@@ -355,9 +495,10 @@ mod imp {
             token: token.clone(),
         };
         let shared = std::sync::Arc::clone(&state.inner);
+        let counters = std::sync::Arc::clone(&state.counters);
         std::thread::Builder::new()
             .name("vcam-ws".into())
-            .spawn(move || serve(listener, token, &shared))
+            .spawn(move || serve(listener, token, &shared, &counters))
             .map_err(|e| e.to_string())?;
         log::info!("vcam: frame socket on 127.0.0.1:{port}");
         *slot = Some(ep.clone());
@@ -384,7 +525,12 @@ mod imp {
     // The handshake callback's Err type is tungstenite's fixed `ErrorResponse`
     // (an http::Response); boxing it is not an option the API offers.
     #[allow(clippy::result_large_err)]
-    fn serve(listener: std::net::TcpListener, token: String, shared: &Mutex<Inner>) {
+    fn serve(
+        listener: std::net::TcpListener,
+        token: String,
+        shared: &Mutex<Inner>,
+        counters: &Counters,
+    ) {
         for stream in listener.incoming().flatten() {
             let _ = stream.set_nodelay(true);
             let expected = format!("/{token}");
@@ -411,7 +557,7 @@ mod imp {
                         }
                         let w = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                         let h = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
-                        if let Err(error) = publish(shared, w, h, &data[8..]) {
+                        if let Err(error) = publish(shared, counters, w, h, &data[8..]) {
                             log::warn!("vcam: frame rejected: {error}");
                         }
                     }
@@ -489,5 +635,65 @@ mod imp {
 
     pub fn init(app: &tauri::AppHandle) {
         app.manage(VcamCtl);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Counters, REPORT_EVERY_MS, VcamStats};
+
+    #[test]
+    fn counts_frames_and_tracks_the_max_gap() {
+        let c = Counters::default();
+        c.on_received(1_000);
+        c.on_published();
+        c.on_received(1_016);
+        c.on_published();
+        c.on_received(1_064);
+        c.on_no_ring();
+        assert_eq!(c.max_gap_ms.load(std::sync::atomic::Ordering::Relaxed), 48);
+        let t = c.totals();
+        assert_eq!((t.received, t.published, t.no_ring), (3, 2, 1));
+    }
+
+    #[test]
+    fn reports_once_per_window_and_resets_the_gap() {
+        let c = Counters::default();
+        assert_eq!(c.take_report(0), None, "first call only starts the window");
+        c.on_received(10);
+        c.on_received(60);
+        c.on_published();
+        assert_eq!(c.take_report(REPORT_EVERY_MS - 1), None);
+        let w = c.take_report(REPORT_EVERY_MS).expect("window due");
+        assert_eq!(
+            w,
+            VcamStats {
+                received: 2,
+                published: 1,
+                no_ring: 0,
+                max_gap_ms: 50
+            }
+        );
+        assert_eq!(
+            c.totals().max_gap_ms,
+            50,
+            "status shows the last window's gap"
+        );
+        c.on_received(REPORT_EVERY_MS + 5);
+        let w = c.take_report(2 * REPORT_EVERY_MS).expect("second window");
+        assert_eq!((w.received, w.published), (1, 0));
+        // Gap between the 60 ms frame and this one spans the window boundary.
+        assert_eq!(w.max_gap_ms, REPORT_EVERY_MS + 5 - 60);
+    }
+
+    #[test]
+    fn formats_the_log_line() {
+        let s = VcamStats {
+            received: 300,
+            published: 300,
+            no_ring: 0,
+            max_gap_ms: 48,
+        };
+        assert_eq!(s.to_string(), "recv 300 pub 300 noRing 0 maxGap 48 ms");
     }
 }

@@ -59,6 +59,10 @@ export const MIN_GAP_MS = 6_000;
 export const BUSY_GAP_PER_MSG_MS = 120;
 export const MAX_GAP_MS = 20_000;
 export const STREAMER_HOLD_MS = 1_800;
+/** Addressed fast path: wait only this long after the streamer's final segment. */
+export const URGENT_HOLD_MS = 300;
+/** Extra hourly calls the addressed fast path may spend on top of the level/`maxCallsPerHour` cap. */
+export const ADDRESSED_PER_HOUR = 60;
 export const MAX_PET_EXCHANGES = 2;
 const MAX_REASONS = 4;
 const REASON_TTL_MS = 25_000;
@@ -85,6 +89,7 @@ export interface FloorState {
     maxCallsPerHour: number;
     /** Chat messages in the last minute. */
     chatPerMinute: number;
+    /** Epoch ms of the streamer's last FINAL transcript segment (partials never hold the floor). */
     lastStreamerAt: number;
     /** Something is being voiced right now (co-host or a voiced pet line). */
     speaking: boolean;
@@ -104,6 +109,7 @@ export class Floor {
     #lastLineAt = Number.NEGATIVE_INFINITY;
     #exchanges = 0;
     #calls: number[] = [];
+    #urgentCalls: number[] = [];
 
     /** Keep only these pets (the ones in the studio). */
     setPets(pets: readonly string[], now: number): void {
@@ -135,9 +141,20 @@ export class Floor {
         return p.pressure;
     }
 
+    /** All agent calls in the last hour (regular + addressed). */
     callsLastHour(now: number): number {
+        return this.#regularCalls(now) + this.urgentCallsLastHour(now);
+    }
+
+    #regularCalls(now: number): number {
         this.#calls = this.#calls.filter((at) => now - at < HOUR_MS);
         return this.#calls.length;
+    }
+
+    /** Calls spent by the addressed fast path in the last hour. */
+    urgentCallsLastHour(now: number): number {
+        this.#urgentCalls = this.#urgentCalls.filter((at) => now - at < HOUR_MS);
+        return this.#urgentCalls.length;
     }
 
     /** Global gap before the next pet line, longer when the chat is busy. */
@@ -151,7 +168,7 @@ export class Floor {
         if (!Number.isFinite(threshold) || state.quiet || state.speaking) return null;
         if (now - state.lastStreamerAt < STREAMER_HOLD_MS) return null;
         if (now - this.#lastLineAt < this.gapMs(state.chatPerMinute)) return null;
-        if (this.callsLastHour(now) >= Math.min(LEVEL_RATE[state.level], state.maxCallsPerHour)) return null;
+        if (this.#regularCalls(now) >= Math.min(LEVEL_RATE[state.level], state.maxCallsPerHour)) return null;
         const reactive = state.level === "reactive";
         let best: FloorPick | null = null;
         for (const [pet, p] of this.#pets) {
@@ -174,16 +191,41 @@ export class Floor {
     /** The picked pet's agent is being called (spends budget, resets its pressure). */
     granted(pet: string, now: number): void {
         this.#calls.push(now);
+        this.#reset(pet);
+    }
+
+    #reset(pet: string): void {
         const p = this.#pets.get(pet);
         if (!p) return;
         p.pressure = 0;
         p.reasons = [];
-        p.spokeAt = now;
+    }
+
+    /**
+     * Addressed fast path: the streamer talked TO `pet`. Grants it right away, bypassing the
+     * streamer hold (only {@link URGENT_HOLD_MS} after the final segment), the global gap and the
+     * per-pet cooldown — never mute/quiet, level off/local, or the separate hourly addressed
+     * budget ({@link ADDRESSED_PER_HOUR} on top of the regular cap, so the total never exceeds
+     * it by more). `speaking` is not checked: the voiced reply queues ahead with priority.
+     * Returns false when not allowed (nothing is consumed then).
+     */
+    urgent(pet: string, state: FloorState, now: number): boolean {
+        if (!Number.isFinite(THRESHOLD[state.level]) || state.quiet) return false;
+        if (!this.#pets.has(pet)) return false;
+        if (now - state.lastStreamerAt < URGENT_HOLD_MS) return false;
+        if (this.urgentCallsLastHour(now) >= ADDRESSED_PER_HOUR) return false;
+        this.#exchanges = 0;
+        this.#urgentCalls.push(now);
+        this.#reset(pet);
+        return true;
     }
 
     /** The agent produced a line (or chose silence: spoke=false). */
     spoke(pet: string, spoke: boolean, now: number): void {
         if (!spoke) return;
+        // The cooldown starts when a line is actually said: a silent turn must not burn it.
+        const p = this.#pets.get(pet);
+        if (p) p.spokeAt = now;
         this.#lastLineAt = now;
         const wasPet = this.#lastSpeaker !== null && this.#lastSpeaker !== pet;
         this.#lastSpeaker = pet;

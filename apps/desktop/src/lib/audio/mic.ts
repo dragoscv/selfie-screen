@@ -198,7 +198,8 @@ export class Mic {
         const deviceChanged = config.audio.inputDeviceId !== this.#config.audio.inputDeviceId;
         const modelChanged =
             config.codai.sttModel !== this.#config.codai.sttModel ||
-            config.codai.baseUrl !== this.#config.codai.baseUrl;
+            config.codai.baseUrl !== this.#config.codai.baseUrl ||
+            config.audio.sttLanguage !== this.#config.audio.sttLanguage;
         this.#config = config;
         if (deviceChanged) {
             this.#closeCapture();
@@ -208,7 +209,11 @@ export class Mic {
                 this.#setPhase("error", message);
             });
         }
-        if (modelChanged) this.#ws?.close();
+        if (modelChanged) {
+            // A new session with the new model/language right away (not after a backoff).
+            this.#backoff = BACKOFF_MIN_MS;
+            this.#ws?.close();
+        }
     }
 
     setPushToTalk(active: boolean): void {
@@ -338,7 +343,7 @@ export class Mic {
                 const wsBase = baseUrl.replace(/^http/i, "ws");
                 const params = new URLSearchParams({
                     model: this.#config.codai.sttModel,
-                    language: "ro",
+                    language: this.#config.audio.sttLanguage,
                     key: token,
                     session_id: this.#sessionId,
                 });
@@ -397,7 +402,7 @@ export class Mic {
                         audio: {
                             input: {
                                 format: { type: "audio/pcm", rate: 24_000 },
-                                transcription: { model: this.#config.codai.sttModel, language: "ro" },
+                                transcription: { model: this.#config.codai.sttModel, language: this.#config.audio.sttLanguage },
                             },
                         },
                     },

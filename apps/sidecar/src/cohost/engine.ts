@@ -34,6 +34,8 @@ const TEMPLATE_TTL_MS = 60_000;
 /** If the renderer never answers `sayState`, assume the utterance ended. */
 const SAY_WATCHDOG_BASE_MS = 15_000;
 const SAY_WATCHDOG_PER_CHAR_MS = 90;
+/** Quiet window after the streamer before a priority (addressed) line; replaces `quietAfterStreamerMs`. */
+export const PRIORITY_QUIET_MS = 250;
 
 const AI_KINDS: ReadonlySet<EntryKind> = new Set(["ai"]);
 
@@ -42,6 +44,8 @@ export interface SpeakOptions {
     voice?: string | undefined;
     speed?: number | undefined;
     pitch?: number | undefined;
+    /** "addressed": a pet answering the streamer — ahead of queued lines, shorter quiet window. */
+    priority?: "addressed" | undefined;
 }
 
 export interface CoHostDeps {
@@ -132,9 +136,9 @@ export class CoHost {
         return this.#current !== null;
     }
 
-    /** When the streamer last spoke (transcript), epoch ms; 0 = never. */
+    /** When the streamer last finished a sentence (final transcript), epoch ms; 0 = never. */
     get lastStreamerAt(): number {
-        return this.#transcript.lastAt;
+        return this.#transcript.lastFinalAt;
     }
 
     snapshot(): ReplyItem[] {
@@ -269,6 +273,7 @@ export class CoHost {
                 ...(opts.voice ? { voice: opts.voice } : {}),
                 ...(opts.speed !== undefined ? { speed: opts.speed } : {}),
                 ...(opts.pitch !== undefined ? { pitch: opts.pitch } : {}),
+                ...(opts.priority === "addressed" ? { priority: true } : {}),
             },
             now,
         );
@@ -446,19 +451,26 @@ export class CoHost {
         const control = this.#deps.control.state;
         const voiceEnabled = settings.voice.enabled && settings.voice.engine !== "off";
 
+        // A pet answering the streamer goes first: at the next sentence boundary of a running
+        // reply (never mid-word: `#current` is null here), with a shorter quiet window.
+        const priority = this.#queue
+            .entries()
+            .find((e) => e.priority === true && (e.item.status === "ready" || e.item.status === "speaking") && e.parts.length > 0);
+
         // A reply mid-way through its sentences always finishes first, and
         // nothing else starts while its next sentence is still streaming.
         const continuing = this.#queue.entries().find((e) => e.item.status === "speaking");
-        if (continuing && continuing.parts.length === 0) return;
+        if (!priority && continuing && continuing.parts.length === 0) return;
 
         const block = speakBlock({
             control,
             lastTranscriptAt: this.#transcript.lastAt,
-            quietAfterStreamerMs: settings.assistant.quietAfterStreamerMs,
+            quietAfterStreamerMs: priority ? PRIORITY_QUIET_MS : settings.assistant.quietAfterStreamerMs,
             voiceEnabled,
             now,
         });
         const candidate =
+            priority ??
             continuing ??
             this.#queue.nextSpeakable(now, (entry) => entry.approved || entry.kind !== "ai");
         if (!candidate) return;

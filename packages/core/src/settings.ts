@@ -280,11 +280,19 @@ export type CodaiSettings = z.infer<typeof codaiSchema>;
  * Audio devices (WebAudio sink / mic ids; "" = system default).
  * ------------------------------------------------------------------ */
 
+/**
+ * Language the streamer SPEAKS (speech-to-text hint for the realtime transcription). No "auto":
+ * auto-detect guesses wrong on short turns. Romanian goes to the Deepgram lane on the gateway.
+ */
+export const STT_LANGUAGES = ["ro", "en", "es", "it", "fr", "de", "pt", "hu", "pl", "uk", "ru", "tr", "nl", "el", "ar", "hi", "zh", "ja", "ko"] as const;
+
 export const audioSchema = z.object({
     outputDeviceId: z.string().default(""),
     inputDeviceId: z.string().default(""),
     /** Lower TTS volume to this fraction while the streamer is talking. */
     duckTo: z.number().min(0).max(1).default(0.35),
+    /** Language the streamer speaks, for transcription (one language, see STT_LANGUAGES). */
+    sttLanguage: z.enum(STT_LANGUAGES).catch("ro").default("ro"),
 });
 export type AudioSettings = z.infer<typeof audioSchema>;
 
@@ -614,6 +622,10 @@ export const studioSchema = z.object({
             reflection: z.boolean().default(true),
             /** Cap on LLM calls per hour for pets (cost guard). */
             maxCallsPerHour: z.number().int().min(10).max(1200).default(240),
+            /** Extra names the streamer calls each pet by (pet id -> nicknames), for "talking to the pets". */
+            nicknames: z.record(z.string(), z.array(z.string().min(1).max(30)).max(6)).default({}),
+            /** Answer at once when the streamer talks to a pet (skips the turn-taking waits, not mute). */
+            addressedFastPath: z.boolean().default(true),
         })
         .prefault({}),
     /** Hand interaction with pets: pinch = grab/drag, second-hand pinch = resize. */
@@ -641,8 +653,11 @@ export const studioSchema = z.object({
     showStats: z.boolean().default(false),
     /** Feed the composited frame to the native "TikSee Camera" (WS25-01). */
     virtualCamera: z.boolean().default(true),
-    /** 30 or 60 fps virtual-camera output. */
-    virtualCameraFps: z.union([z.literal(30), z.literal(60)]).default(60),
+    /**
+     * 30 or 60 fps virtual-camera output. 30 by default: TikTok LIVE encodes 30 fps, and 60 doubles
+     * the readback/socket work so frames got dropped under load (measured 2026-10-13).
+     */
+    virtualCameraFps: z.union([z.literal(30), z.literal(60)]).default(30),
     /** Studio render cap: 60 (= camera, default), 120, or 0 = monitor refresh. Frames above the camera rate are redrawn identical images. */
     previewFps: z.union([z.literal(60), z.literal(120), z.literal(0)]).default(60),
     /** Vertical field of view of the OUTPUT frame (before digital zoom), degrees; drives 3D placement of pets/AR/effects. */

@@ -355,6 +355,8 @@
             "output": "Voice output",
             "input": "Microphone",
             "inputHint": "Echo cancellation and noise suppression are always on.",
+            "sttLanguage": "Language you speak (transcription)",
+            "sttLanguageHint": "One language only, for faster and more accurate transcripts. Also in Studio → Sound.",
             "systemDefault": "System default",
             "missing": "Unavailable device (unplugged?)",
             "unnamed": "Device {{n}}",

@@ -836,6 +836,13 @@
         "pets": "Pet voices",
         "petVoice": "Pets speak out loud",
         "petVoiceHint": "Pet lines through the co-host voice queue, each with its own voice, speed and pitch.",
+        "fastPath": "Answer instantly when called",
+        "fastPathHint": "When you say a pet's name (or a nickname), it replies right away instead of waiting for its turn.",
+        "nicknames": "What you call {{name}}",
+        "nicknamesPlaceholder": "e.g. Bubu, kitty",
+        "transcription": "Transcription",
+        "sttLanguage": "Language you speak",
+        "sttLanguageHint": "One language only: transcription is faster and more accurate. Changing it restarts the mic session.",
         "noPets": "No pets on screen: pick them in Pets."
     },
     "mic": {

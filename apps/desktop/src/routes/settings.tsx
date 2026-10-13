@@ -16,6 +16,7 @@ import {
     SPEECH_LANGUAGES,
     STUDIO_ORIENTATIONS,
     STREAM_SCENES,
+    STT_LANGUAGES,
     SURFACE_MODES,
     THEME_MODES,
     VOICES,
@@ -453,7 +454,7 @@ function VoiceSection() {
 /* ------------------------------------------------------------------ */
 
 function AudioSection() {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const update = useSettingsUpdate();
     const audio = useAppStore((s) => s.settings.audio);
     const [devices, setDevices] = useState<AudioDeviceList | null>(null);
@@ -532,6 +533,16 @@ function AudioSection() {
                         ...inputs.map((d, i) => ({ value: d.deviceId, label: label(d.label, i) })),
                     ]}
                     hint={t("settings.audio.inputHint")}
+                />
+                <SelectField
+                    label={t("settings.audio.sttLanguage")}
+                    value={audio.sttLanguage}
+                    onChange={(v) => update("audio", { sttLanguage: v as Settings["audio"]["sttLanguage"] })}
+                    options={(() => {
+                        const dn = new Intl.DisplayNames([i18n.language], { type: "language" });
+                        return STT_LANGUAGES.map((l) => ({ value: l, label: dn.of(l) ?? l })).sort((x, y) => x.label.localeCompare(y.label, i18n.language));
+                    })()}
+                    hint={t("settings.audio.sttLanguageHint")}
                 />
             </Card>
 

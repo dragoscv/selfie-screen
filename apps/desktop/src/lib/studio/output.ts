@@ -1,6 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type * as THREE from "three/webgpu";
 
+import { effectiveFps, nextPumpDeadline } from "./vcam-pacing.js";
+
 /* ------------------------------------------------------------------ *
  * RGBA -> NV12, BT.709 limited range. Mirrors
  * src-tauri/vcam/shared/src/nv12.rs exactly (8.8 fixed point, 2x2 averaged
@@ -116,12 +118,26 @@ export interface VcamStatusWire {
     consumer?: { width: number; height: number; fps?: number } | [number, number, number?] | null;
 }
 
-export function parseVcamStatus(s: VcamStatusWire | null | undefined): { state: VcamState; fps: number; consumerSize?: [number, number] } {
+export interface VcamStatusInfo {
+    state: VcamState;
+    fps: number;
+    consumerSize?: [number, number];
+    /** Frame rate the consuming app negotiated, when known. */
+    consumerFps?: number;
+}
+
+export function parseVcamStatus(s: VcamStatusWire | null | undefined): VcamStatusInfo {
     const known: VcamState[] = ["off", "waiting", "streaming", "unregistered", "error"];
     const state = known.includes(s?.state as VcamState) ? (s?.state as VcamState) : s ? "waiting" : "off";
     const c = s?.consumer;
     const size: [number, number] | undefined = Array.isArray(c) ? [c[0], c[1]] : c ? [c.width, c.height] : undefined;
-    return { state, fps: s?.fps ?? 0, ...(size && size[0] > 0 && size[1] > 0 ? { consumerSize: size } : {}) };
+    const fps = Array.isArray(c) ? c[2] : c?.fps;
+    return {
+        state,
+        fps: s?.fps ?? 0,
+        ...(size && size[0] > 0 && size[1] > 0 ? { consumerSize: size } : {}),
+        ...(fps !== undefined && fps > 0 ? { consumerFps: fps } : {}),
+    };
 }
 
 export interface PumpTimings {
@@ -137,6 +153,12 @@ export interface PumpTimings {
     vcamDropSlot: number;
     vcamDropWs: number;
     vcamDropIpc: number;
+    /** Frames skipped BEFORE the compute + readback because the socket already held a frame. */
+    vcamSkipWs: number;
+    /** Readbacks discarded because a newer frame had already been sent. */
+    vcamSuperseded: number;
+    /** Rate the pump currently targets (settings fps capped by the consumer's fps). */
+    vcamTargetFps: number;
 }
 
 interface BackendInternals {
@@ -165,13 +187,28 @@ export const MAP_MODE = { READ: 0x0001, WRITE: 0x0002 } as const;
 
 const ema = (prev: number, v: number): number => (prev === 0 ? v : prev * 0.9 + v * 0.1);
 
+/** Never queue more than this many frames in the socket (readbacks are coalesced, so 3 is safe). */
+const SOCKET_FRAMES = 3;
+
 /**
  * Converts the OUTPUT render target to NV12 every output frame and ships it
  * to Rust over raw IPC. Never blocks the frame: a busy readback slot or a
  * pending IPC call drops the frame.
  */
 export class VcamPump {
-    readonly timings: PumpTimings = { vcamConvert: 0, vcamReadback: 0, vcamIpc: 0, vcamFps: 0, vcamDropped: 0, vcamDropSlot: 0, vcamDropWs: 0, vcamDropIpc: 0 };
+    readonly timings: PumpTimings = {
+        vcamConvert: 0,
+        vcamReadback: 0,
+        vcamIpc: 0,
+        vcamFps: 0,
+        vcamDropped: 0,
+        vcamDropSlot: 0,
+        vcamDropWs: 0,
+        vcamDropIpc: 0,
+        vcamSkipWs: 0,
+        vcamSuperseded: 0,
+        vcamTargetFps: 0,
+    };
     readonly #renderer: THREE.WebGPURenderer;
     readonly #onError: (m: string) => void;
     readonly #ipc: boolean;
@@ -180,7 +217,7 @@ export class VcamPump {
         pipeline: GPUComputePipeline;
         params: GPUBuffer;
         out: GPUBuffer | null;
-        staging: { buf: GPUBuffer; busy: boolean }[];
+        staging: { buf: GPUBuffer; busy: boolean; seq: number }[];
         bind: GPUBindGroup | null;
         boundTex: GPUTexture | null;
         boundOut: GPUBuffer | null;
@@ -190,12 +227,15 @@ export class VcamPump {
     #frameSlot = 0;
     #ipcBusy = false;
     #cpuBusy = false;
-    #lastPump = 0;
+    #nextPump = 0;
+    /** Monotonic id of each GPU readback, and the newest one already sent. */
+    #seq = 0;
+    #sentSeq = 0;
     #delivered = 0;
     #fpsWindow = 0;
     #enabled = false;
     #fps: 30 | 60 = 60;
-    #status: ReturnType<typeof parseVcamStatus> = { state: "off", fps: 0 };
+    #status: VcamStatusInfo = { state: "off", fps: 0 };
     #poll: ReturnType<typeof setInterval> | null = null;
     #configured = "";
     /** Loopback frame socket (Rust `vcam_endpoint`); raw IPC is ~200 ms per 3 MB frame. */
@@ -211,7 +251,7 @@ export class VcamPump {
         this.#ipc = isTauri() && !options.measureOnly;
     }
 
-    get status(): ReturnType<typeof parseVcamStatus> {
+    get status(): VcamStatusInfo {
         return this.#enabled ? this.#status : { state: "off", fps: 0 };
     }
 
@@ -269,7 +309,7 @@ export class VcamPump {
         g.out = g.device.createBuffer({ size: bytes, usage: BUFFER_USAGE.STORAGE | BUFFER_USAGE.COPY_SRC });
         // mapAsync resolves only after the whole frame's GPU work (measured 64-80 ms
         // under load), so keep several readbacks in flight instead of one.
-        g.staging = [0, 1, 2, 3].map(() => ({ buf: g.device.createBuffer({ size: bytes, usage: BUFFER_USAGE.MAP_READ | BUFFER_USAGE.COPY_DST }), busy: false }));
+        g.staging = [0, 1, 2, 3].map(() => ({ buf: g.device.createBuffer({ size: bytes, usage: BUFFER_USAGE.MAP_READ | BUFFER_USAGE.COPY_DST }), busy: false, seq: 0 }));
         g.device.queue.writeBuffer(g.params, 0, new Uint32Array([w, h, 0, 0]));
         g.bind = null;
     }
@@ -277,8 +317,10 @@ export class VcamPump {
     /** Call after the output RT is rendered. `now` = rAF time. */
     frame(target: THREE.RenderTarget, now: number): void {
         if (!this.#enabled) return;
-        if (now - this.#lastPump < 1000 / this.#fps - 2) return;
-        this.#lastPump = now;
+        if (now < this.#nextPump) return;
+        const fps = effectiveFps(this.#fps, this.#status.consumerFps);
+        this.timings.vcamTargetFps = fps;
+        this.#nextPump = nextPumpDeadline(this.#nextPump, now, 1000 / fps);
         if (now - this.#fpsWindow >= 1000) {
             this.timings.vcamFps = (this.#delivered * 1000) / Math.max(now - this.#fpsWindow, 1);
             this.#delivered = 0;
@@ -287,8 +329,20 @@ export class VcamPump {
         const w = target.width;
         const h = target.height;
         if (w % 4 !== 0 || h % 2 !== 0) return;
+        // Socket still holds a whole frame: Rust is behind, so skip before paying for
+        // the conversion and the readback (they were the cost of every vcamDropWs).
+        if (this.#socketBacklogged(nv12Length(w, h))) {
+            this.timings.vcamSkipWs++;
+            return;
+        }
         if (!this.forceCpu && this.#initGpu()) this.#gpuFrame(target, w, h);
         else this.#cpuFrame(target, w, h);
+    }
+
+    /** Open socket with more than one frame still buffered. */
+    #socketBacklogged(frameBytes: number): boolean {
+        const ws = this.#ws;
+        return this.#ipc && ws !== null && ws.readyState === WebSocket.OPEN && ws.bufferedAmount > frameBytes;
     }
 
     #gpuFrame(target: THREE.RenderTarget, w: number, h: number): void {
@@ -327,6 +381,8 @@ export class VcamPump {
         const t1 = performance.now();
         this.timings.vcamConvert = ema(this.timings.vcamConvert, t1 - t0);
         slot.busy = true;
+        const seq = ++this.#seq;
+        slot.seq = seq;
         const buf = slot.buf;
         buf.mapAsync(MAP_MODE.READ)
             .then(() => {
@@ -334,6 +390,13 @@ export class VcamPump {
                 if (this.#size.w !== w || this.#size.h !== h) {
                     buf.unmap();
                     buf.destroy();
+                    return;
+                }
+                // mapAsync can resolve out of order: never send a frame older than one already out.
+                if (seq < this.#sentSeq) {
+                    buf.unmap();
+                    slot.busy = false;
+                    this.timings.vcamSuperseded++;
                     return;
                 }
                 const mapped = new Uint8Array(buf.getMappedRange());
@@ -345,6 +408,7 @@ export class VcamPump {
                     buf.unmap();
                     slot.busy = false;
                     this.#ws?.send(msg);
+                    this.#sentSeq = seq;
                     this.#delivered++;
                     this.timings.vcamIpc = ema(this.timings.vcamIpc, performance.now() - t2);
                     return;
@@ -353,6 +417,7 @@ export class VcamPump {
                 frame.set(mapped);
                 buf.unmap();
                 slot.busy = false;
+                this.#sentSeq = seq;
                 this.#send(frame, w, h);
             })
             .catch((e: unknown) => {
@@ -425,7 +490,7 @@ export class VcamPump {
         if (!this.#ipc) return false;
         this.#ensureSocket();
         const ws = this.#ws;
-        return ws !== null && ws.readyState === WebSocket.OPEN && ws.bufferedAmount <= bytes * 2;
+        return ws !== null && ws.readyState === WebSocket.OPEN && ws.bufferedAmount <= bytes * SOCKET_FRAMES;
     }
 
     #send(frame: Uint8Array, w: number, h: number): void {
@@ -436,8 +501,8 @@ export class VcamPump {
         this.#ensureSocket();
         const ws = this.#ws;
         if (ws && ws.readyState === WebSocket.OPEN) {
-            // Back-pressure: never queue more than ~2 frames in the socket.
-            if (ws.bufferedAmount > frame.byteLength * 2) {
+            // Back-pressure: never queue more than SOCKET_FRAMES frames in the socket.
+            if (ws.bufferedAmount > frame.byteLength * SOCKET_FRAMES) {
                 this.timings.vcamDropped++;
                 this.timings.vcamDropWs++;
                 return;

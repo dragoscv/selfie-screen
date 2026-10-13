@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "tiksee-vcam-setup"
-version = "0.3.0"
+version = "0.5.1"
 dependencies = [
  "tiksee-vcam-shared",
  "windows",
@@ -42,7 +42,7 @@ dependencies = [
 
 [[package]]
 name = "tiksee-vcam-shared"
-version = "0.3.0"
+version = "0.5.1"
 dependencies = [
  "windows",
  "windows-core",
@@ -50,7 +50,7 @@ dependencies = [
 
 [[package]]
 name = "tiksee-vcam-source"
-version = "0.3.0"
+version = "0.5.1"
 dependencies = [
  "tiksee-vcam-shared",
  "windows",

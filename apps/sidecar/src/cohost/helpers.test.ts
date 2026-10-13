@@ -43,8 +43,19 @@ describe("TranscriptWindow", () => {
         window.push("3", "și apoi", false, 3_000);
         expect(window.text(3_000)).toBe("bună seara azi jucăm Minecraft și apoi");
         expect(window.lastAt).toBe(3_000);
+        expect(window.lastFinalAt).toBe(2_000);
         window.push("4", "gata", true, 70_000);
         expect(window.text(70_000)).toBe("gata");
+    });
+
+    it("partials (continuous speech) move lastAt but never lastFinalAt", () => {
+        const window = new TranscriptWindow(60_000);
+        window.push("1", "salut", true, 1_000);
+        for (let t = 1_500; t <= 9_000; t += 500) window.push("2", "și vorbesc întruna", false, t);
+        expect(window.lastAt).toBe(9_000);
+        expect(window.lastFinalAt).toBe(1_000);
+        window.push("3", "", true, 9_500);
+        expect(window.lastFinalAt).toBe(1_000);
     });
 });
 

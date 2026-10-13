@@ -1,7 +1,7 @@
 import { defaultSettings, nextEventId, type ChatEvent, type PetCommand, type PetMindState, type PetSay, type Settings } from "@tiksee/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { ChatMessage, StreamChatRequest } from "../codai/client.js";
+import type { ChatMessage, CodaiClient, StreamChatRequest } from "../codai/client.js";
 import { ViewerMemory } from "../memory/db.js";
 import { PetStore } from "../memory/pet-store.js";
 import { AGENT_RULES, parseAgentReply } from "./agent.js";
@@ -31,22 +31,43 @@ interface Harness {
     calls: ChatMessage[][];
     says: PetSay[];
     commands: PetCommand[];
-    spoken: { text: string; voice: string | undefined; speed?: number | undefined; pitch?: number | undefined }[];
+    spoken: { text: string; voice: string | undefined; speed?: number | undefined; pitch?: number | undefined; priority?: "addressed" | undefined }[];
+    requests: StreamChatRequest[];
+    logs: string[];
+    lastStreamerAt: { v: number };
+    quiet: { v: boolean };
     replies: string[];
     clock: { now: number };
     settings: Settings;
     speaking: { v: boolean };
 }
 
-function harness(store: PetStore | null, level: Settings["studio"]["petAi"]["level"] = "chatty"): Harness {
+type StreamChat = (req: StreamChatRequest, h: Omit<Harness, "agents">) => ReturnType<CodaiClient["streamChat"]>;
+
+function harness(store: PetStore | null, level: Settings["studio"]["petAi"]["level"] = "chatty", streamChat?: StreamChat): Harness {
     const settings = defaultSettings();
     settings.studio.enabled = true;
     settings.studio.petAi.level = level;
     settings.studio.petAi.chat = "full";
-    const h: Omit<Harness, "agents"> = { calls: [], says: [], commands: [], spoken: [], replies: [], clock: { now: 1_000_000 }, settings, speaking: { v: false } };
+    const h: Omit<Harness, "agents"> = {
+        calls: [],
+        says: [],
+        commands: [],
+        spoken: [],
+        replies: [],
+        requests: [],
+        logs: [],
+        lastStreamerAt: { v: 0 },
+        quiet: { v: false },
+        clock: { now: 1_000_000 },
+        settings,
+        speaking: { v: false },
+    };
     const agents = new PetAgents({
         client: {
             streamChat: (req: StreamChatRequest) => {
+                h.requests.push(req);
+                if (streamChat) return streamChat(req, h);
                 h.calls.push(req.messages);
                 const text = h.replies.shift() ?? '{"say":""}';
                 return Promise.resolve({ ok: true as const, value: { text, sentences: [text], firstSentenceMs: 10, totalMs: 20 } });
@@ -54,10 +75,10 @@ function harness(store: PetStore | null, level: Settings["studio"]["petAi"]["lev
         },
         model: () => "codai-fast",
         settings: () => h.settings,
-        quiet: () => false,
+        quiet: () => h.quiet.v,
         shopMode: () => false,
         speaking: () => h.speaking.v,
-        lastStreamerAt: () => 0,
+        lastStreamerAt: () => h.lastStreamerAt.v,
         emitSay: (s) => h.says.push(s),
         emitCommand: (c) => h.commands.push(c),
         speak: (text, opts) => {
@@ -66,7 +87,7 @@ function harness(store: PetStore | null, level: Settings["studio"]["petAi"]["lev
         },
         store,
         viewerFacts: (id) => (id === "ana" ? ["likes cats"] : []),
-        log: { info: () => {}, debug: () => {} },
+        log: { info: (...a: unknown[]) => h.logs.push(a.map(String).join(" ")), debug: () => {} },
         now: () => h.clock.now,
     });
     return { ...h, agents };
@@ -213,6 +234,127 @@ describe("pet agents", () => {
         h.replies.push('{"memories":[{"text":"Ana chatted with me all stream","importance":0.7},{"text":"x"}]}');
         expect(await h.agents.reflect(0)).toBe(1);
         expect(store.ensure("fox").memories.map((m) => m.text)).toContain("Ana chatted with me all stream");
+    });
+});
+
+describe("pet agents: talking to the pets", () => {
+    it("answers a pet addressed by voice right away, inside the gap and cooldown, with addressedBy + priority voice", async () => {
+        const h = harness(null);
+        h.settings.studio.petAi.voice = true;
+        h.agents.onPetState([mind("fox"), mind("cat")]);
+        h.agents.onEvent(chat("fox"));
+        h.replies.push('{"say":"Primul meu rând."}');
+        expect(await h.agents.tick()).toBe("fox");
+        h.clock.now += 1_000; // well inside MIN_GAP_MS and PET_COOLDOWN_MS
+        h.agents.onPetState([mind("fox"), mind("cat")]);
+        h.replies.push('{"say":"Bine, mersi că întrebi!"}');
+        h.agents.onTranscript("t1", "Vulpițo, ce mai faci?", true, h.clock.now);
+        await h.agents.settled();
+        expect(h.says.at(-1)).toMatchObject({ pet: "fox", text: "Bine, mersi că întrebi!" });
+        expect(h.spoken.at(-1)).toMatchObject({ text: "Bine, mersi că întrebi!", priority: "addressed" });
+        const req = h.requests.at(-1);
+        expect(req?.maxTokens).toBe(90);
+        expect(req?.timeoutMs).toBe(3_000);
+        expect(req?.messages.at(-1)?.content).toContain('"addressedBy":"Vulpițo, ce mai faci?"');
+        expect(h.logs.some((l) => /pet agent fox: addressed \(conf 0\.\d+, vocative\) reply in \d+ ms/.test(l))).toBe(true);
+    });
+
+    it("a nickname from settings and a 'tu' follow-up both reach the pet; talking to the chat triggers no pet", async () => {
+        const h = harness(null, "reactive");
+        h.settings.studio.petAi.nicknames = { cat: ["Miți"] };
+        h.agents.onPetState([mind("fox"), mind("cat")]);
+        h.replies.push('{"say":"Miau, aici sunt."}');
+        h.agents.onTranscript("t1", "Miți, unde ești?", true, h.clock.now);
+        await h.agents.settled();
+        expect(h.says.map((s) => s.pet)).toEqual(["cat"]);
+        h.clock.now += 3_000;
+        h.agents.onPetState([mind("fox"), mind("cat")]);
+        h.replies.push('{"say":"Pe pernă, evident."}');
+        h.agents.onTranscript("t2", "și tu ce faci acolo?", true, h.clock.now);
+        await h.agents.settled();
+        expect(h.says.map((s) => s.pet)).toEqual(["cat", "cat"]);
+        h.clock.now += 3_000;
+        h.agents.onPetState([mind("fox"), mind("cat")]);
+        h.agents.onEvent(chat("salut de la Brașov", "Ion", "ion"));
+        const before = h.requests.length;
+        h.agents.onTranscript("t3", "Ion, salut, bine ai venit", true, h.clock.now);
+        await h.agents.settled();
+        h.clock.now += 30_000;
+        h.agents.onPetState([mind("fox"), mind("cat")]);
+        expect(await h.agents.tick()).toBeNull();
+        expect(h.requests.length).toBe(before);
+    });
+
+    it("respects the setting: addressedFastPath=false falls back to floor pressure", async () => {
+        const h = harness(null);
+        h.settings.studio.petAi.addressedFastPath = false;
+        h.agents.onPetState([mind("fox")]);
+        h.agents.onTranscript("t1", "Vulpițo, salut!", true, h.clock.now);
+        await h.agents.settled();
+        expect(h.requests).toHaveLength(0);
+        h.replies.push('{"say":"Salut!"}');
+        expect(await h.agents.tick()).toBe("fox");
+    });
+
+    it("never answers while quiet (Live Control mute)", async () => {
+        const h = harness(null);
+        h.quiet.v = true;
+        h.agents.onPetState([mind("fox")]);
+        h.agents.onTranscript("t1", "Vulpițo, salut!", true, h.clock.now);
+        await h.agents.settled();
+        expect(h.requests).toHaveLength(0);
+    });
+
+    it("waits until 300 ms after the streamer's final segment before calling", async () => {
+        const h = harness(null);
+        h.agents.onPetState([mind("fox")]);
+        h.lastStreamerAt.v = h.clock.now;
+        h.replies.push('{"say":"Da?"}');
+        h.agents.onTranscript("t1", "Vulpițo!", true, h.clock.now);
+        expect(h.requests).toHaveLength(0);
+        h.clock.now += 300;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        await h.agents.settled();
+        expect(h.requests).toHaveLength(1);
+    });
+
+    it("a newer sentence to the same pet aborts the call in flight and restarts it", async () => {
+        const pending: { req: StreamChatRequest; resolve: (text: string) => void }[] = [];
+        const h = harness(null, "chatty", (req) => {
+            return new Promise((resolve) => {
+                const done = (text: string) => resolve({ ok: true, value: { text, sentences: [text], firstSentenceMs: 1, totalMs: 1 } });
+                req.signal?.addEventListener("abort", () => resolve({ ok: false, error: { kind: "aborted", message: "aborted" } }));
+                pending.push({ req, resolve: done });
+            });
+        });
+        h.agents.onPetState([mind("fox")]);
+        h.agents.onTranscript("t1", "Vulpițo, ce faci?", true, h.clock.now);
+        expect(pending).toHaveLength(1);
+        h.clock.now += 500;
+        h.agents.onTranscript("t2", "vulpițo, de fapt spune-mi o glumă", true, h.clock.now);
+        expect(pending).toHaveLength(2);
+        expect(pending[0]?.req.signal?.aborted).toBe(true);
+        pending[1]?.resolve('{"say":"Ce face o vulpe la bal? Dansează!"}');
+        await h.agents.settled();
+        expect(h.says.map((s) => s.text)).toEqual(["Ce face o vulpe la bal? Dansează!"]);
+        expect(h.agents.history("fox").map((t) => t.said)).toEqual(["Ce face o vulpe la bal? Dansează!"]);
+    });
+
+    it("retries an addressed call once after a timeout", async () => {
+        let n = 0;
+        const h = harness(null, "chatty", () => {
+            n += 1;
+            return Promise.resolve(
+                n === 1
+                    ? { ok: false as const, error: { kind: "timeout" as const, message: "t" } }
+                    : { ok: true as const, value: { text: '{"say":"Am revenit."}', sentences: [], firstSentenceMs: 1, totalMs: 1 } },
+            );
+        });
+        h.agents.onPetState([mind("fox")]);
+        h.agents.onTranscript("t1", "Vulpițo, mă auzi?", true, h.clock.now);
+        await h.agents.settled();
+        expect(n).toBe(2);
+        expect(h.says.map((s) => s.text)).toEqual(["Am revenit."]);
     });
 });
 

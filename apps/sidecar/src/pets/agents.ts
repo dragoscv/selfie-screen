@@ -14,8 +14,21 @@ import {
 
 import type { CodaiClient } from "../codai/client.js";
 import { defaultPersonality, type PetExperience, type PetStore, type PetTurn } from "../memory/pet-store.js";
-import { AGENT_MAX_TOKENS, AGENT_TEMPERATURE, AGENT_TIMEOUT_MS, buildMessages, cueOf, HISTORY_TURNS, moodWord, parseAgentReply, type AgentTurn } from "./agent.js";
-import { Floor, type Reason, type Salience } from "./floor.js";
+import { classifyAddress, type AddressPartner, type AddressResult } from "./addressing.js";
+import {
+    ADDRESSED_MAX_TOKENS,
+    ADDRESSED_TIMEOUT_MS,
+    AGENT_MAX_TOKENS,
+    AGENT_TEMPERATURE,
+    AGENT_TIMEOUT_MS,
+    buildMessages,
+    cueOf,
+    HISTORY_TURNS,
+    moodWord,
+    parseAgentReply,
+    type AgentTurn,
+} from "./agent.js";
+import { Floor, URGENT_HOLD_MS, type FloorState, type Reason, type Salience } from "./floor.js";
 import { MIN_TURNS_TO_REFLECT, parseReflection, REFLECT_MAX_TOKENS, REFLECT_TIMEOUT_MS, reflectionMessages } from "./reflection.js";
 import { renderLog, StreamLog, type LogKind } from "./stream-log.js";
 import { guessLanguage, mentionsPet, sanitiseUntrusted, similarity, ttlForText } from "./text.js";
@@ -46,6 +59,17 @@ const CHAT_CHARS = 90;
 const SPEECH_CHARS = 160;
 const LOG_LINES = 18;
 const CHAT_WINDOW_MS = 60_000;
+/** Viewer names the streamer may say aloud (addressing: "talking to the chat"). */
+const CHAT_USERS_WINDOW_MS = 120_000;
+/** Addressing confidence that triggers the fast path. */
+export const ADDRESSED_MIN_CONFIDENCE = 0.7;
+/** Agent calls in flight at once (a regular turn + one addressed reply). */
+export const MAX_IN_FLIGHT = 2;
+/** An addressed reply waits this long for the streamer to pause instead of being dropped. */
+export const ADDRESSED_PAUSE_WAIT_MS = 2_500;
+/** Final segments shorter than this ("da", "aha") are interjections, not the streamer talking over. */
+const INTERJECTION_WORDS = 3;
+const TALKING_MS = 1_000;
 const PRAISE = /\b(cute|love|lovely|sweet|good|dragut\w*|frumo\w*|scump\w*|iubesc|super|bravo)\b|[\u2764\u{1F60D}]/iu;
 const LAUGH = /\b(haha+|hihi+|lol|lmao|xd)\b|[\u{1F602}\u{1F923}]/iu;
 const HANDLED: ReadonlySet<string> = new Set(["grabbed", "resized", "dropped"]);
@@ -65,7 +89,10 @@ export interface PetAgentsDeps {
     emitSay: (say: PetSay) => void;
     emitCommand: (command: PetCommand) => void;
     /** Queue a line for TTS in `voice`; returns the queue entry id (utterances `<id>:<n>`). */
-    speak?: (text: string, opts: { voice?: string | undefined; speed?: number | undefined; pitch?: number | undefined }) => string | undefined;
+    speak?: (
+        text: string,
+        opts: { voice?: string | undefined; speed?: number | undefined; pitch?: number | undefined; priority?: "addressed" | undefined },
+    ) => string | undefined;
     store?: Pick<PetStore, "ensure" | "seen" | "addMemory" | "applyExperience" | "addTurn" | "turns"> | null;
     /** Facts about a viewer (viewer memory). */
     viewerFacts?: (uniqueId: string) => string[];
@@ -80,6 +107,17 @@ interface Session {
     /** Turns of the current stream (for the reflection). */
     streamTurns: AgentTurn[];
     busy: boolean;
+    /** Bumped per turn; a superseded turn never clears the newer one's state. */
+    gen: number;
+    controller: AbortController | null;
+}
+
+/** An addressed turn: the streamer talked to this pet. */
+interface Addressed {
+    speech: string;
+    /** When the final transcript was heard (latency is measured from here). */
+    heardAt: number;
+    address: AddressResult;
 }
 
 const LLM_LEVELS: ReadonlySet<PetAiLevel> = new Set(["reactive", "chatty", "director"]);
@@ -101,6 +139,13 @@ export class PetAgents {
     #experienceAt: number;
     #tally = new Map<string, PetExperience & { kinds: Set<string> }>();
     #lastTranscript = new Map<string, string>();
+    #chatUsers = new Map<string, number>();
+    #chatMessages: { text: string; at: number }[] = [];
+    #partner: AddressPartner | null = null;
+    /** Last final streamer segment of >= INTERJECTION_WORDS words. */
+    #lastLongFinalAt = 0;
+    #addressedTimers = new Map<string, NodeJS.Timeout>();
+    #running = new Set<Promise<unknown>>();
 
     constructor(deps: PetAgentsDeps) {
         this.#deps = deps;
@@ -117,6 +162,14 @@ export class PetAgents {
     dispose(): void {
         if (this.#timer) clearInterval(this.#timer);
         this.#timer = null;
+        for (const t of this.#addressedTimers.values()) clearTimeout(t);
+        this.#addressedTimers.clear();
+        for (const s of this.#sessions.values()) s.controller?.abort();
+    }
+
+    /** Resolves when every in-flight addressed turn finished (tests, shutdown). */
+    async settled(): Promise<void> {
+        while (this.#running.size > 0) await Promise.allSettled([...this.#running]);
     }
 
     get callsLastHour(): number {
@@ -167,6 +220,7 @@ export class PetAgents {
         const who = sanitiseUntrusted(event.user.nickname || event.user.uniqueId, NICK_CHARS) || "someone";
         if (event.kind === "chat") {
             this.#chatTimes.push(at);
+            this.#rememberChat(event, at);
             this.#tallyAll("chats");
             if (LAUGH.test(event.text)) this.#tallyAll("laughs");
             const named = pets.filter((p) => mentionsPet(event.text, [p]));
@@ -205,11 +259,128 @@ export class PetAgents {
         this.#lastTranscript.set(itemId, clean);
         if (this.#lastTranscript.size > 50) this.#lastTranscript.delete(this.#lastTranscript.keys().next().value ?? "");
         const now = this.#now();
+        if (clean.split(/\s+/).length >= INTERJECTION_WORDS) this.#lastLongFinalAt = now;
         this.#add("streamer", clean, Math.min(at, now));
-        const named = this.#pets().filter((p) => mentionsPet(clean, [p]));
-        this.#deps.log.info(`pets heard the streamer (${clean.length} chars${named.length > 0 ? `, named ${named.join(",")}` : ""})`);
-        if (named.length > 0) this.#floor.push("streamerNamed", { at: now, text: "the streamer talked to you or about you" }, named);
-        else this.#floor.push("streamerSpoke", { at: now, text: "the streamer said something" });
+        const address = this.#classify(clean, now);
+        const decision = `${address.target}${address.pets.length > 0 ? ` ${address.pets.join(",")}` : ""} (conf ${address.confidence.toFixed(2)}, ${address.why})`;
+        this.#deps.log.info(`pets heard the streamer (${clean.length} chars): ${decision}`);
+        if (address.target === "chat") return; // talking to the chat: no pressure on the pets at all
+        if (address.target === "pet") {
+            const [first, ...rest] = address.pets;
+            if (first) this.#partner = { pet: first, at: now, spoke: false };
+            const fast = address.confidence >= ADDRESSED_MIN_CONFIDENCE && this.#deps.settings().studio.petAi.addressedFastPath && first !== undefined;
+            if (fast) {
+                this.#scheduleAddressed(first, { speech: clean, heardAt: now, address });
+                if (rest.length > 0) this.#floor.push("streamerNamed", { at: now, text: "the streamer talked to you or about you" }, rest);
+            } else {
+                this.#floor.push("streamerNamed", { at: now, text: "the streamer talked to you or about you" }, address.pets);
+            }
+            return;
+        }
+        this.#floor.push("streamerSpoke", { at: now, text: "the streamer said something" });
+    }
+
+    #classify(text: string, now: number): AddressResult {
+        for (const [name, seen] of this.#chatUsers) if (now - seen > CHAT_USERS_WINDOW_MS) this.#chatUsers.delete(name);
+        this.#chatMessages = this.#chatMessages.filter((m) => now - m.at <= CHAT_WINDOW_MS);
+        return classifyAddress(text, {
+            pets: this.#pets(),
+            nicknames: this.#deps.settings().studio.petAi.nicknames,
+            chatUsers: [...this.#chatUsers.keys()],
+            chatMessages: this.#chatMessages.map((m) => m.text),
+            partner: this.#partner,
+            now,
+        });
+    }
+
+    #rememberChat(event: ChatEvent, at: number): void {
+        for (const name of [event.user.nickname, event.user.uniqueId]) {
+            const n = name.trim();
+            if (n === "") continue;
+            this.#chatUsers.delete(n);
+            this.#chatUsers.set(n, at);
+        }
+        while (this.#chatUsers.size > 200) this.#chatUsers.delete(this.#chatUsers.keys().next().value ?? "");
+        this.#chatMessages.push({ text: event.text, at });
+        if (this.#chatMessages.length > 50) this.#chatMessages.shift();
+    }
+
+    /* --------------------------- addressed path --------------------------- */
+
+    /** Run an addressed turn once {@link URGENT_HOLD_MS} passed since the final (a newer final for the same pet supersedes it). */
+    #scheduleAddressed(pet: string, addressed: Addressed): void {
+        const pending = this.#addressedTimers.get(pet);
+        if (pending) clearTimeout(pending);
+        this.#addressedTimers.delete(pet);
+        const wait = Math.max(0, URGENT_HOLD_MS - (this.#now() - this.#deps.lastStreamerAt()));
+        if (wait === 0) {
+            this.#startAddressed(pet, addressed);
+            return;
+        }
+        const timer = setTimeout(() => {
+            this.#addressedTimers.delete(pet);
+            this.#startAddressed(pet, addressed);
+        }, wait);
+        timer.unref();
+        this.#addressedTimers.set(pet, timer);
+    }
+
+    #startAddressed(pet: string, addressed: Addressed): void {
+        const now = this.#now();
+        const level = this.#level();
+        const fallback = (why: string): void => {
+            this.#deps.log.info(`pet agent ${pet}: addressed, fast path refused (${why})`);
+            this.#floor.push("streamerNamed", { at: now, text: "the streamer talked to you or about you" }, [pet]);
+        };
+        if (!LLM_LEVELS.has(level)) return;
+        if (!this.#minds.some((m) => m.pet === pet) || now - this.#mindsAt > STATE_MAX_AGE_MS) {
+            fallback("pet state stale");
+            return;
+        }
+        const others = [...this.#sessions.values()].filter((s) => s.busy && s.pet !== pet).length;
+        if (others >= MAX_IN_FLIGHT - 1) {
+            fallback("too many calls in flight");
+            return;
+        }
+        if (!this.#floor.urgent(pet, this.#floorState(level, now), now)) {
+            fallback("floor");
+            return;
+        }
+        // A newer sentence to the same pet supersedes its call in flight (`#turn` bumps the generation).
+        const session = this.#session(pet);
+        session.controller?.abort();
+        const reasons: Reason[] = [{ at: now, kind: "streamerNamed", text: "the streamer is talking to you right now" }];
+        const run = this.#turn(pet, reasons, level, addressed);
+        this.#running.add(run);
+        void run.finally(() => this.#running.delete(run));
+    }
+
+    #floorState(level: PetAiLevel, now: number): FloorState {
+        this.#chatTimes = this.#chatTimes.filter((t) => now - t < CHAT_WINDOW_MS);
+        return {
+            level,
+            maxCallsPerHour: this.#deps.settings().studio.petAi.maxCallsPerHour,
+            chatPerMinute: this.#chatTimes.length,
+            lastStreamerAt: this.#deps.lastStreamerAt(),
+            speaking: this.#deps.speaking(),
+            quiet: this.#deps.quiet(),
+        };
+    }
+
+    /** The streamer is talking (a real sentence, not an interjection) since `since`. */
+    #streamerTalking(since: number): boolean {
+        const last = this.#lastLongFinalAt;
+        return last > since && this.#now() - last < TALKING_MS;
+    }
+
+    /** Addressed reply: wait up to {@link ADDRESSED_PAUSE_WAIT_MS} for a pause; false = drop it. */
+    async #waitForPause(session: Session, gen: number, heardAt: number): Promise<boolean> {
+        const deadline = this.#now() + ADDRESSED_PAUSE_WAIT_MS;
+        while (this.#streamerTalking(heardAt)) {
+            if (this.#now() >= deadline || session.gen !== gen) return false;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return session.gen === gen && !this.#deps.quiet();
     }
 
     /** Every utterance the co-host queue starts (co-host replies and voiced pet lines). */
@@ -271,29 +442,21 @@ export class PetAgents {
         if (!LLM_LEVELS.has(level)) return null;
         if (this.#minds.length === 0 || now - this.#mindsAt > STATE_MAX_AGE_MS) return null;
         if ([...this.#sessions.values()].some((s) => s.busy)) return null;
-        this.#chatTimes = this.#chatTimes.filter((t) => now - t < CHAT_WINDOW_MS);
-        const s = this.#deps.settings();
-        const pick = this.#floor.pick(
-            {
-                level,
-                maxCallsPerHour: s.studio.petAi.maxCallsPerHour,
-                chatPerMinute: this.#chatTimes.length,
-                lastStreamerAt: this.#deps.lastStreamerAt(),
-                speaking: this.#deps.speaking(),
-                quiet: this.#deps.quiet(),
-            },
-            now,
-        );
+        const pick = this.#floor.pick(this.#floorState(level, now), now);
         if (!pick) return null;
         this.#floor.granted(pick.pet, now);
         return (await this.#turn(pick.pet, pick.reasons, level)) ? pick.pet : null;
     }
 
-    async #turn(pet: string, reasons: readonly Reason[], level: PetAiLevel): Promise<boolean> {
+    async #turn(pet: string, reasons: readonly Reason[], level: PetAiLevel, addressed?: Addressed): Promise<boolean> {
         const session = this.#session(pet);
         const mind = this.#minds.find((m) => m.pet === pet);
         if (!mind) return false;
         session.busy = true;
+        session.gen += 1;
+        const gen = session.gen;
+        const controller = new AbortController();
+        session.controller = controller;
         const now = this.#now();
         try {
             const personality = this.#personality(pet);
@@ -313,15 +476,25 @@ export class PetAgents {
                 viewerFacts: facts,
                 language: guessLanguage(speech),
                 canMove,
+                addressedBy: addressed?.speech,
                 now,
             });
-            const result = await this.#deps.client.streamChat({
-                model: this.#deps.model(),
-                messages,
-                maxTokens: AGENT_MAX_TOKENS,
-                temperature: AGENT_TEMPERATURE,
-                timeoutMs: AGENT_TIMEOUT_MS,
-            });
+            const call = () =>
+                this.#deps.client.streamChat({
+                    model: this.#deps.model(),
+                    messages,
+                    maxTokens: addressed ? ADDRESSED_MAX_TOKENS : AGENT_MAX_TOKENS,
+                    temperature: AGENT_TEMPERATURE,
+                    timeoutMs: addressed ? ADDRESSED_TIMEOUT_MS : AGENT_TIMEOUT_MS,
+                    signal: controller.signal,
+                });
+            let result = await call();
+            // Addressed turns retry once on a timeout / network error (never after a supersede).
+            if (addressed && !result.ok && result.error.kind !== "aborted" && session.gen === gen) result = await call();
+            if (session.gen !== gen) {
+                this.#deps.log.debug(`pet agent ${pet}: superseded by a newer sentence`);
+                return false;
+            }
             if (!result.ok) {
                 this.#deps.log.debug(`pet agent ${pet} skipped (${result.error.kind})`);
                 return false;
@@ -336,32 +509,49 @@ export class PetAgents {
                 this.#deps.log.debug(`pet agent ${pet}: echo dropped`);
                 said = "";
             }
-            // The world may have changed during the call: never talk over someone who started meanwhile.
-            if (said && (this.#deps.quiet() || this.#deps.speaking() || this.#now() - this.#deps.lastStreamerAt() < 1_000)) said = "";
+            if (addressed) {
+                // Answering the streamer: a short "da"/"aha" meanwhile does not cancel it; a real
+                // sentence waits for a pause (bounded). The voice is queued ahead with priority.
+                if (said && !(await this.#waitForPause(session, gen, addressed.heardAt))) said = "";
+                if (session.gen !== gen) return false;
+            } else if (said && (this.#deps.quiet() || this.#deps.speaking() || this.#now() - this.#deps.lastStreamerAt() < 1_000)) {
+                // The world may have changed during the call: never talk over someone who started meanwhile.
+                said = "";
+            }
             const turn: AgentTurn = { at: now, cue: cueOf(reasons), said };
             this.#remember(session, turn);
-            if (said) this.#emit(pet, said, reply.emotion);
+            if (said) this.#emit(pet, said, reply.emotion, addressed !== undefined);
             this.#floor.spoke(pet, said !== "", this.#now());
             if (reply.remember) this.#storeMemory(pet, reply.remember);
             if (reply.move && said) {
                 this.#deps.emitCommand(reply.move);
                 this.#deps.log.info(`pet move ${pet} ${reply.move.anchor ?? "-"} ${reply.move.clip ?? "-"} ${reply.move.ttlSec}s`);
             }
-            this.#deps.log.info(`pet agent ${pet}: ${said ? "spoke" : "silent"} (${reasons.map((r) => r.kind).join(",")}, ${result.value.totalMs} ms)`);
+            if (addressed) {
+                const conf = `conf ${addressed.address.confidence.toFixed(2)}, ${addressed.address.why}`;
+                const latency = this.#now() - addressed.heardAt;
+                this.#deps.log.info(`pet agent ${pet}: addressed (${conf}) ${said ? "reply" : "silent"} in ${latency} ms (llm ${result.value.totalMs} ms)`);
+            } else {
+                this.#deps.log.info(`pet agent ${pet}: ${said ? "spoke" : "silent"} (${reasons.map((r) => r.kind).join(",")}, ${result.value.totalMs} ms)`);
+            }
             return said !== "";
         } catch (error) {
             this.#deps.log.debug(`pet agent ${pet} failed: ${error instanceof Error ? error.name : "error"}`);
             return false;
         } finally {
-            session.busy = false;
+            if (session.gen === gen) {
+                session.busy = false;
+                session.controller = null;
+            }
         }
     }
 
-    #emit(pet: string, text: string, emotion: PetSay["emotion"]): void {
+    #emit(pet: string, text: string, emotion: PetSay["emotion"], addressed = false): void {
         const s = this.#deps.settings();
         const voiced = s.studio.petAi.voice && !this.#deps.shopMode();
         const prosody = s.studio.petAi.prosody[pet];
-        const sayId = voiced ? this.#deps.speak?.(text, { voice: s.studio.petAi.voices[pet], speed: prosody?.speed, pitch: prosody?.pitch }) : undefined;
+        const opts = { voice: s.studio.petAi.voices[pet], speed: prosody?.speed, pitch: prosody?.pitch, ...(addressed ? { priority: "addressed" as const } : {}) };
+        const sayId = voiced ? this.#deps.speak?.(text, opts) : undefined;
         if (sayId) {
             this.#petEntries.add(sayId);
             if (this.#petEntries.size > 50) this.#petEntries.delete(this.#petEntries.values().next().value ?? "");
@@ -369,6 +559,7 @@ export class PetAgents {
         this.#deps.emitSay({ pet, text, emotion, ttlMs: ttlForText(text), ...(sayId ? { sayId } : {}) });
         const now = this.#now();
         this.#add("pet", text, now, pet);
+        this.#partner = { pet, at: now, spoke: true };
         // The other pets heard it: they may answer (floor control stops endless ping-pong).
         const others = this.#pets().filter((p) => p !== pet);
         if (others.length > 0) this.#floor.push("petSpoke", { at: now, text: `${pet} just said something` }, others, mentionsPet(text, others) ? 2.5 : 1);
@@ -386,7 +577,7 @@ export class PetAgents {
             } catch (error) {
                 this.#deps.log.debug(`pet store: ${error instanceof Error ? error.name : "error"}`);
             }
-            s = { pet, history, streamTurns: [], busy: false };
+            s = { pet, history, streamTurns: [], busy: false, gen: 0, controller: null };
             this.#sessions.set(pet, s);
         }
         return s;

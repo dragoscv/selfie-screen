@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Floor, HALF_LIFE_MS, MIN_GAP_MS, PET_COOLDOWN_MS, STREAMER_HOLD_MS, type FloorState } from "./floor.js";
+import { ADDRESSED_PER_HOUR, Floor, HALF_LIFE_MS, MIN_GAP_MS, PET_COOLDOWN_MS, STREAMER_HOLD_MS, URGENT_HOLD_MS, type FloorState } from "./floor.js";
 
 const state = (over: Partial<FloorState> = {}): FloorState => ({
     level: "chatty",
@@ -101,5 +101,44 @@ describe("pet floor control", () => {
         f.push("mention", { at: t, text: "x" }, ["cat"]);
         expect(f.pick(state({ maxCallsPerHour: 10 }), t)).toBeNull();
         expect(f.pick(state({ maxCallsPerHour: 11 }), t)?.pet).toBe("cat");
+    });
+
+    it("urgent (addressed) bypasses the global gap, the per-pet cooldown and the streamer hold, but not mute or level off", () => {
+        const f = floor();
+        const t = 100_000;
+        f.granted("fox", t);
+        f.spoke("fox", true, t);
+        // Inside the gap and the cooldown, 400 ms after the streamer's final segment.
+        const s = state({ lastStreamerAt: t + 1_000 - 400 });
+        expect(f.pick(s, t + 1_000)).toBeNull();
+        expect(f.urgent("fox", s, t + 1_000)).toBe(true);
+        expect(f.urgent("fox", state({ lastStreamerAt: t + 1_000 - URGENT_HOLD_MS + 50 }), t + 1_000)).toBe(false);
+        expect(f.urgent("fox", state({ quiet: true }), t + 1_000)).toBe(false);
+        expect(f.urgent("fox", state({ level: "local" }), t + 1_000)).toBe(false);
+        expect(f.urgent("owl", s, t + 1_000)).toBe(false);
+    });
+
+    it("urgent spends a separate hourly addressed budget on top of the regular cap", () => {
+        const f = floor();
+        let t = 100_000;
+        for (let i = 0; i < 10; i++) f.granted("cat", (t += 10));
+        const s = state({ maxCallsPerHour: 10 });
+        for (let i = 0; i < ADDRESSED_PER_HOUR; i++) expect(f.urgent("fox", s, (t += 10))).toBe(true);
+        expect(f.urgent("fox", s, (t += 10))).toBe(false);
+        expect(f.callsLastHour(t)).toBe(10 + ADDRESSED_PER_HOUR);
+        // Addressed calls do not eat the regular budget.
+        const g = floor();
+        for (let i = 0; i < 5; i++) g.urgent("fox", s, 100_000 + i);
+        g.push("mention", { at: 100_100, text: "x" }, ["cat"]);
+        expect(g.pick(s, 100_100)?.pet).toBe("cat");
+    });
+
+    it("a silent turn does not start the pet's cooldown", () => {
+        const f = floor();
+        f.push("mention", { at: 100_000, text: "x" }, ["fox"]);
+        f.granted("fox", 100_000);
+        f.spoke("fox", false, 100_500);
+        f.push("mention", { at: 101_000, text: "y" }, ["fox"]);
+        expect(f.pick(state(), 101_000)?.pet).toBe("fox");
     });
 });
