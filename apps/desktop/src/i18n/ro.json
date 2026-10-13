@@ -751,6 +751,54 @@
         "opacity": "Opacitate",
         "blur": "Blur"
     },
+    "cameraRemote": {
+        "button": "Cameră",
+        "hint": "Telecomanda camerei: zoom, focus, AF, foto, înregistrare (merge și fără Studio)",
+        "title": "Telecomandă cameră",
+        "detach": "Detașează",
+        "onTop": "Mereu deasupra",
+        "speed": "Viteză",
+        "transport": "Trimite prin",
+        "transports": {
+            "auto": "Automat",
+            "ble": "Bluetooth",
+            "usb": "USB"
+        },
+        "route": {
+            "ble": "Bluetooth",
+            "usb": "USB"
+        },
+        "via": "prin {{route}}",
+        "offline": "Camera nu e conectată",
+        "usbOn": "USB pornit",
+        "usbOff": "USB oprit",
+        "pairHint": "Pornește Telecomandă Bluetooth pe cameră, deschide Împerechere, apoi apasă Împerechează. Sau conectează prin USB mai jos.",
+        "usbTitle": "Conexiune USB",
+        "usbWarning": "USB-ul camerei poate fi folosit de o singură aplicație odată. „Conectare completă” stinge imaginea HDMI cât timp e deschisă; Automat trimite atunci prin USB, altfel prin Bluetooth.",
+        "actions": {
+            "zoomIn": "Zoom înainte",
+            "zoomOut": "Zoom înapoi",
+            "focusNear": "Focus aproape",
+            "focusFar": "Focus departe",
+            "af": "Autofocus",
+            "photo": "Fotografie",
+            "record": "Înregistrare"
+        },
+        "selfie": {
+            "title": "Telecomandă selfie stick",
+            "hint": "O telecomandă de selfie pentru telefon (săgeți, OK, declanșator) împerecheată cu Windows din setările Bluetooth poate comanda camera.",
+            "enabled": "Folosește telecomanda selfie",
+            "learn": "Învață butoanele",
+            "learnStop": "Gata",
+            "press": "Apasă un buton pe telecomanda selfie…",
+            "pick": "Butonul {{key}}: ce să facă?",
+            "pickLabel": "Acțiune pentru acest buton",
+            "shutterKey": "Declanșator",
+            "remove": "Șterge {{key}}",
+            "none": "Niciun buton învățat încă.",
+            "cameraNote": "Împerecheată direct cu camera cel mai probabil nu merge: camerele Sony acceptă doar protocolul telecomenzii Bluetooth Sony, nu telecomenzi HID de telefon."
+        }
+    },
     "liveControl": {
         "label": "Control live",
         "mute": "Oprește asistentul",

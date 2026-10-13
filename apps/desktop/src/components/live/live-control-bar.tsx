@@ -1,5 +1,6 @@
 import { cn } from "@tiksee/ui";
 import {
+    Camera,
     EyeOff,
     MicOff,
     PauseCircle,
@@ -10,10 +11,13 @@ import {
     ZapOff,
     type LucideIcon,
 } from "lucide-react";
+import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { TOGGLE_CONTROLS, sendControl, toggleControl, type ToggleControl } from "../../lib/live-control.js";
 import { useAppStore } from "../../store/app-store.js";
+
+const RemotePopover = lazy(() => import("../camera/remote-popover.js").then((m) => ({ default: m.RemotePopover })));
 
 const TOGGLES: readonly { id: ToggleControl; icon: LucideIcon; tone: string }[] = [
     { id: "mute", icon: MicOff, tone: "var(--danger)" },
@@ -33,13 +37,34 @@ export function LiveControlBar() {
     const state = useAppStore((s) => s.liveControl);
     const speaking = useAppStore((s) => s.speaking);
     const connected = useAppStore((s) => s.sidecarConnected);
+    const [remote, setRemote] = useState(false);
 
     return (
+        <div className="relative shrink-0">
         <div
             role="toolbar"
             aria-label={t("liveControl.label")}
-            className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-3 py-1.5"
+            className="flex items-center gap-1 overflow-x-auto border-b border-border/60 px-3 py-1.5"
         >
+            <button
+                type="button"
+                data-remote-toggle
+                aria-expanded={remote}
+                aria-haspopup="dialog"
+                onClick={() => setRemote((v) => !v)}
+                title={t("cameraRemote.hint")}
+                className={cn(
+                    "no-drag inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.6875rem] font-medium",
+                    "outline-none transition-colors duration-(--dur-fast) focus-visible:ring-2 focus-visible:ring-ring",
+                    remote ? "bg-accent-subtle text-accent" : "bg-panel-alt text-fg-muted hover:text-fg",
+                )}
+            >
+                <Camera className="size-3.5" aria-hidden />
+                {t("cameraRemote.button")}
+            </button>
+
+            <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />
+
             {TOGGLES.map(({ id, icon: Icon, tone }) => {
                 const active = state[TOGGLE_CONTROLS[id].flag] === true;
                 return (
@@ -110,6 +135,12 @@ export function LiveControlBar() {
                     </>
                 ) : null}
             </p>
+        </div>
+        {remote && (
+            <Suspense fallback={null}>
+                <RemotePopover onClose={() => setRemote(false)} />
+            </Suspense>
+        )}
         </div>
     );
 }

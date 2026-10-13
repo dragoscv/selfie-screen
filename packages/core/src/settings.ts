@@ -831,6 +831,41 @@ export const visionSchema = z.object({
 export type VisionSettings = z.infer<typeof visionSchema>;
 
 /* ------------------------------------------------------------------ *
+ * Camera remote outside the Studio (HUD popover, detached window,
+ * selfie-stick HID buttons). Same action names as CAMERA_ACTIONS.
+ * ------------------------------------------------------------------ */
+
+export const CAMERA_TRANSPORTS = ["auto", "ble", "usb"] as const;
+export type CameraTransport = (typeof CAMERA_TRANSPORTS)[number];
+
+export const REMOTE_ACTIONS = ["zoomIn", "zoomOut", "focusNear", "focusFar", "af", "photo", "record"] as const;
+export type RemoteAction = (typeof REMOTE_ACTIONS)[number];
+
+export const selfieBindingSchema = z.object({
+    /** `vk:26` (keyboard virtual key) or `hid:02E900` (consumer-control report). */
+    key: z.string().min(1),
+    action: z.enum(REMOTE_ACTIONS),
+});
+export type SelfieBinding = z.infer<typeof selfieBindingSchema>;
+
+export const cameraRemoteSchema = z.object({
+    /** Detached remote window stays above other windows. */
+    alwaysOnTop: z.boolean().default(true),
+    /** auto = USB when TikSee holds a USB session, Bluetooth otherwise. */
+    transport: z.enum(CAMERA_TRANSPORTS).default("auto"),
+    speed: z.number().int().min(1).max(3).default(2),
+    selfie: z
+        .object({
+            enabled: z.boolean().default(false),
+            /** Raw Input device path of the learned remote; empty = none. */
+            device: z.string().default(""),
+            bindings: z.array(selfieBindingSchema).max(16).default([]),
+        })
+        .prefault({}),
+});
+export type CameraRemoteSettings = z.infer<typeof cameraRemoteSchema>;
+
+/* ------------------------------------------------------------------ *
  * Root.
  * ------------------------------------------------------------------ */
 
@@ -856,6 +891,7 @@ export const settingsSchema = z.object({
     translation: translationSchema.prefault({}),
     studio: studioSchema.prefault({}),
     vision: visionSchema.prefault({}),
+    cameraRemote: cameraRemoteSchema.prefault({}),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 

@@ -744,6 +744,54 @@
         "opacity": "Opacity",
         "blur": "Blur"
     },
+    "cameraRemote": {
+        "button": "Camera",
+        "hint": "Camera remote: zoom, focus, AF, photo, record (works without the Studio)",
+        "title": "Camera remote",
+        "detach": "Detach",
+        "onTop": "Keep on top",
+        "speed": "Speed",
+        "transport": "Send over",
+        "transports": {
+            "auto": "Auto",
+            "ble": "Bluetooth",
+            "usb": "USB"
+        },
+        "route": {
+            "ble": "Bluetooth",
+            "usb": "USB"
+        },
+        "via": "via {{route}}",
+        "offline": "Camera not connected",
+        "usbOn": "USB on",
+        "usbOff": "USB off",
+        "pairHint": "Turn on Bluetooth Rmt Ctrl on the camera, open Pairing, then press Pair. Or connect over USB below.",
+        "usbTitle": "USB connection",
+        "usbWarning": "Only one app can use the camera's USB at a time. \"Connect full\" blacks out the HDMI picture while it is open; Auto then sends over USB, otherwise over Bluetooth.",
+        "actions": {
+            "zoomIn": "Zoom in",
+            "zoomOut": "Zoom out",
+            "focusNear": "Focus near",
+            "focusFar": "Focus far",
+            "af": "Autofocus",
+            "photo": "Photo",
+            "record": "Record"
+        },
+        "selfie": {
+            "title": "Selfie-stick remote",
+            "hint": "A phone selfie remote (arrows, OK, shutter) paired with Windows in Bluetooth settings can drive the camera.",
+            "enabled": "Use the selfie remote",
+            "learn": "Learn buttons",
+            "learnStop": "Done",
+            "press": "Press a button on the selfie remote…",
+            "pick": "Button {{key}}: what should it do?",
+            "pickLabel": "Action for this button",
+            "shutterKey": "Shutter",
+            "remove": "Remove {{key}}",
+            "none": "No buttons learned yet.",
+            "cameraNote": "Paired directly to the camera it will most likely not work: Sony cameras accept only Sony's own Bluetooth remote protocol, not phone HID remotes."
+        }
+    },
     "liveControl": {
         "label": "Live Control",
         "mute": "Mute assistant",

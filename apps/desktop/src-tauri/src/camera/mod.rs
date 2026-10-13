@@ -7,7 +7,9 @@
 //!   HDMI (Q43), and reports `probeFailed` if the camera then refuses SDIO.
 
 pub mod ble;
+pub mod hid;
 pub mod ptp;
+pub mod remote;
 #[cfg(windows)]
 mod usbk;
 
@@ -205,6 +207,8 @@ fn view(p: &Prop) -> PropView {
 
 enum Req {
     Control(Control, i32),
+    /// Remote button press/release (`remote::usb_steps` / `usb_focus_hold`).
+    Press(remote::Action, bool, u8),
     SetProp(u16, i64),
     Step(u16, i32),
     Refresh,
@@ -231,6 +235,22 @@ impl CameraCtl {
             .tx
             .send(r)
             .map_err(|e| e.to_string())
+    }
+
+    /// A USB session is running and the camera answered (the remote then
+    /// routes over USB instead of Bluetooth).
+    pub fn usb_connected(&self) -> bool {
+        let running = self.run.lock().ok().is_some_and(|g| g.is_some());
+        running
+            && LAST
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(|s| s.connected && s.mode != Mode::Off))
+                .unwrap_or(false)
+    }
+
+    pub fn press(&self, action: remote::Action, down: bool, speed: u8) -> Result<(), String> {
+        self.send(Req::Press(action, down, speed))
     }
 
     /// Env-var path (`TIKSEE_CAMERA_CTL=usb`): full handshake.
@@ -339,6 +359,8 @@ fn worker(app: AppHandle, rx: Receiver<Req>, probe: bool) {
     let mut refused = false;
     let mut last_try = Instant::now() - Duration::from_secs(10);
     let mut last_poll = Instant::now();
+    // Focus has no continuous SDIO control: repeat the step while held.
+    let mut focus_hold: Option<(Control, i32)> = None;
     loop {
         // Connect (or reconnect) every 3 s while disconnected.
         if session.is_none() && !refused && last_try.elapsed() >= Duration::from_secs(3) {
@@ -382,13 +404,16 @@ fn worker(app: AppHandle, rx: Receiver<Req>, probe: bool) {
                 }
             }
         }
-        let wait = if session.is_some() {
-            Duration::from_millis(250)
-        } else {
+        let wait = if session.is_none() {
             Duration::from_secs(1)
+        } else if focus_hold.is_some() {
+            Duration::from_millis(120)
+        } else {
+            Duration::from_millis(250)
         };
         let req = rx.recv_timeout(wait);
         let Some(s) = session.as_mut() else {
+            focus_hold = None;
             match req {
                 Ok(Req::Shutdown) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     emit_off(&app);
@@ -409,6 +434,22 @@ fn worker(app: AppHandle, rx: Receiver<Req>, probe: bool) {
                 return;
             }
             Ok(Req::Control(c, v)) => s.control(c.code(), &c.payload(v)),
+            Ok(Req::Press(action, down, speed)) => {
+                if let Some(hold) = remote::usb_focus_hold(action, down, speed) {
+                    focus_hold = hold;
+                }
+                let mut r = Ok(());
+                for (c, v, pause) in remote::usb_steps(action, down, speed) {
+                    r = s.control(c.code(), &c.payload(v));
+                    if r.is_err() {
+                        break;
+                    }
+                    if pause > 0 {
+                        std::thread::sleep(Duration::from_millis(pause));
+                    }
+                }
+                r
+            }
             Ok(Req::SetProp(code, v)) => set(s, code, v),
             Ok(Req::Step(code, dir)) => match state.props.iter().find(|p| p.code == code) {
                 None => Err(format!(
@@ -426,6 +467,10 @@ fn worker(app: AppHandle, rx: Receiver<Req>, probe: bool) {
                 Ok(())
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Ok(()),
+        };
+        let result = match (result, focus_hold) {
+            (Ok(()), Some((c, v))) => s.control(c.code(), &c.payload(v)),
+            (r, _) => r,
         };
         if let Err(e) = result {
             log::warn!("[camera] request failed: {e}");
@@ -692,6 +737,42 @@ pub fn camera_ble(
 #[tauri::command]
 pub fn camera_ble_state() -> Option<ble::BleState> {
     ble::last_state()
+}
+
+/// Remote button from any window (HUD, detached remote, Studio not needed):
+/// USB when TikSee's USB session is connected, else Bluetooth (`transport`).
+#[tauri::command]
+pub fn camera_remote(
+    app: AppHandle,
+    action: remote::Action,
+    down: bool,
+    speed: Option<u8>,
+    transport: Option<remote::Transport>,
+) -> Result<remote::Route, String> {
+    remote::dispatch(
+        &app,
+        action,
+        down,
+        speed.unwrap_or(1),
+        transport.unwrap_or_default(),
+    )
+}
+
+/// Selfie-stick (HID) remote: learned device, button bindings, transport.
+#[tauri::command]
+pub fn camera_hid_configure(
+    app: AppHandle,
+    state: tauri::State<'_, hid::HidCtl>,
+    config: hid::HidConfig,
+) {
+    state.configure(&app, config);
+}
+
+/// While on, every HID button press is reported as `camera://hid-learn`
+/// instead of moving the camera.
+#[tauri::command]
+pub fn camera_hid_learn(app: AppHandle, state: tauri::State<'_, hid::HidCtl>, on: bool) {
+    state.learn(&app, on);
 }
 
 pub fn shutdown(app: &AppHandle) {

@@ -11,6 +11,9 @@ const KB = 1024;
 const budgets = [
     ["desktop entry", /^main-.*\.js$/, "apps/desktop/dist/assets", 45 * KB],
     ["desktop overlay", /^overlay-.*\.js$/, "apps/desktop/dist/assets", 6 * KB],
+    // Camera remote outside the Studio: detached window entry + the Live Control popover (lazy).
+    ["desktop camera remote window", /^remote-[\w-]{8}\.js$/, "apps/desktop/dist/assets", 6 * KB],
+    ["desktop camera remote popover (lazy)", /^remote-popover-.*\.js$/, "apps/desktop/dist/assets", 6 * KB],
     ["desktop live route", /^live-.*\.js$/, "apps/desktop/dist/assets", 35 * KB],
     ["desktop speaker (lazy)", /^speaker-.*\.js$/, "apps/desktop/dist/assets", 5 * KB],
     ["desktop mic (lazy)", /^mic-[^h].*\.js$/, "apps/desktop/dist/assets", 4 * KB],

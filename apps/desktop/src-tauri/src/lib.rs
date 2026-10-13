@@ -140,6 +140,38 @@ async fn toggle_overlay(app: AppHandle, show: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Show (focus) or close the detached camera remote. Position and size come
+/// back from the window-state plugin; always-on-top is the saved preference.
+#[tauri::command]
+async fn toggle_camera_remote(app: AppHandle, show: bool, on_top: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("camera-remote") {
+        if show {
+            window.show().map_err(|e| e.to_string())?;
+            window
+                .set_always_on_top(on_top)
+                .map_err(|e| e.to_string())?;
+            window.set_focus().map_err(|e| e.to_string())?;
+        } else {
+            window.close().map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+    if !show {
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "camera-remote", WebviewUrl::App("remote.html".into()))
+        .title("TikSee camera remote")
+        .inner_size(300.0, 440.0)
+        .min_inner_size(240.0, 260.0)
+        .decorations(false)
+        .transparent(true)
+        .shadow(true)
+        .always_on_top(on_top)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Let clicks pass through the overlay to whatever is behind it.
 #[tauri::command]
 fn set_overlay_click_through(app: AppHandle, enabled: bool) -> Result<(), String> {
@@ -312,7 +344,7 @@ fn register_hotkeys(_app: &AppHandle, _hotkeys: &Hotkeys) -> Vec<String> {
 /// works without a WebView2 prompt; every other window (the TikTok login
 /// page) keeps the default behaviour.
 fn permission_for(label: &str, kind: PermissionKind) -> PermissionResponse {
-    let own_window = matches!(label, "main" | "overlay" | "studio");
+    let own_window = matches!(label, "main" | "overlay" | "studio" | "camera-remote");
     match kind {
         PermissionKind::Microphone | PermissionKind::Camera if own_window => {
             PermissionResponse::Allow
@@ -353,6 +385,7 @@ pub fn run() {
         .manage(BehaviourState::default())
         .manage(camera::CameraCtl::default())
         .manage(camera::ble::BleCtl::default())
+        .manage(camera::hid::HidCtl::default())
         .on_permission_request(|webview, kind| permission_for(webview.label(), kind))
         .invoke_handler(tauri::generate_handler![
             sidecar_status,
@@ -361,6 +394,7 @@ pub fn run() {
             toggle_overlay,
             set_overlay_click_through,
             toggle_studio,
+            toggle_camera_remote,
             camera::camera_control,
             camera::camera_set,
             camera::camera_refresh,
@@ -370,6 +404,9 @@ pub fn run() {
             camera::camera_usb_status,
             camera::camera_ble,
             camera::camera_ble_state,
+            camera::camera_remote,
+            camera::camera_hid_configure,
+            camera::camera_hid_learn,
             set_behaviour,
             set_autostart,
             set_hotkeys,

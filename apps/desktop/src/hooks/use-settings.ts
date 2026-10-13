@@ -7,6 +7,7 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { load, type Store } from "@tauri-apps/plugin-store";
 
 import { setLocale } from "../i18n/index.js";
+import { configureSelfie } from "../lib/camera-remote.js";
 import { useAppStore } from "../store/app-store.js";
 
 const STORE_FILE = "settings.json";
@@ -74,6 +75,15 @@ export function useSettingsSync(): void {
                 else stop = fn;
             })
             .catch(() => undefined);
+        let stopRemote: (() => void) | undefined;
+        void listen<Partial<Settings["cameraRemote"]>>("remote://patch", (e) => {
+            useAppStore.getState().updateSettings((s) => ({ ...s, cameraRemote: { ...s.cameraRemote, ...e.payload } }));
+        })
+            .then((fn) => {
+                if (disposed) fn();
+                else stopRemote = fn;
+            })
+            .catch(() => undefined);
         let stopClosed: (() => void) | undefined;
         void listen("studio://closed", () => {
             useAppStore.getState().updateSettings((s) => ({ ...s, studio: { ...s.studio, enabled: false } }));
@@ -86,9 +96,19 @@ export function useSettingsSync(): void {
         return () => {
             disposed = true;
             stop?.();
+            stopRemote?.();
             stopClosed?.();
         };
     }, [loaded]);
+
+    // ---- camera remote: mirror to the detached window, selfie buttons to the shell ----
+    useEffect(() => {
+        if (!loaded) return;
+        void emitTo("camera-remote", "remote://settings", settings.cameraRemote).catch(() => undefined);
+        void configureSelfie(settings.cameraRemote).catch((error: unknown) => {
+            console.error("[settings] selfie remote failed", error);
+        });
+    }, [settings.cameraRemote, loaded]);
 
     // ---- persist (debounced) ------------------------------------------
     useEffect(() => {
