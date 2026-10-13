@@ -190,6 +190,8 @@
             "thankGifts": "Thank gifts automatically",
             "greetReturning": "Greet returning viewers",
             "skipDuplicates": "Skip duplicate messages",
+            "filterAbuse": "Never voice insults",
+            "filterAbuseHint": "Messages and names with insults are not read aloud, answered by the AI or voiced by pets. TikTok attributes everything heard on the live to you.",
             "minGift": "Minimum gift value to read",
             "minGiftHint": "Ignore gifts worth fewer diamonds than this"
         },
@@ -527,6 +529,19 @@
                 "repair": "Repair camera",
                 "repaired": "TikSee Camera registered again",
                 "repairFailed": "Repair failed: {{error}}"
+            },
+            "phoneMirror": {
+                "title": "Phone mirror",
+                "hint": "The studio picture on your phone screen, over USB or WiFi adb, for a LIVE from the TikTok app with screen share",
+                "needsVcam": "Turn on the virtual camera above first: the mirror uses the same frames.",
+                "refresh": "Find phones",
+                "none": "No phone with authorised USB debugging",
+                "start": "Mirror to {{model}}",
+                "stop": "Stop",
+                "started": "The page opened on the phone. Tap it for full screen.",
+                "failed": "Mirror failed: {{error}}",
+                "status": "{{clients}} phone(s) attached · {{frames}} frames sent",
+                "steps": "On the phone: TikTok → LIVE → Mobile gaming (screen share) → start, then switch back to the TikSee page. Sound comes from the phone microphone."
             },
             "clips": {
                 "title": "Instant clips",

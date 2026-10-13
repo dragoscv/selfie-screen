@@ -1,5 +1,6 @@
 import {
     compileWordList,
+    spokenBlockList,
     eventDiamonds,
     type ChatEvent,
     type PetAiLevel,
@@ -700,7 +701,7 @@ export class PetAgents {
     }
 
     #blockedRe(): RegExp | null {
-        const words = this.#deps.settings().safety.blockedWords;
+        const words = spokenBlockList(this.#deps.settings().safety);
         const key = words.join("\u0000");
         if (key !== this.#blockedKey) {
             this.#blockedKey = key;

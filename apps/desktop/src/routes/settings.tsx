@@ -622,6 +622,13 @@ function FiltersSection() {
                     onChange={(skipDuplicates) => update("safety", { skipDuplicates })}
                     tint="var(--kind-gift)"
                 />
+                <SwitchRow
+                    label={t("settings.filters.filterAbuse")}
+                    description={t("settings.filters.filterAbuseHint")}
+                    checked={safety.filterAbuse}
+                    onChange={(filterAbuse) => update("safety", { filterAbuse })}
+                    tint="var(--kind-gift)"
+                />
                 <SliderRow
                     label={t("settings.filters.minGift")}
                     value={voice.minGiftValueToRead}
@@ -1391,6 +1398,7 @@ function StudioSection() {
                 <p className="text-xs text-fg-muted">{t("settings.studio.mountHint")}</p>
             </Card>
             <VirtualCameraCard />
+            <PhoneMirrorCard />
             <ClipsCard />
             <MonitorCard />
             <FramingCard />
@@ -1629,6 +1637,98 @@ function VirtualCameraCard() {
             </div>
         </Card>
     );
+}
+
+function PhoneMirrorCard() {
+    const { t } = useTranslation();
+    const vcamOn = useAppStore((state) => state.settings.studio.virtualCamera);
+    const [devices, setDevices] = useState<AdbDevice[] | null>(null);
+    const [busy, setBusy] = useState<string | null>(null);
+    const [active, setActive] = useState<string | null>(null);
+    const [status, setStatus] = useState<MirrorStatus | null>(null);
+
+    const refresh = () =>
+        void invoke<AdbDevice[]>("mirror_devices")
+            .then(setDevices)
+            .catch((error: unknown) => {
+                setDevices([]);
+                toast.error(t("settings.studio.phoneMirror.failed", { error: String(error) }));
+            });
+
+    useEffect(() => {
+        refresh();
+        let disposed = false;
+        const id = window.setInterval(() => {
+            void invoke<MirrorStatus>("mirror_status").then((s) => {
+                if (!disposed) setStatus(s);
+            });
+        }, 2000);
+        return () => {
+            disposed = true;
+            window.clearInterval(id);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only probe
+    }, []);
+
+    const start = (serial: string) => {
+        setBusy(serial);
+        void invoke<string>("mirror_start", { serial })
+            .then(() => {
+                setActive(serial);
+                toast.success(t("settings.studio.phoneMirror.started"));
+            })
+            .catch((error: unknown) => toast.error(t("settings.studio.phoneMirror.failed", { error: String(error) })))
+            .finally(() => setBusy(null));
+    };
+
+    const stop = (serial: string) => {
+        void invoke("mirror_stop", { serial })
+            .then(() => setActive(null))
+            .catch((error: unknown) => toast.error(t("settings.studio.phoneMirror.failed", { error: String(error) })));
+    };
+
+    return (
+        <Card title={t("settings.studio.phoneMirror.title")} subtitle={t("settings.studio.phoneMirror.hint")} icon={<MonitorSmartphone />} tint="var(--kind-gift)">
+            {!vcamOn && <p className="text-xs text-warning">{t("settings.studio.phoneMirror.needsVcam")}</p>}
+            <div className="flex flex-wrap items-center gap-2">
+                {(devices ?? []).map((d) =>
+                    active === d.serial ? (
+                        <Button key={d.serial} size="sm" variant="soft" onClick={() => stop(d.serial)}>
+                            {t("settings.studio.phoneMirror.stop")} · {d.model}
+                        </Button>
+                    ) : (
+                        <Button key={d.serial} size="sm" loading={busy === d.serial} disabled={!vcamOn} onClick={() => start(d.serial)}>
+                            {t("settings.studio.phoneMirror.start", { model: `${d.model} (${d.transport})` })}
+                        </Button>
+                    ),
+                )}
+                <Button size="sm" variant="ghost" onClick={refresh}>
+                    {t("settings.studio.phoneMirror.refresh")}
+                </Button>
+            </div>
+            {devices?.length === 0 && <p className="text-xs text-fg-muted">{t("settings.studio.phoneMirror.none")}</p>}
+            {status?.running && (
+                <p className="text-xs text-fg-muted" aria-live="polite">
+                    {t("settings.studio.phoneMirror.status", { clients: status.clients, frames: status.framesSent })}
+                </p>
+            )}
+            <p className="text-xs text-fg-muted">{t("settings.studio.phoneMirror.steps")}</p>
+        </Card>
+    );
+}
+
+interface AdbDevice {
+    serial: string;
+    model: string;
+    transport: "usb" | "wifi";
+}
+
+interface MirrorStatus {
+    running: boolean;
+    port: number;
+    clients: number;
+    framesSent: number;
+    uptimeS: number;
 }
 
 function ClipsCard() {

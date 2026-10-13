@@ -1,6 +1,8 @@
 import {
     compileWordList,
     eventDiamonds,
+    normaliseForMatch,
+    spokenBlockList,
     type ChatEvent,
     type ReplyItem,
     type ServerMessage,
@@ -125,7 +127,7 @@ export class CoHost {
     setSettings(settings: Settings): void {
         this.#bucket.setRate(settings.assistant.repliesPerMinute, this.#now());
         this.#queue.setMaxActive(settings.safety.maxQueue);
-        this.#blocked = compileWordList(settings.safety.blockedWords);
+        this.#blocked = compileWordList(spokenBlockList(settings.safety));
         this.#s1.enabled = settings.assistant.aiReplies && settings.assistant.useSystemOne;
         if (this.#deps.memory) this.#deps.memory.persistHistory = settings.data.persistHistory;
         this.pump();
@@ -182,12 +184,13 @@ export class CoHost {
         this.#maybeViewerCard(event, observation, settings);
 
         let readAloud = false;
-        if (this.#readAloudOn(settings) && passesReadFilters(event, settings.voice) && !(duplicate && settings.safety.skipDuplicates)) {
+        const abusive = this.#blocked?.test(normaliseForMatch(`${event.user.nickname} ${event.text}`)) ?? false;
+        if (this.#readAloudOn(settings) && !abusive && passesReadFilters(event, settings.voice) && !(duplicate && settings.safety.skipDuplicates)) {
             const line = readAloudLine(event, settings.voice);
             if (line !== "") readAloud = this.#addTemplate("read", event, line, 1, now);
         }
 
-        if (event.kind === "gift" && settings.safety.thankGifts && !readAloud && this.#dedupe("thanks", event.user.uniqueId, now)) {
+        if (event.kind === "gift" && settings.safety.thankGifts && !readAloud && !this.#abusiveName(event.user.nickname) && this.#dedupe("thanks", event.user.uniqueId, now)) {
             this.#addTemplate("thanks", event, thanksLine(event), 5 + Math.log10(1 + eventDiamonds(event)), now);
         }
 
@@ -530,9 +533,14 @@ export class CoHost {
         if (card) this.#deps.send({ type: "viewerCard", card });
 
         const now = this.#now();
-        if (settings.safety.greetReturningViewers && this.#dedupe("greet", before.uniqueId, now)) {
+        if (settings.safety.greetReturningViewers && !this.#abusiveName(event.user.nickname || before.nickname) && this.#dedupe("greet", before.uniqueId, now)) {
             this.#addTemplate("greeting", event, greetingLine(event.user.nickname || before.nickname, visits), 4, now);
         }
+    }
+
+    /** A nickname that would put a blocked/abusive word in the streamer's voice. */
+    #abusiveName(nickname: string): boolean {
+        return this.#blocked?.test(normaliseForMatch(nickname)) ?? false;
     }
 
     #readAloudOn(settings: Settings): boolean {

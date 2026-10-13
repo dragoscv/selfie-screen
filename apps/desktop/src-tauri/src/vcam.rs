@@ -316,6 +316,7 @@ mod imp {
     ) -> Result<(), String> {
         counters.on_received(tick_ms());
         report(counters);
+        crate::mirror::offer(width, height, frame);
         {
             let mut inner = lock_inner(shared);
             let Some(ring) = inner.ring() else {

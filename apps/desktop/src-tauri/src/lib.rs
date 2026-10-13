@@ -1,5 +1,6 @@
 mod camera;
 mod clips;
+mod mirror;
 mod secrets;
 mod sidecar;
 mod tiktok;
@@ -422,6 +423,10 @@ pub fn run() {
             vcam::vcam_configure,
             vcam::vcam_register,
             vcam::vcam_endpoint,
+            mirror::mirror_devices,
+            mirror::mirror_start,
+            mirror::mirror_stop,
+            mirror::mirror_status,
             clips::clip_save,
         ])
         .setup(|app| {

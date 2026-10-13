@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ChatEvent } from "./events.js";
-import { Moderator, compileWordList, normaliseForMatch } from "./moderation.js";
+import { Moderator, compileWordList, normaliseForMatch, spokenBlockList } from "./moderation.js";
 
 function ev(text: string, uniqueId = "ana", at = 1000): ChatEvent {
     return {
@@ -34,6 +34,16 @@ describe("normaliseForMatch", () => {
 });
 
 describe("compileWordList", () => {
+    it("spokenBlockList adds the built-in abuse list only when enabled", () => {
+        const on = compileWordList(spokenBlockList({ blockedWords: ["mine"], filterAbuse: true }));
+        expect(on?.test(normaliseForMatch("Ești un PROST"))).toBe(true);
+        expect(on?.test(normaliseForMatch("you are an 1d10t"))).toBe(true);
+        expect(on?.test(normaliseForMatch("ce mai faci, frumoaso?"))).toBe(false);
+        expect(on?.test(normaliseForMatch("mine"))).toBe(true);
+        const off = compileWordList(spokenBlockList({ blockedWords: [], filterAbuse: false }));
+        expect(off).toBeNull();
+    });
+
     it("returns null for an empty list", () => {
         expect(compileWordList([])).toBeNull();
         expect(compileWordList(["", "   "])).toBeNull();

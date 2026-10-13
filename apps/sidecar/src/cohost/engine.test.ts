@@ -143,6 +143,20 @@ describe("CoHost", () => {
         expect(t.codai.streamChat).not.toHaveBeenCalled();
     });
 
+    it("never voices an insult or an abusive nickname (built-in abuse list)", () => {
+        const t = setup((s) => {
+            s.assistant.aiReplies = false;
+            s.voice.filters.gifts = false;
+        });
+        engines.push(t.engine);
+        t.engine.onEvent(chat("esti o proasta"));
+        t.engine.onEvent(chat("salut", "curva"));
+        t.engine.onEvent({ ...chat("sent Rose", "idiot"), kind: "gift", giftName: "Rose", giftDiamonds: 1, giftCount: 1 });
+        expect(t.says()).toHaveLength(0);
+        t.engine.onEvent(chat("salut tuturor"));
+        expect(t.says().map((m) => m.text)).toEqual(["ana zice: salut tuturor"]);
+    });
+
     it("honours the reply bucket (burst 2) and skips low-score chatter", async () => {
         const t = setup((s) => {
             s.assistant.replyMode = "approve";

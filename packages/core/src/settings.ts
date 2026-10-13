@@ -127,6 +127,11 @@ export const safetySchema = z.object({
     skipDuplicates: z.boolean().default(true),
     greetReturningViewers: z.boolean().default(true),
     thankGifts: z.boolean().default(true),
+    /**
+     * Built-in RO+EN insult/slur list (`ABUSE_WORDS`): such lines are never read
+     * aloud, answered by the AI or voiced by pets. They stay visible in the feed.
+     */
+    filterAbuse: z.boolean().default(true),
     /** Words that hide a message entirely. */
     blockedWords: z.array(z.string()).default([]),
     /** Handles whose messages are hidden entirely. */

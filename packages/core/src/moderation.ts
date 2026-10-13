@@ -1,4 +1,32 @@
 import type { ChatEvent } from "./events.js";
+import type { SafetySettings } from "./settings.js";
+
+/**
+ * Insults, slurs and self-harm taunts (RO + EN) that must never be spoken on
+ * the live: TikTok attributes anything voiced on stream to the streamer, so a
+ * read-aloud "X zice: <insult>" counts as the streamer harassing. Entries are
+ * matched after `normaliseForMatch` (no diacritics, leetspeak folded); `*x*`
+ * = substring. Kept deliberately conservative over clever.
+ */
+export const ABUSE_WORDS: readonly string[] = [
+    // Romanian
+    "prost", "proasta", "prostule", "proasto", "prostii", "idiotule", "idioato", "idioata",
+    "cretin", "cretina", "cretinule", "retardat", "retardata", "retardatule", "handicapat", "handicapato",
+    "debil", "debilule", "tampit", "tampita", "tampitule", "boule", "vaco", "porcule",
+    "jeg", "jegos", "jegoasa", "gunoi", "gunoiule", "ratat", "ratato", "ratatule", "grasan", "grasano", "grasa",
+    "*muie*", "*pizd*", "pula", "pulii", "pulamea", "fut", "futu", "futui", "futut", "futu-ti", "futute",
+    "curva", "curvo", "curvelor", "tarfa", "tarfo", "lindic", "poponar", "bulangiu", "labagiu", "sugaci",
+    "cioara", "ciori", "cioroi", "dute dracu", "du-te dracu", "omoara-te", "sinucide-te", "mori naibii",
+    // English
+    "idiot", "stupid", "moron", "retard", "retarded", "dumbass", "loser", "ugly", "fatass",
+    "bitch", "whore", "slut", "*fuck*", "cunt", "dick", "dickhead", "asshole", "bastard",
+    "nigger", "nigga", "faggot", "fag", "tranny", "kys", "kill yourself", "go die",
+];
+
+/** The streamer's own `blockedWords` plus, when enabled, the built-in abuse list. */
+export function spokenBlockList(safety: Pick<SafetySettings, "blockedWords" | "filterAbuse">): string[] {
+    return safety.filterAbuse ? [...safety.blockedWords, ...ABUSE_WORDS] : [...safety.blockedWords];
+}
 
 /**
  * Normalise text for matching: lowercase, strip diacritics, and fold the

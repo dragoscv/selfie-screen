@@ -190,6 +190,8 @@
             "thankGifts": "Mulțumește automat pentru cadouri",
             "greetReturning": "Salută spectatorii care revin",
             "skipDuplicates": "Sari peste mesajele duplicate",
+            "filterAbuse": "Nu rosti jigniri",
+            "filterAbuseHint": "Mesajele și numele cu insulte nu sunt citite, nu primesc răspuns AI și nu sunt spuse de animăluțe. TikTok îți atribuie tot ce se aude pe live.",
             "minGift": "Valoarea minimă a cadoului citit",
             "minGiftHint": "Ignoră cadourile sub acest număr de diamante"
         },
@@ -528,6 +530,19 @@
                 "repair": "Repară camera",
                 "repaired": "TikSee Camera a fost reînregistrată",
                 "repairFailed": "Repararea a eșuat: {{error}}"
+            },
+            "phoneMirror": {
+                "title": "Oglindire pe telefon",
+                "hint": "Imaginea din studio pe ecranul telefonului, prin USB sau WiFi adb, pentru live din aplicația TikTok cu partajare ecran",
+                "needsVcam": "Pornește mai întâi camera virtuală de mai sus: oglindirea folosește aceleași cadre.",
+                "refresh": "Caută telefoane",
+                "none": "Niciun telefon cu depanare USB autorizată",
+                "start": "Oglindește pe {{model}}",
+                "stop": "Oprește",
+                "started": "Pagina s-a deschis pe telefon. Atinge-o pentru ecran complet.",
+                "failed": "Oglindirea a eșuat: {{error}}",
+                "status": "{{clients}} telefon(e) conectat(e) · {{frames}} cadre trimise",
+                "steps": "Pe telefon: TikTok → LIVE → Jocuri pe mobil (partajare ecran) → pornește, apoi revino la pagina TikSee. Sunetul vine din microfonul telefonului."
             },
             "clips": {
                 "title": "Clipuri instant",
