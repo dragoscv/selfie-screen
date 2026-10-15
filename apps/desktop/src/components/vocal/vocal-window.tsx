@@ -502,13 +502,20 @@ function SetupPanel({ settings, status, onPatch, onReset }: { settings: VocalSet
                     </select>
                 </label>
             </div>
+            <ChipSelector
+                label={t("vocal.phonesBus")}
+                options={["1", "2", "3", "4", "5"] as const}
+                value={String(settings.phonesBus) as "1" | "2" | "3" | "4" | "5"}
+                onSelect={(v) => onPatch({ phonesBus: Number(v) })}
+                display={(v) => `A${v}`}
+            />
             {status?.running && (
                 <p className="text-xs text-fg-muted" aria-live="polite">
                     {peaks.some((p) => p > -100) ? t("vocal.signalOk") : t("vocal.noSignal")}
                 </p>
             )}
             <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => run("vm_apply_live", { micStrip: settings.micStrip, musicStrip: settings.musicStrip }, "vocal.applied")} className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <button type="button" onClick={() => run("vm_apply_live", { micStrip: settings.micStrip, musicStrip: settings.musicStrip, phonesBus: settings.phonesBus }, "vocal.applied")} className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     {t("vocal.applyLive")}
                 </button>
                 <button type="button" onClick={() => run("vm_backup", {}, "vocal.backedUp")} className="rounded-full bg-panel-alt px-3 py-1.5 text-xs text-fg outline-none hover:text-accent focus-visible:ring-2 focus-visible:ring-ring">

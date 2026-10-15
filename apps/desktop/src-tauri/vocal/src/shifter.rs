@@ -6,7 +6,8 @@
 //! the old position, so the splice lands on the same point of the waveform.
 //! Latency is the delay line length: a few ms plus at most one period.
 
-const SIZE: usize = 8192;
+/// 32768 samples = 170 ms at 192 kHz: room for a period of 50 Hz plus the window.
+const SIZE: usize = 32_768;
 const MASK: usize = SIZE - 1;
 
 pub struct Splice {

@@ -403,8 +403,12 @@ mod tests {
 
     #[test]
     fn corrects_an_out_of_tune_note_to_the_scale() {
-        let sr = 48_000.0;
-        for mode in [ShiftMode::Live, ShiftMode::Natural] {
+        for (sr, mode) in [
+            (48_000.0, ShiftMode::Live),
+            (48_000.0, ShiftMode::Natural),
+            (176_400.0, ShiftMode::Live),
+            (176_400.0, ShiftMode::Natural),
+        ] {
             let params = VocalParams {
                 tune: Tune {
                     scale: Scale::Major,
@@ -420,16 +424,21 @@ mod tests {
             };
             let mut e = Engine::new(sr, params);
             // 452 Hz = A4 + 47 cents -> must land on A4 (A major contains A).
-            let input = tone(452.0, sr, 48_000);
+            let n = sr as usize;
+            let input = tone(452.0, sr, n);
             let mut l = vec![0.0; input.len()];
             let mut r = vec![0.0; input.len()];
             e.process(&input, &mut l, &mut r);
-            let got = measure(&l[24_000..], sr);
+            let got = measure(&l[n / 2..], sr);
             let cents = 1200.0 * (got / 440.0).log2();
-            assert!(cents.abs() < 10.0, "{mode:?}: {got} Hz ({cents} c)");
+            assert!(cents.abs() < 10.0, "{sr} {mode:?}: {got} Hz ({cents} c)");
             let m = e.meter();
             assert_eq!(m.target_midi, 69.0);
-            assert!(m.latency_ms < 15.0, "{mode:?} latency {}", m.latency_ms);
+            assert!(
+                m.latency_ms < 15.0,
+                "{sr} {mode:?} latency {}",
+                m.latency_ms
+            );
         }
     }
 

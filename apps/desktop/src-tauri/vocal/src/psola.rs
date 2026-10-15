@@ -6,7 +6,7 @@
 //! Latency is fixed while singing (about two periods of the lowest note of
 //! the phrase) and only re-sized during silence, so it never glitches.
 
-const SIZE: usize = 16_384;
+const SIZE: usize = 65_536;
 const MASK: usize = SIZE - 1;
 const MARKS: usize = 64;
 

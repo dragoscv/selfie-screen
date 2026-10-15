@@ -19,6 +19,10 @@ pub struct Estimate {
 
 pub struct Detector {
     sr: f32,
+    /// Input samples averaged into one analysis sample (176.4 kHz → 4).
+    dec: usize,
+    dec_n: usize,
+    dec_acc: f32,
     window: usize,
     hop: usize,
     ring: Vec<f32>,
@@ -42,15 +46,21 @@ pub struct Detector {
 }
 
 impl Detector {
-    /// `window` covers about two periods of the lowest note at 48 kHz (2048 = 43 ms).
+    /// Analysis runs at ~44–48 kHz whatever the device rate (Voicemeeter can
+    /// run at 96/176.4/192 kHz); 2048 samples = ~43 ms = two periods of 47 Hz.
     pub fn new(sample_rate: f32) -> Self {
-        let window = if sample_rate > 60_000.0 { 4096 } else { 2048 };
+        let dec = (sample_rate / 44_100.0).floor().max(1.0) as usize;
+        let sample_rate = sample_rate / dec as f32;
+        let window = 2048;
         let n = window * 2;
         let mut planner = RealFftPlanner::<f32>::new();
         let fwd = planner.plan_fft_forward(n);
         let inv = planner.plan_fft_inverse(n);
         Self {
             sr: sample_rate,
+            dec,
+            dec_n: 0,
+            dec_acc: 0.0,
             window,
             hop: (sample_rate / 375.0).round().max(32.0) as usize,
             ring: vec![0.0; window],
@@ -79,8 +89,9 @@ impl Detector {
         self.max_hz = max_hz.clamp(self.min_hz * 2.0, self.sr / 4.0);
     }
 
+    /// Hop in INPUT samples (what the caller counts).
     pub fn hop(&self) -> usize {
-        self.hop
+        self.hop * self.dec
     }
 
     pub fn last(&self) -> Option<Estimate> {
@@ -90,6 +101,22 @@ impl Detector {
     /// Feeds one sample; returns `Some` right after a new analysis.
     #[inline]
     pub fn push(&mut self, x: f32) -> Option<Option<Estimate>> {
+        if self.dec > 1 {
+            self.dec_acc += x;
+            self.dec_n += 1;
+            if self.dec_n < self.dec {
+                return None;
+            }
+            let x = self.dec_acc / self.dec as f32;
+            self.dec_acc = 0.0;
+            self.dec_n = 0;
+            return self.push_analysis(x);
+        }
+        self.push_analysis(x)
+    }
+
+    #[inline]
+    fn push_analysis(&mut self, x: f32) -> Option<Option<Estimate>> {
         self.ring[self.pos] = x;
         self.pos = (self.pos + 1) % self.window;
         self.since += 1;
@@ -166,7 +193,13 @@ impl Detector {
                 }
                 tau += 1;
             }
-            if pk >= tau_min && pk < tau_max && out[pk] > 0.0 {
+            // A maximum sitting on the search edge is the range clamp, not a period.
+            if pk > tau_min
+                && pk + 1 < tau_max
+                && out[pk] > 0.0
+                && out[pk] >= out[pk - 1]
+                && out[pk] >= out[pk + 1]
+            {
                 peaks[count] = (pk, out[pk]);
                 count += 1;
                 best_peak = best_peak.max(out[pk]);
@@ -232,11 +265,17 @@ mod tests {
 
     #[test]
     fn finds_sung_pitches_within_5_cents() {
-        for hz in [82.4, 110.0, 196.0, 261.6, 440.0, 880.0] {
-            let est = detect(hz, 48_000.0).expect("pitch");
-            let cents = 1200.0 * (est.hz / hz).log2();
-            assert!(cents.abs() < 5.0, "{hz} Hz -> {} Hz ({cents} c)", est.hz);
-            assert!(est.clarity > 0.9);
+        for sr in [44_100.0, 48_000.0, 96_000.0, 176_400.0] {
+            for hz in [82.4, 110.0, 196.0, 261.6, 440.0, 880.0] {
+                let est = detect(hz, sr).expect("pitch");
+                let cents = 1200.0 * (est.hz / hz).log2();
+                assert!(
+                    cents.abs() < 5.0,
+                    "{sr}: {hz} Hz -> {} Hz ({cents} c)",
+                    est.hz
+                );
+                assert!(est.clarity > 0.9);
+            }
         }
     }
 

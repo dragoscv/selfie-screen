@@ -856,7 +856,7 @@
         "backedUp": "Saved: {{path}}",
         "restored": "Restored: {{path}}",
         "guide": {
-            "0": "Voicemeeter: A1 = your headphones (WDM, 48 kHz), buffer 256–512 in Menu → System Settings.",
+            "0": "Voicemeeter: your headphones on a hardware bus (A1-A5, pick it above), buffer 256-512 in Menu > System Settings.",
             "1": "Microphone on a hardware strip (the one chosen above); music/backing track on Voicemeeter Input (Windows default playback).",
             "2": "TikTok LIVE Studio / OBS: only one microphone source = Voicemeeter Out B1; turn off its noise suppression and desktop audio.",
             "3": "Turn off 'Listen to this device' in Windows and direct monitoring on the audio card, or you will hear yourself twice.",
@@ -887,7 +887,10 @@
             "radio": "Radio (no tune)"
         },
         "singing": "Singing",
-        "silent": "Silence"
+        "silent": "Silence",
+        "open": "Open the vocal window (autotune)",
+        "focus": "Show the vocal window",
+        "phonesBus": "Headphones bus"
     },
     "cameraRemote": {
         "button": "Camera",

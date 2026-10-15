@@ -12,6 +12,7 @@ import { ErrorBoundary } from "./error-boundary.js";
 import { LiveControlBar } from "./live/live-control-bar.js";
 import { SummaryDialog } from "./live/summary-dialog.js";
 import { StudioButton } from "./studio-button.js";
+import { VocalButton } from "./vocal-button.js";
 import { Titlebar } from "./titlebar.js";
 
 const LiveRoute = lazy(() =>
@@ -85,6 +86,7 @@ export function AppShell() {
 
                 <div className="no-drag ml-auto flex items-center gap-2 pr-2">
                     <StudioButton />
+                    <VocalButton />
                     <ConnectionBar status={status} />
                 </div>
             </Titlebar>

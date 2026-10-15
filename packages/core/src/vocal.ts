@@ -139,6 +139,8 @@ export const vocalSchema = z.object({
     micStrip: z.number().int().min(0).max(7).default(0),
     /** Strip carrying music/backing track (key detection + ducking); -1 = none. */
     musicStrip: z.number().int().min(-1).max(7).default(5),
+    /** Hardware bus with the headphones (1..5 = A1..A5) for the live routing preset. */
+    phonesBus: z.number().int().min(1).max(5).default(1),
     /** Follow the key detected on the music strip. */
     autoKey: z.boolean().default(false),
     alwaysOnTop: z.boolean().default(true),

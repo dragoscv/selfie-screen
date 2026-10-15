@@ -297,7 +297,8 @@ impl Limiter {
 const COMBS: [usize; 8] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
 const ALLPASSES: [usize; 4] = [556, 441, 341, 225];
 const SPREAD: usize = 23;
-const MAX_LINE: usize = 4096;
+/// Freeverb's longest comb (1617 + spread at 44.1 kHz) scaled to 192 kHz.
+const MAX_LINE: usize = 8192;
 
 struct Comb {
     buf: Box<[f32]>,
@@ -393,7 +394,7 @@ impl Reverb {
 
 /* ---------------- delay ---------------- */
 
-const DELAY_MAX: usize = 96_000; // 2 s at 48 kHz
+const DELAY_MAX: usize = 288_000; // 1.5 s at 192 kHz
 
 pub struct Delay {
     buf: Box<[f32]>,

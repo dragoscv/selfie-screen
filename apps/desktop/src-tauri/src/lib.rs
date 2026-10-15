@@ -388,8 +388,13 @@ fn permission_for(label: &str, kind: PermissionKind) -> PermissionResponse {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Live Voicemeeter check used by `examples/vocal_probe.rs`.
-pub fn vocal_probe(strip: i32, secs: u64) {
-    vocal_host::probe(strip, secs);
+pub fn vocal_probe(strip: i32, secs: u64, monitor_bus: Option<i32>) {
+    vocal_host::probe(strip, secs, monitor_bus);
+}
+
+/// Runs a Voicemeeter script (used by `examples/vocal_probe.rs script "..."`).
+pub fn vocal_script(script: &str) {
+    vocal_host::run_script(script);
 }
 
 pub fn run() {

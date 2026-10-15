@@ -267,6 +267,7 @@ mod imp {
         set_string: unsafe extern "system" fn(*const c_char, *const c_char) -> c_long,
         get_string: unsafe extern "system" fn(*const c_char, *mut c_char) -> c_long,
         get_level: unsafe extern "system" fn(c_long, c_long, *mut f32) -> c_long,
+        get_float: unsafe extern "system" fn(*const c_char, *mut f32) -> c_long,
         is_dirty: unsafe extern "system" fn() -> c_long,
         cb_register:
             unsafe extern "system" fn(c_long, Callback, *mut c_void, *mut c_char) -> c_long,
@@ -296,6 +297,7 @@ mod imp {
                     set_string: sym!("VBVMR_SetParameterStringA"),
                     get_string: sym!("VBVMR_GetParameterStringA"),
                     get_level: sym!("VBVMR_GetLevel"),
+                    get_float: sym!("VBVMR_GetParameterFloat"),
                     is_dirty: sym!("VBVMR_IsParametersDirty"),
                     cb_register: sym!("VBVMR_AudioCallbackRegister"),
                     cb_start: sym!("VBVMR_AudioCallbackStart"),
@@ -591,6 +593,18 @@ mod imp {
 
         /// Device name and label of every strip (`(index, device, label)`).
         /// Voicemeeter's own pre-fader input meters, dBFS per input channel.
+        /// Reads one float parameter (`Strip[0].A5`).
+        pub fn get_float(&self, name: &str) -> Option<f32> {
+            let mut inner = self.lock();
+            let api = Self::api(&mut inner).ok()?;
+            unsafe { (api.is_dirty)() };
+            let n = std::ffi::CString::new(name).ok()?;
+            let mut v = 0.0f32;
+            // SAFETY: NUL-terminated name, out pointer to a local.
+            let rep = unsafe { (api.get_float)(n.as_ptr(), &mut v) };
+            (rep == 0).then_some(v)
+        }
+
         pub fn vm_levels(&self) -> Vec<f32> {
             let mut inner = self.lock();
             let Ok(api) = Self::api(&mut inner) else {
@@ -724,23 +738,29 @@ fn vm_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 /// Routing script for singing live (Potato strip numbering, 0-based).
-/// Mic and music go to headphones (A1) and the live (B1); TikSee's own voice
-/// (AUX) too; VAIO3 stays private (A1 only). Voicemeeter's strip comp/gate is
-/// turned off on the mic because TikSee's chain already does it.
-pub fn live_script(mic: i32, music: i32) -> String {
+/// Mic and music go to the headphones (`phones` = 1..5 → A1..A5) and the
+/// live (B1); TikSee's own voice (AUX) too; VAIO3 stays private (headphones
+/// only). Voicemeeter's strip comp/gate is turned off on the mic because
+/// TikSee's chain already does it.
+pub fn live_script(mic: i32, music: i32, phones: i32) -> String {
+    let a = format!("A{}", phones.clamp(1, 5));
     let mut s = format!(
-        "Strip[{mic}].A1=1; Strip[{mic}].B1=1; Strip[{mic}].B2=0; Strip[{mic}].Comp=0; Strip[{mic}].Gate=0; Strip[{mic}].Label=\"Voce TikSee\"; "
+        "Strip[{mic}].{a}=1; Strip[{mic}].B1=1; Strip[{mic}].B2=0; Strip[{mic}].Comp=0; Strip[{mic}].Gate=0; Strip[{mic}].Label=\"Voce TikSee\"; "
     );
     if music >= 0 && music != mic {
         s.push_str(&format!(
-            "Strip[{music}].A1=1; Strip[{music}].B1=1; Strip[{music}].Label=\"Muzica\"; "
+            "Strip[{music}].{a}=1; Strip[{music}].B1=1; Strip[{music}].Label=\"Muzica\"; "
         ));
     }
     if mic != 6 && music != 6 {
-        s.push_str("Strip[6].A1=1; Strip[6].B1=1; Strip[6].Label=\"TikSee\"; ");
+        s.push_str(&format!(
+            "Strip[6].{a}=1; Strip[6].B1=1; Strip[6].Label=\"TikSee\"; "
+        ));
     }
     if mic != 7 && music != 7 {
-        s.push_str("Strip[7].A1=1; Strip[7].B1=0; Strip[7].Label=\"Privat\"; ");
+        s.push_str(&format!(
+            "Strip[7].{a}=1; Strip[7].B1=0; Strip[7].Label=\"Privat\"; "
+        ));
     }
     s.push_str("Bus[5].Mute=0;");
     s
@@ -835,9 +855,10 @@ pub fn vm_apply_live(
     state: tauri::State<'_, VocalCtl>,
     mic_strip: i32,
     music_strip: i32,
+    phones_bus: i32,
 ) -> Result<String, String> {
     let backup = vm_backup(app, state.clone())?;
-    state.script(&live_script(mic_strip, music_strip))?;
+    state.script(&live_script(mic_strip, music_strip, phones_bus))?;
     Ok(backup)
 }
 
@@ -870,11 +891,34 @@ pub fn vm_restore(
 }
 
 /// Live check without the UI: run the engine on `strip` for `secs` and print status/meters.
-pub fn probe(strip: i32, secs: u64) {
+pub fn probe(strip: i32, secs: u64, monitor_bus: Option<i32>) {
     let ctl = VocalCtl::default();
     println!("status before: {:?}", ctl.status());
     for (i, dev, label) in ctl.strips().unwrap_or_default() {
         println!("strip {}: device='{dev}' label='{label}'", i + 1);
+    }
+    let routes: Vec<String> = ["A1", "A2", "A3", "A4", "A5", "B1", "B2", "B3"]
+        .iter()
+        .filter(|b| {
+            ctl.get_float(&format!("Strip[{strip}].{b}"))
+                .is_some_and(|v| v > 0.5)
+        })
+        .map(|b| (*b).to_owned())
+        .collect();
+    println!("strip {} routed to: {}", strip + 1, routes.join(" "));
+    // Audible test: hard tune in C major.
+    let mut params = VocalParams::default();
+    params.tune.scale = tiksee_vocal::scale::Scale::Major;
+    params.tune.retune_ms = 0.0;
+    params.tune.humanize = 0.0;
+    params.tune.vibrato = 0.0;
+    ctl.set_params(params);
+    // Temporarily route the strip to the headphones; restored at the end.
+    let monitor = monitor_bus.map(|b| format!("Strip[{strip}].A{}", b.clamp(1, 5)));
+    let was = monitor.as_deref().and_then(|m| ctl.get_float(m));
+    if let Some(m) = monitor.as_deref() {
+        let _ = ctl.script(&format!("{m}=1;"));
+        println!("monitoring on {m} (was {was:?})");
     }
     match ctl.start(strip, -1) {
         Ok(()) => println!("started on strip {}", strip + 1),
@@ -916,8 +960,29 @@ pub fn probe(strip: i32, secs: u64) {
             m.latency_ms
         );
     }
+    ctl.stop();
+    if let (Some(m), Some(v)) = (monitor.as_deref(), was) {
+        let _ = ctl.script(&format!("{m}={};", if v > 0.5 { 1 } else { 0 }));
+        println!("restored {m}={v}");
+    }
+    // Voicemeeter applies scripts asynchronously; logging out at once drops them.
+    std::thread::sleep(std::time::Duration::from_millis(400));
     ctl.shutdown();
     println!("stopped");
+}
+
+/// Runs one Voicemeeter script and waits for it to apply (probe repair mode).
+pub fn run_script(script: &str) {
+    let ctl = VocalCtl::default();
+    // First call logs in; Voicemeeter needs a moment before it accepts parameters.
+    let _ = ctl.status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    match ctl.script(script) {
+        Ok(()) => println!("script ok: {script}"),
+        Err(e) => println!("script failed: {e}"),
+    }
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    ctl.shutdown();
 }
 
 pub fn init(app: &tauri::AppHandle) {
@@ -955,10 +1020,11 @@ mod tests {
 
     #[test]
     fn live_script_routes_mic_and_music() {
-        let s = live_script(0, 5);
-        assert!(s.contains("Strip[0].A1=1; Strip[0].B1=1;"));
-        assert!(s.contains("Strip[5].A1=1; Strip[5].B1=1;"));
-        assert!(s.contains("Strip[7].A1=1; Strip[7].B1=0;"));
+        let s = live_script(0, 5, 5);
+        assert!(s.contains("Strip[0].A5=1; Strip[0].B1=1;"));
+        assert!(s.contains("Strip[5].A5=1; Strip[5].B1=1;"));
+        assert!(s.contains("Strip[7].A5=1; Strip[7].B1=0;"));
+        assert!(!s.contains(".A1="));
     }
 
     #[test]

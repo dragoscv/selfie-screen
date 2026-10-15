@@ -864,7 +864,7 @@
         "backedUp": "Salvat: {{path}}",
         "restored": "Restaurat: {{path}}",
         "guide": {
-            "0": "Voicemeeter: A1 = căștile tale (WDM, 48 kHz), buffer 256–512 din Menu → System Settings.",
+            "0": "Voicemeeter: căștile pe un bus hardware (A1-A5, alege-l mai sus), buffer 256-512 din Menu > System Settings.",
             "1": "Microfonul pe un strip hardware (cel ales mai sus); muzica/negativul pe Voicemeeter Input (redarea implicită din Windows).",
             "2": "TikTok LIVE Studio / OBS: o singură sursă de microfon = Voicemeeter Out B1; oprește suprimarea zgomotului și sunetul desktop.",
             "3": "Oprește „Ascultă acest dispozitiv” din Windows și monitorizarea directă de pe placa de sunet, altfel te auzi de două ori.",
@@ -895,7 +895,10 @@
             "radio": "Radio (fără tune)"
         },
         "singing": "Cânți",
-        "silent": "Liniște"
+        "silent": "Liniște",
+        "open": "Deschide fereastra Voce (autotune)",
+        "focus": "Arată fereastra Voce",
+        "phonesBus": "Bus căști"
     },
     "cameraRemote": {
         "button": "Cameră",
