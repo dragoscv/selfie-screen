@@ -7,3 +7,4 @@ export * from "./protocol.js";
 export * from "./format.js";
 export * from "./live.js";
 export * from "./vision.js";
+export * from "./vocal.js";

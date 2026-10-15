@@ -93,6 +93,7 @@ export default defineConfig(({ command }) => ({
                 overlay: fileURLToPath(new URL("./overlay.html", import.meta.url)),
                 studio: fileURLToPath(new URL("./studio.html", import.meta.url)),
                 remote: fileURLToPath(new URL("./remote.html", import.meta.url)),
+                vocal: fileURLToPath(new URL("./vocal.html", import.meta.url)),
             },
             output: {
                 // Split the heavy vendor libraries out of the entry chunk so the

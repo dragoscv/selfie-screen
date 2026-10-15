@@ -12,8 +12,8 @@ const MARKS: usize = 64;
 
 pub struct Psola {
     sr: f32,
-    input: Box<[f32; SIZE]>,
-    ola: Box<[f32; SIZE]>,
+    input: Box<[f32]>,
+    ola: Box<[f32]>,
     /// Samples written so far (absolute input time).
     n: u64,
     /// Fixed output latency in samples.
@@ -32,8 +32,8 @@ impl Psola {
         let latency = (2.2 * sample_rate / 150.0) as u64;
         Self {
             sr: sample_rate,
-            input: Box::new([0.0; SIZE]),
-            ola: Box::new([0.0; SIZE]),
+            input: vec![0.0; SIZE].into_boxed_slice(),
+            ola: vec![0.0; SIZE].into_boxed_slice(),
             n: 0,
             latency,
             marks: [0; MARKS],

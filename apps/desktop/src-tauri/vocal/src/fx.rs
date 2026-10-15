@@ -299,9 +299,8 @@ const ALLPASSES: [usize; 4] = [556, 441, 341, 225];
 const SPREAD: usize = 23;
 const MAX_LINE: usize = 4096;
 
-#[derive(Clone, Copy)]
 struct Comb {
-    buf: [f32; MAX_LINE],
+    buf: Box<[f32]>,
     len: usize,
     i: usize,
     store: f32,
@@ -318,9 +317,8 @@ impl Comb {
     }
 }
 
-#[derive(Clone, Copy)]
 struct Allpass {
-    buf: [f32; MAX_LINE],
+    buf: Box<[f32]>,
     len: usize,
     i: usize,
 }
@@ -336,8 +334,8 @@ impl Allpass {
 }
 
 pub struct Reverb {
-    combs: [[Comb; 8]; 2],
-    allpasses: [[Allpass; 4]; 2],
+    combs: [Vec<Comb>; 2],
+    allpasses: [Vec<Allpass>; 2],
     feedback: f32,
     damp: f32,
 }
@@ -347,20 +345,26 @@ impl Reverb {
         let k = sr / 44_100.0;
         let scale =
             |n: usize, side: usize| (((n + side * SPREAD) as f32 * k) as usize).clamp(8, MAX_LINE);
-        let comb = |n, s| Comb {
-            buf: [0.0; MAX_LINE],
-            len: scale(n, s),
-            i: 0,
-            store: 0.0,
+        let comb = |n, s| {
+            let len = scale(n, s);
+            Comb {
+                buf: vec![0.0; len].into_boxed_slice(),
+                len,
+                i: 0,
+                store: 0.0,
+            }
         };
-        let ap = |n, s| Allpass {
-            buf: [0.0; MAX_LINE],
-            len: scale(n, s),
-            i: 0,
+        let ap = |n, s| {
+            let len = scale(n, s);
+            Allpass {
+                buf: vec![0.0; len].into_boxed_slice(),
+                len,
+                i: 0,
+            }
         };
         Box::new(Self {
-            combs: [COMBS.map(|n| comb(n, 0)), COMBS.map(|n| comb(n, 1))],
-            allpasses: [ALLPASSES.map(|n| ap(n, 0)), ALLPASSES.map(|n| ap(n, 1))],
+            combs: [0, 1].map(|s| COMBS.iter().map(|&n| comb(n, s)).collect()),
+            allpasses: [0, 1].map(|s| ALLPASSES.iter().map(|&n| ap(n, s)).collect()),
             feedback: 0.84,
             damp: 0.2,
         })

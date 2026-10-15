@@ -1,5 +1,6 @@
 import { cn } from "@tiksee/ui";
 import {
+    AudioLines,
     Camera,
     EyeOff,
     MicOff,
@@ -15,6 +16,7 @@ import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { TOGGLE_CONTROLS, sendControl, toggleControl, type ToggleControl } from "../../lib/live-control.js";
+import { openVocalWindow } from "../../lib/vocal.js";
 import { useAppStore } from "../../store/app-store.js";
 
 const RemotePopover = lazy(() => import("../camera/remote-popover.js").then((m) => ({ default: m.RemotePopover })));
@@ -37,6 +39,7 @@ export function LiveControlBar() {
     const state = useAppStore((s) => s.liveControl);
     const speaking = useAppStore((s) => s.speaking);
     const connected = useAppStore((s) => s.sidecarConnected);
+    const vocal = useAppStore((s) => s.settings.vocal);
     const [remote, setRemote] = useState(false);
 
     return (
@@ -61,6 +64,19 @@ export function LiveControlBar() {
             >
                 <Camera className="size-3.5" aria-hidden />
                 {t("cameraRemote.button")}
+            </button>
+            <button
+                type="button"
+                onClick={() => void openVocalWindow(vocal.alwaysOnTop)}
+                title={t("vocal.hint")}
+                className={cn(
+                    "no-drag inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.6875rem] font-medium",
+                    "outline-none transition-colors duration-(--dur-fast) focus-visible:ring-2 focus-visible:ring-ring",
+                    vocal.enabled ? "bg-accent-subtle text-accent" : "bg-panel-alt text-fg-muted hover:text-fg",
+                )}
+            >
+                <AudioLines className="size-3.5" aria-hidden />
+                {t("vocal.button")}
             </button>
 
             <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />

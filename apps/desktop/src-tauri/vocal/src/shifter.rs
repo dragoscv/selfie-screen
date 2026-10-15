@@ -10,7 +10,7 @@ const SIZE: usize = 8192;
 const MASK: usize = SIZE - 1;
 
 pub struct Splice {
-    buf: Box<[f32; SIZE]>,
+    buf: Box<[f32]>,
     w: usize,
     /// Read position, in samples behind the writer.
     delay: f32,
@@ -25,7 +25,7 @@ impl Splice {
     pub fn new(sample_rate: f32) -> Self {
         let base = (sample_rate * 0.0012).max(16.0);
         Self {
-            buf: Box::new([0.0; SIZE]),
+            buf: vec![0.0; SIZE].into_boxed_slice(),
             w: 0,
             delay: base + 4.0,
             fade_from: 0.0,

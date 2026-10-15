@@ -5,6 +5,7 @@ mod secrets;
 mod sidecar;
 mod tiktok;
 mod vcam;
+mod vocal_host;
 mod windows_ext;
 
 use std::sync::Mutex;
@@ -164,6 +165,37 @@ async fn toggle_camera_remote(app: AppHandle, show: bool, on_top: bool) -> Resul
         .title("TikSee camera remote")
         .inner_size(300.0, 440.0)
         .min_inner_size(240.0, 260.0)
+        .decorations(false)
+        .transparent(true)
+        .shadow(true)
+        .always_on_top(on_top)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Show (focus) or close the detached vocal window (same pattern as the camera remote).
+#[tauri::command]
+async fn toggle_vocal_window(app: AppHandle, show: bool, on_top: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("vocal") {
+        if show {
+            window.show().map_err(|e| e.to_string())?;
+            window
+                .set_always_on_top(on_top)
+                .map_err(|e| e.to_string())?;
+            window.set_focus().map_err(|e| e.to_string())?;
+        } else {
+            window.close().map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+    if !show {
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "vocal", WebviewUrl::App("vocal.html".into()))
+        .title("TikSee Vocal")
+        .inner_size(760.0, 620.0)
+        .min_inner_size(420.0, 360.0)
         .decorations(false)
         .transparent(true)
         .shadow(true)
@@ -355,6 +387,11 @@ fn permission_for(label: &str, kind: PermissionKind) -> PermissionResponse {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Live Voicemeeter check used by `examples/vocal_probe.rs`.
+pub fn vocal_probe(strip: i32, secs: u64) {
+    vocal_host::probe(strip, secs);
+}
+
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -396,6 +433,17 @@ pub fn run() {
             set_overlay_click_through,
             toggle_studio,
             toggle_camera_remote,
+            toggle_vocal_window,
+            vocal_host::vocal_status,
+            vocal_host::vocal_meter,
+            vocal_host::vocal_strips,
+            vocal_host::vocal_start,
+            vocal_host::vocal_stop,
+            vocal_host::vocal_set_params,
+            vocal_host::vocal_eq_curve,
+            vocal_host::vm_backup,
+            vocal_host::vm_apply_live,
+            vocal_host::vm_restore,
             camera::camera_control,
             camera::camera_set,
             camera::camera_refresh,
@@ -432,6 +480,7 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             vcam::init(app.handle());
+            vocal_host::init(app.handle());
 
             if let Some(window) = app.get_webview_window("main") {
                 // Default to mica; the renderer re-applies the real preference
@@ -514,6 +563,8 @@ pub fn run() {
     app.run(|handle, event| {
         if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event {
             camera::shutdown(handle);
+            // Unregister from Voicemeeter so its input insert is released.
+            vocal_host::shutdown(handle);
             // Destroying the studio webview stops its MediaStream; a WebView2
             // left running holds the capture card open for the next launch.
             if let Some(studio) = handle.get_webview_window("studio") {

@@ -62,6 +62,34 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// EQ + HPF response (dB) of `chain` at `freqs`, without an engine (for the UI).
+    pub fn chain_curve(chain: &crate::params::Chain, sample_rate: f32, freqs: &[f32]) -> Vec<f32> {
+        let mut hpf = Biquad::default();
+        hpf.highpass(chain.hpf_hz, 0.707, sample_rate);
+        let mut bands = [Biquad::default(); 5];
+        for (bq, band) in bands.iter_mut().zip(chain.eq.iter()) {
+            bq.band(band, sample_rate);
+        }
+        freqs
+            .iter()
+            .map(|&f| {
+                let mut mag = if chain.hpf_on {
+                    hpf.magnitude(f, sample_rate)
+                } else {
+                    1.0
+                };
+                if chain.eq_on {
+                    for (bq, band) in bands.iter().zip(chain.eq.iter()) {
+                        if band.on {
+                            mag *= bq.magnitude(f, sample_rate);
+                        }
+                    }
+                }
+                to_db(mag)
+            })
+            .collect()
+    }
+
     pub fn new(sample_rate: f32, params: VocalParams) -> Self {
         let mut e = Self {
             sr: sample_rate,
@@ -487,7 +515,11 @@ mod tests {
                 let _ = e.music_sample(block[0]);
             }
             let secs = t.elapsed().as_secs_f64();
-            println!("{mode:?}: 10 s of audio in {:.1} ms = {:.2} % of one core", secs * 1000.0, secs / 10.0 * 100.0);
+            println!(
+                "{mode:?}: 10 s of audio in {:.1} ms = {:.2} % of one core",
+                secs * 1000.0,
+                secs / 10.0 * 100.0
+            );
         }
     }
 }

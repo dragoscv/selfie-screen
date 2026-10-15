@@ -8,6 +8,7 @@ import { load, type Store } from "@tauri-apps/plugin-store";
 
 import { setLocale } from "../i18n/index.js";
 import { configureSelfie } from "../lib/camera-remote.js";
+import { syncVocalEngine } from "../lib/vocal.js";
 import { useAppStore } from "../store/app-store.js";
 
 const STORE_FILE = "settings.json";
@@ -84,6 +85,15 @@ export function useSettingsSync(): void {
                 else stopRemote = fn;
             })
             .catch(() => undefined);
+        let stopVocal: (() => void) | undefined;
+        void listen<Partial<Settings["vocal"]>>("vocal://patch", (e) => {
+            useAppStore.getState().updateSettings((s) => ({ ...s, vocal: { ...s.vocal, ...e.payload } }));
+        })
+            .then((fn) => {
+                if (disposed) fn();
+                else stopVocal = fn;
+            })
+            .catch(() => undefined);
         let stopClosed: (() => void) | undefined;
         void listen("studio://closed", () => {
             useAppStore.getState().updateSettings((s) => ({ ...s, studio: { ...s.studio, enabled: false } }));
@@ -97,6 +107,7 @@ export function useSettingsSync(): void {
             disposed = true;
             stop?.();
             stopRemote?.();
+            stopVocal?.();
             stopClosed?.();
         };
     }, [loaded]);
@@ -109,6 +120,13 @@ export function useSettingsSync(): void {
             console.error("[settings] selfie remote failed", error);
         });
     }, [settings.cameraRemote, loaded]);
+
+    // ---- vocal engine: the shell runs it inside Voicemeeter; this window owns the settings ----
+    useEffect(() => {
+        if (!loaded) return;
+        void emitTo("vocal", "vocal://settings", settings.vocal).catch(() => undefined);
+        void syncVocalEngine(settings.vocal);
+    }, [settings.vocal, loaded]);
 
     // ---- persist (debounced) ------------------------------------------
     useEffect(() => {

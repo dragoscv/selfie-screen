@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { SIGNAL_FAMILIES, defaultRules, ruleSchema } from "./vision.js";
+import { vocalSchema } from "./vocal.js";
 
 /* ------------------------------------------------------------------ *
  * Appearance — the three orthogonal theme axes plus locale.
@@ -897,6 +898,7 @@ export const settingsSchema = z.object({
     studio: studioSchema.prefault({}),
     vision: visionSchema.prefault({}),
     cameraRemote: cameraRemoteSchema.prefault({}),
+    vocal: vocalSchema.prefault({}),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 

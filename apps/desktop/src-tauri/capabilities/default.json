@@ -1,12 +1,13 @@
 {
     "$schema": "../gen/schemas/desktop-schema.json",
     "identifier": "default",
-    "description": "Capabilities for the main window, the always-on-top overlay, the studio window and the detached camera remote.",
+    "description": "Capabilities for the main window, the always-on-top overlay, the studio window, the detached camera remote and the vocal window.",
     "windows": [
         "main",
         "overlay",
         "studio",
-        "camera-remote"
+        "camera-remote",
+        "vocal"
     ],
     "permissions": [
         "core:default",
