@@ -33,7 +33,7 @@ function RemoteWindow() {
             const store = isTauri() ? await load("settings.json", { autoSave: false }).catch(() => null) : null;
             const all: Settings = parseSettings(await store?.get("settings").catch(() => undefined));
             if (disposed) return;
-            applyAppearance({ ...all.appearance, surface: "glass" });
+            applyAppearance({ ...all.appearance, surface: "solid" });
             setLocale(all.appearance.locale);
             setSettings((s) => s ?? all.cameraRemote);
         })();
@@ -62,7 +62,7 @@ function RemoteWindow() {
     };
 
     return (
-        <div className="surface flex h-screen flex-col overflow-hidden rounded-card border border-fg/10">
+        <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
             <header className="drag-region flex h-9 shrink-0 items-center gap-2 border-b border-fg/10 px-2.5">
                 <GripHorizontal className="size-3.5 text-fg-subtle" aria-hidden />
                 <Camera className="size-3.5 text-accent" aria-hidden />

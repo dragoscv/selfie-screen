@@ -594,6 +594,20 @@ mod imp {
         /// Device name and label of every strip (`(index, device, label)`).
         /// Voicemeeter's own pre-fader input meters, dBFS per input channel.
         /// Reads one float parameter (`Strip[0].A5`).
+        pub fn get_string(&self, name: &str) -> Option<String> {
+            let mut inner = self.lock();
+            let api = Self::api(&mut inner).ok()?;
+            let n = std::ffi::CString::new(name).ok()?;
+            let mut buf = [0 as c_char; 512];
+            // SAFETY: Voicemeeter writes at most 512 bytes, NUL-terminated.
+            let rep = unsafe { (api.get_string)(n.as_ptr(), buf.as_mut_ptr()) };
+            (rep == 0).then(|| {
+                unsafe { CStr::from_ptr(buf.as_ptr()) }
+                    .to_string_lossy()
+                    .into_owned()
+            })
+        }
+
         pub fn get_float(&self, name: &str) -> Option<f32> {
             let mut inner = self.lock();
             let api = Self::api(&mut inner).ok()?;
@@ -969,6 +983,63 @@ pub fn probe(strip: i32, secs: u64, monitor_bus: Option<i32>) {
     std::thread::sleep(std::time::Duration::from_millis(400));
     ctl.shutdown();
     println!("stopped");
+}
+
+/// Prints the whole Voicemeeter state the vocal setup depends on.
+pub fn dump() {
+    let ctl = VocalCtl::default();
+    let _ = ctl.status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let f = |n: &str| ctl.get_float(n).map_or("?".to_owned(), |v| format!("{v}"));
+    let s = |n: &str| ctl.get_string(n).unwrap_or_default();
+    println!(
+        "engine: sr={} wdm={} ks={} mme={} asio={}",
+        f("Option.sr"),
+        f("Option.buffer.wdm"),
+        f("Option.buffer.ks"),
+        f("Option.buffer.mme"),
+        f("Option.buffer.asio")
+    );
+    for b in 0..8 {
+        let name = if b < 5 {
+            format!("A{}", b + 1)
+        } else {
+            format!("B{}", b - 4)
+        };
+        println!(
+            "bus {name}: device='{}' sr={} mute={} gain={} mono={} eq={}",
+            s(&format!("Bus[{b}].device.name")),
+            f(&format!("Bus[{b}].device.sr")),
+            f(&format!("Bus[{b}].Mute")),
+            f(&format!("Bus[{b}].Gain")),
+            f(&format!("Bus[{b}].Mono")),
+            f(&format!("Bus[{b}].EQ.on")),
+        );
+    }
+    for i in 0..8 {
+        let routes: Vec<&str> = ["A1", "A2", "A3", "A4", "A5", "B1", "B2", "B3"]
+            .into_iter()
+            .filter(|b| {
+                ctl.get_float(&format!("Strip[{i}].{b}"))
+                    .is_some_and(|v| v > 0.5)
+            })
+            .collect();
+        println!(
+            "strip {}: device='{}' label='{}' sr={} mute={} gain={} comp={} gate={} denoise={} mono={} -> {}",
+            i + 1,
+            s(&format!("Strip[{i}].device.name")),
+            s(&format!("Strip[{i}].Label")),
+            f(&format!("Strip[{i}].device.sr")),
+            f(&format!("Strip[{i}].Mute")),
+            f(&format!("Strip[{i}].Gain")),
+            f(&format!("Strip[{i}].Comp")),
+            f(&format!("Strip[{i}].Gate")),
+            f(&format!("Strip[{i}].Denoiser")),
+            f(&format!("Strip[{i}].Mono")),
+            routes.join(" ")
+        );
+    }
+    ctl.shutdown();
 }
 
 /// Runs one Voicemeeter script and waits for it to apply (probe repair mode).

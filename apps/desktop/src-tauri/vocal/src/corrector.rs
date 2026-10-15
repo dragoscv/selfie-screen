@@ -56,8 +56,13 @@ impl Corrector {
             };
         };
         let midi = hz_to_midi(hz);
-        if self.unvoiced_s > 0.08 {
+        // A jump of more than a semitone is a new note, never vibrato (vibrato is
+        // well under ±1 st): restart the centre there, or the vibrato term would
+        // "correct" the jump back to the stale note.
+        if self.unvoiced_s > 0.08 || (midi - self.centre).abs() > 1.0 {
             self.centre = midi;
+            self.note = None;
+            self.held_s = 0.0;
         }
         self.unvoiced_s = 0.0;
         // Centre follows slowly (vibrato is 4-7 Hz, so a ~0.15 s time constant averages it out).
@@ -82,7 +87,7 @@ impl Corrector {
             self.note = Some(target);
             self.held_s = 0.0;
         }
-        let deviation = midi - self.centre; // vibrato and fast wiggle
+        let deviation = (midi - self.centre).clamp(-1.0, 1.0); // vibrato and fast wiggle
         let mut wanted = target as f32 - self.centre;
         if wanted.abs() * 100.0 < tune.flex_cents {
             wanted = 0.0;
@@ -186,5 +191,27 @@ mod tests {
         };
         let c = run(&tune, 220.0, 10);
         assert!((c.ratio - 2.0).abs() < 1e-4);
+    }
+
+    /// Live probe 2026-10-16: a voiced frame at 71.2 after silence-ish frames
+    /// on another note was "corrected" to 65 (vibrato term chasing a stale centre).
+    #[test]
+    fn a_note_jump_lands_on_the_new_note() {
+        let tune = Tune {
+            retune_ms: 0.0,
+            humanize: 0.0,
+            vibrato: 1.0,
+            scale: Scale::Major,
+            ..Tune::default()
+        };
+        let mut c = Corrector::default();
+        for _ in 0..200 {
+            c.update(&tune, Some((220.0, 0.98)), 0.00267); // A3 = 57
+        }
+        let mut out = Correction::default();
+        for _ in 0..3 {
+            out = c.update(&tune, Some((494.0, 0.98)), 0.00267); // B4 = 71
+        }
+        assert!((out.corrected_midi - 71.0).abs() < 0.6, "{out:?}");
     }
 }

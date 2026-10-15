@@ -142,6 +142,9 @@ async fn toggle_overlay(app: AppHandle, show: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Paint colour of detached windows before the page loads (matches the dark `--bg`).
+const DETACHED_BG: tauri::window::Color = tauri::window::Color(16, 18, 24, 255);
+
 /// Show (focus) or close the detached camera remote. Position and size come
 /// back from the window-state plugin; always-on-top is the saved preference.
 #[tauri::command]
@@ -166,7 +169,10 @@ async fn toggle_camera_remote(app: AppHandle, show: bool, on_top: bool) -> Resul
         .inner_size(300.0, 440.0)
         .min_inner_size(240.0, 260.0)
         .decorations(false)
-        .transparent(true)
+        // Opaque: a transparent webview showed the desktop through; Windows 11
+        // draws the single native frame, shadow and rounded corners.
+        .transparent(false)
+        .background_color(DETACHED_BG)
         .shadow(true)
         .always_on_top(on_top)
         .build()
@@ -197,7 +203,8 @@ async fn toggle_vocal_window(app: AppHandle, show: bool, on_top: bool) -> Result
         .inner_size(760.0, 620.0)
         .min_inner_size(420.0, 360.0)
         .decorations(false)
-        .transparent(true)
+        .transparent(false)
+        .background_color(DETACHED_BG)
         .shadow(true)
         .always_on_top(on_top)
         .build()
@@ -395,6 +402,11 @@ pub fn vocal_probe(strip: i32, secs: u64, monitor_bus: Option<i32>) {
 /// Runs a Voicemeeter script (used by `examples/vocal_probe.rs script "..."`).
 pub fn vocal_script(script: &str) {
     vocal_host::run_script(script);
+}
+
+/// Prints the Voicemeeter state (`examples/vocal_probe.rs dump`).
+pub fn vocal_dump() {
+    vocal_host::dump();
 }
 
 pub fn run() {
