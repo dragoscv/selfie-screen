@@ -985,28 +985,25 @@ pub fn probe(strip: i32, secs: u64, monitor_bus: Option<i32>) {
     println!("stopped");
 }
 
-/// Prints the whole Voicemeeter state the vocal setup depends on.
-pub fn dump() {
-    let ctl = VocalCtl::default();
-    let _ = ctl.status();
-    std::thread::sleep(std::time::Duration::from_millis(300));
+/// The Voicemeeter state the vocal setup depends on, one line per engine/bus/strip.
+fn state_lines(ctl: &VocalCtl) -> Vec<String> {
     let f = |n: &str| ctl.get_float(n).map_or("?".to_owned(), |v| format!("{v}"));
     let s = |n: &str| ctl.get_string(n).unwrap_or_default();
-    println!(
+    let mut out = vec![format!(
         "engine: sr={} wdm={} ks={} mme={} asio={}",
         f("Option.sr"),
         f("Option.buffer.wdm"),
         f("Option.buffer.ks"),
         f("Option.buffer.mme"),
         f("Option.buffer.asio")
-    );
+    )];
     for b in 0..8 {
         let name = if b < 5 {
             format!("A{}", b + 1)
         } else {
             format!("B{}", b - 4)
         };
-        println!(
+        out.push(format!(
             "bus {name}: device='{}' sr={} mute={} gain={} mono={} eq={}",
             s(&format!("Bus[{b}].device.name")),
             f(&format!("Bus[{b}].device.sr")),
@@ -1014,7 +1011,7 @@ pub fn dump() {
             f(&format!("Bus[{b}].Gain")),
             f(&format!("Bus[{b}].Mono")),
             f(&format!("Bus[{b}].EQ.on")),
-        );
+        ));
     }
     for i in 0..8 {
         let routes: Vec<&str> = ["A1", "A2", "A3", "A4", "A5", "B1", "B2", "B3"]
@@ -1024,7 +1021,7 @@ pub fn dump() {
                     .is_some_and(|v| v > 0.5)
             })
             .collect();
-        println!(
+        out.push(format!(
             "strip {}: device='{}' label='{}' sr={} mute={} gain={} comp={} gate={} denoise={} mono={} -> {}",
             i + 1,
             s(&format!("Strip[{i}].device.name")),
@@ -1037,9 +1034,80 @@ pub fn dump() {
             f(&format!("Strip[{i}].Denoiser")),
             f(&format!("Strip[{i}].Mono")),
             routes.join(" ")
-        );
+        ));
+    }
+    out
+}
+
+/// Waits until Voicemeeter has applied pending changes (`IsParametersDirty` settles).
+fn settle(ctl: &VocalCtl, ms: u64) {
+    std::thread::sleep(std::time::Duration::from_millis(ms));
+    let _ = ctl.get_float("Option.sr");
+}
+
+/// Prints the whole Voicemeeter state the vocal setup depends on.
+pub fn dump() {
+    let ctl = VocalCtl::default();
+    let _ = ctl.status();
+    settle(&ctl, 300);
+    for l in state_lines(&ctl) {
+        println!("{l}");
     }
     ctl.shutdown();
+}
+
+/// Live check of the preset flow without the UI: back up to `dir`, apply the
+/// live routing, restore the backup, and compare the state before and after.
+/// Prints `VMCYCLE OK` when the restored state equals the original.
+pub fn vm_cycle(dir: &str, mic: i32, music: i32, phones: i32) -> bool {
+    let ctl = VocalCtl::default();
+    let _ = ctl.status();
+    settle(&ctl, 400);
+    let before = state_lines(&ctl);
+    let path = std::path::Path::new(dir).join("vmcycle-backup.xml");
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::remove_file(&path);
+    let p = path.display().to_string();
+    if let Err(e) = ctl.command("Command.Save", &p) {
+        println!("save failed: {e}");
+        ctl.shutdown();
+        return false;
+    }
+    settle(&ctl, 800);
+    let size = std::fs::metadata(&path).map_or(0, |m| m.len());
+    println!("backup {p} ({size} bytes)");
+    if size == 0 {
+        println!("VMCYCLE FAIL: backup file missing");
+        ctl.shutdown();
+        return false;
+    }
+    let script = live_script(mic, music, phones);
+    println!("apply: {script}");
+    if let Err(e) = ctl.script(&script) {
+        println!("apply failed: {e}");
+    }
+    settle(&ctl, 800);
+    let applied = state_lines(&ctl);
+    let changed = before.iter().zip(&applied).filter(|(a, b)| a != b).count();
+    println!("applied: {changed} line(s) changed");
+    for (a, b) in before.iter().zip(&applied).filter(|(a, b)| a != b) {
+        println!("  - {a}\n  + {b}");
+    }
+    if let Err(e) = ctl.command("Command.Load", &p) {
+        println!("restore failed: {e}");
+    }
+    // Loading a configuration restarts the audio engine: give it time.
+    settle(&ctl, 3000);
+    let after = state_lines(&ctl);
+    let diff: Vec<_> = before.iter().zip(&after).filter(|(a, b)| a != b).collect();
+    for (a, b) in &diff {
+        println!("  restore mismatch\n  - {a}\n  + {b}");
+    }
+    let ok = changed > 0 && diff.is_empty();
+    println!("{}", if ok { "VMCYCLE OK" } else { "VMCYCLE FAIL" });
+    settle(&ctl, 400);
+    ctl.shutdown();
+    ok
 }
 
 /// Runs one Voicemeeter script and waits for it to apply (probe repair mode).

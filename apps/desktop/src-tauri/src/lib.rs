@@ -409,6 +409,11 @@ pub fn vocal_dump() {
     vocal_host::dump();
 }
 
+/// Backup -> live preset -> restore check (`examples/vocal_probe.rs vmcycle`).
+pub fn vocal_vm_cycle(dir: &str, mic: i32, music: i32, phones: i32) -> bool {
+    vocal_host::vm_cycle(dir, mic, music, phones)
+}
+
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

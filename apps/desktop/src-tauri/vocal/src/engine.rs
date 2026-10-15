@@ -15,6 +15,11 @@ use crate::psola::Psola;
 use crate::scale::{allowed, degree_offset};
 use crate::shifter::Splice;
 
+/// Natural mode hands over to PSOLA above this pitch (its delay is < 8 ms there)…
+const NATURAL_ON_HZ: f32 = 170.0;
+/// …and back to the splice shifter below this one.
+const NATURAL_OFF_HZ: f32 = 155.0;
+
 /// What the UI draws (copied out of the audio thread at ~60 Hz).
 #[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +48,9 @@ pub struct Engine {
     period: f32,
     splice: Splice,
     psola: Psola,
+    /// Natural mode: 0 = splice, 1 = PSOLA (crossfaded, see `NATURAL_ON_HZ`).
+    natural_mix: f32,
+    natural_on: bool,
     harmony_shifters: [Splice; 3],
     double: Splice,
     gate: Gate,
@@ -104,6 +112,8 @@ impl Engine {
             period: sample_rate / 200.0,
             splice: Splice::new(sample_rate),
             psola: Psola::new(sample_rate),
+            natural_mix: 0.0,
+            natural_on: false,
             harmony_shifters: [
                 Splice::new(sample_rate),
                 Splice::new(sample_rate),
@@ -199,7 +209,8 @@ impl Engine {
         }
         match self.params.tune.mode {
             ShiftMode::Live => self.splice.latency(),
-            ShiftMode::Natural => self.psola.latency(),
+            ShiftMode::Natural if self.natural_mix >= 0.5 => self.psola.latency(),
+            ShiftMode::Natural => self.splice.latency(),
         }
     }
 
@@ -261,6 +272,29 @@ impl Engine {
         }
     }
 
+    /// Natural mode: PSOLA needs ~1.25 periods of delay, so below ~160 Hz
+    /// (8 ms) the splice shifter takes over. Both run warm and crossfade in
+    /// 30 ms with hysteresis, so a phrase never clicks at the hand-over.
+    #[inline]
+    fn natural(&mut self, v: f32, ratio: f32, formant: f32) -> f32 {
+        if self.correction.voiced {
+            let hz = self.sr / self.period;
+            if hz > NATURAL_ON_HZ {
+                self.natural_on = true;
+            } else if hz < NATURAL_OFF_HZ {
+                self.natural_on = false;
+            }
+        }
+        let step = 1.0 / (0.03 * self.sr);
+        let goal = if self.natural_on { 1.0 } else { 0.0 };
+        self.natural_mix += (goal - self.natural_mix).clamp(-step, step);
+        let a = self.splice.process(v, ratio, self.period);
+        let b = self
+            .psola
+            .process(v, ratio, self.period, self.correction.voiced, formant);
+        a + (b - a) * self.natural_mix
+    }
+
     #[inline]
     pub fn sample(&mut self, x: f32) -> (f32, f32) {
         let p = self.params;
@@ -307,13 +341,7 @@ impl Engine {
         } else {
             match p.tune.mode {
                 ShiftMode::Live => self.splice.process(v, ratio, self.period),
-                ShiftMode::Natural => self.psola.process(
-                    v,
-                    ratio,
-                    self.period,
-                    self.correction.voiced,
-                    semis(p.tune.formant),
-                ),
+                ShiftMode::Natural => self.natural(v, ratio, semis(p.tune.formant)),
             }
         };
         let lead = lead * p.tune.mix + v * (1.0 - p.tune.mix);
@@ -484,6 +512,65 @@ mod tests {
         );
         let m = e.meter();
         assert!(m.comp_reduction_db > 0.0);
+    }
+
+    /// Measured shifter latency (mean / max while singing) per mode, note and rate.
+    /// `cargo test --release latency_report -- --nocapture`
+    #[test]
+    fn latency_report() {
+        for sr in [48_000.0f32, 176_400.0] {
+            for mode in [ShiftMode::Live, ShiftMode::Natural] {
+                for hz in [110.0f32, 165.0, 220.0, 330.0, 440.0] {
+                    let params = VocalParams {
+                        tune: Tune {
+                            transpose: 1.0,
+                            retune_ms: 0.0,
+                            mode,
+                            ..Tune::default()
+                        },
+                        chain: quiet_chain(),
+                        ..VocalParams::default()
+                    };
+                    let mut e = Engine::new(sr, params);
+                    let input = tone(hz, sr, sr as usize);
+                    let (mut sum, mut max, mut k) = (0.0f32, 0.0f32, 0usize);
+                    let mut l = vec![0.0; 256];
+                    let mut r = vec![0.0; 256];
+                    let mut q = Detector::new(sr);
+                    let (mut csum, mut cn) = (0.0f32, 0usize);
+                    for (i, block) in input.chunks(256).enumerate() {
+                        e.process(block, &mut l, &mut r);
+                        for &y in &l {
+                            if let Some(Some(est)) = q.push(y)
+                                && i * 256 > input.len() / 4
+                            {
+                                csum += est.clarity;
+                                cn += 1;
+                            }
+                        }
+                        if i * 256 > input.len() / 4 {
+                            let ms = e.meter().latency_ms;
+                            sum += ms;
+                            max = max.max(ms);
+                            k += 1;
+                        }
+                    }
+                    let mean = sum / k as f32;
+                    let clarity = csum / cn.max(1) as f32;
+                    println!(
+                        "LAT sr={sr} {mode:?} {hz} Hz mean={mean:.2} ms max={max:.2} ms clarity={clarity:.4}"
+                    );
+                    // Live: < 6 ms on average, the splice peak is base + one period.
+                    // Natural: PSOLA (>= 170 Hz) never above 8 ms; below, Live's numbers.
+                    assert!(mean < 6.0 || (mode == ShiftMode::Natural && hz >= 170.0 && max < 8.0));
+                    assert!(max < 11.0, "{sr} {mode:?} {hz} Hz max {max}");
+                    if mode == ShiftMode::Natural && hz >= NATURAL_ON_HZ {
+                        assert!(max < 8.0, "{sr} PSOLA {hz} Hz max {max}");
+                    }
+                    assert!(clarity > 0.99, "{sr} {mode:?} {hz} Hz clarity {clarity}");
+                }
+            }
+        }
     }
 
     #[test]

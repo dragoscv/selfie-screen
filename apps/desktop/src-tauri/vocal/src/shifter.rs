@@ -24,7 +24,7 @@ pub struct Splice {
 
 impl Splice {
     pub fn new(sample_rate: f32) -> Self {
-        let base = (sample_rate * 0.0012).max(16.0);
+        let base = (sample_rate * 0.0006).max(8.0);
         Self {
             buf: vec![0.0; SIZE].into_boxed_slice(),
             w: 0,
