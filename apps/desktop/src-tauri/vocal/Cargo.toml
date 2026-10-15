@@ -1,0 +1,16 @@
+[package]
+name = "tiksee-vocal"
+version = "0.5.1"
+description = "TikSee vocal engine: low-latency pitch correction, harmonies and vocal chain (real-time safe, no allocation while processing)"
+authors = ["Dragos Catalin Vladulescu"]
+edition = "2024"
+rust-version = "1.90"
+publish = false
+license = "MIT"
+
+[dependencies]
+realfft = "3.5"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
