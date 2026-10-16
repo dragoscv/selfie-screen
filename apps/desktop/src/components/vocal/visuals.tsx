@@ -6,7 +6,11 @@ import { useEffect, useRef, useState } from "react";
 
 import type { VocalMeter } from "../../lib/vocal.js";
 
-/** 12-segment key wheel: tap a note to pick the key, in-scale notes glow, bypassed ones dim. */
+/**
+ * 12-note key wheel in a single SVG: click a note = key, right-click (or
+ * Shift+click) = switch the note off. Geometry leaves room for the hover
+ * scale and the glow inside the viewBox, so nothing overflows or is clipped.
+ */
 export function KeyWheel({
     keyIndex,
     mask,
@@ -24,50 +28,78 @@ export function KeyWheel({
     onToggle: (pc: number) => void;
     label: string;
 }) {
-    const R = 74;
+    const VIEW = 100; // viewBox half-size
+    const DOT = 13; // dot radius
+    const RING = VIEW - DOT - 12; // 12 = room for 1.15× scale + glow
     return (
-        <div role="group" aria-label={label} className="relative mx-auto size-[184px] select-none">
-            <svg viewBox="-92 -92 184 184" className="absolute inset-0 size-full" aria-hidden>
-                <circle r={R + 14} className="fill-none stroke-fg/10" strokeWidth={1} />
-                <circle r={R - 22} className="fill-none stroke-fg/5" strokeWidth={1} />
-            </svg>
+        <svg
+            role="group"
+            aria-label={label}
+            viewBox={`${-VIEW} ${-VIEW} ${VIEW * 2} ${VIEW * 2}`}
+            className="mx-auto block aspect-square w-full max-w-[200px] select-none overflow-visible"
+        >
+            <defs>
+                <filter id="kw-glow" x="-60%" y="-60%" width="220%" height="220%">
+                    <feGaussianBlur stdDeviation="3.5" result="b" />
+                    <feMerge>
+                        <feMergeNode in="b" />
+                        <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                </filter>
+            </defs>
+            <circle r={VIEW - 2} className="fill-panel-alt/30 stroke-fg/10" strokeWidth={1} />
+            <circle r={RING - DOT - 8} className="fill-none stroke-fg/5" strokeWidth={1} />
             {NOTE_NAMES.map((name, pc) => {
                 const a = (pc / 12) * Math.PI * 2 - Math.PI / 2;
-                const x = Math.cos(a) * R;
-                const y = Math.sin(a) * R;
+                const x = Math.cos(a) * RING;
+                const y = Math.sin(a) * RING;
                 const inScale = ((mask >> pc) & 1) === 1;
                 const off = ((bypass >> pc) & 1) === 1;
                 const isKey = pc === keyIndex;
                 const singing = current === pc;
+                const fill = isKey ? "fill-accent" : inScale && !off ? "fill-accent-subtle" : "fill-fg/8";
+                const text = isKey ? "fill-accent-fg" : inScale && !off ? "fill-accent" : "fill-fg-subtle";
                 return (
-                    <motion.button
+                    <motion.g
                         key={name}
-                        type="button"
-                        layout
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={isKey}
+                        aria-label={`${name}${inScale ? "" : " (out)"}${off ? " (off)" : ""}`}
+                        initial={false}
+                        animate={{ scale: singing ? 1.15 : 1 }}
+                        transition={{ type: "spring", stiffness: 520, damping: 28 }}
+                        style={{ transformOrigin: `${x}px ${y}px`, transformBox: "view-box" }}
+                        className="cursor-pointer outline-none [&:focus-visible>circle:first-child]:stroke-ring"
                         onClick={(e) => (e.shiftKey || e.altKey ? onToggle(pc) : onKey(pc))}
                         onContextMenu={(e) => {
                             e.preventDefault();
                             onToggle(pc);
                         }}
-                        aria-pressed={isKey}
-                        aria-label={`${name}${inScale ? "" : " (out)"}${off ? " (bypassed)" : ""}`}
-                        animate={{ scale: singing ? 1.18 : isKey ? 1.08 : 1 }}
-                        transition={{ type: "spring", stiffness: 520, damping: 28 }}
-                        style={{ left: `calc(50% + ${x}px - 18px)`, top: `calc(50% + ${y}px - 18px)` }}
-                        className={cn(
-                            "absolute grid size-9 place-items-center rounded-full text-[0.6875rem] font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-                            isKey && "bg-accent text-accent-fg shadow-[0_0_18px_var(--color-accent)]",
-                            !isKey && inScale && !off && "bg-accent-subtle text-accent",
-                            !isKey && (!inScale || off) && "bg-panel-alt/60 text-fg-subtle",
-                            off && "line-through",
-                            singing && !isKey && "ring-2 ring-accent",
-                        )}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                if (e.shiftKey) onToggle(pc);
+                                else onKey(pc);
+                            }
+                        }}
                     >
-                        {name}
-                    </motion.button>
+                        <circle
+                            cx={x}
+                            cy={y}
+                            r={DOT}
+                            className={cn(fill, "stroke-transparent transition-colors", singing && !isKey && "stroke-accent")}
+                            strokeWidth={2}
+                            filter={isKey || singing ? "url(#kw-glow)" : undefined}
+                        />
+                        <text x={x} y={y} dy="0.35em" textAnchor="middle" className={cn(text, "text-[9px] font-bold")} style={{ pointerEvents: "none" }}>
+                            {name}
+                        </text>
+                        {off && <line x1={x - 7} y1={y} x2={x + 7} y2={y} className="stroke-fg-subtle" strokeWidth={1.5} />}
+                    </motion.g>
                 );
             })}
-        </div>
+        </svg>
     );
 }
 
@@ -91,7 +123,7 @@ export function Tuner({ meterRef, label }: { meterRef: React.RefObject<VocalMete
     }, [meterRef]);
     return (
         <div className="flex flex-col items-center" role="meter" aria-label={label} aria-valuemin={-50} aria-valuemax={50}>
-            <svg viewBox="-60 -56 120 64" className="h-16 w-32" aria-hidden>
+            <svg viewBox="-60 -56 120 64" className="h-14 w-full max-w-32" aria-hidden>
                 <path d="M -50 0 A 50 50 0 0 1 50 0" className="fill-none stroke-fg/15" strokeWidth={6} strokeLinecap="round" />
                 <path d="M -12 -48.5 A 50 50 0 0 1 12 -48.5" className="fill-none stroke-success" strokeWidth={6} strokeLinecap="round" />
                 <line ref={needle} x1={0} y1={4} x2={0} y2={-46} className="stroke-accent" strokeWidth={2.5} strokeLinecap="round" />
@@ -104,38 +136,62 @@ export function Tuner({ meterRef, label }: { meterRef: React.RefObject<VocalMete
     );
 }
 
-/** Vertical level meter (dBFS) updated from the meter ref. */
-export function LevelBar({ meterRef, pick, label }: { meterRef: React.RefObject<VocalMeter | null>; pick: (m: VocalMeter) => number; label: string }) {
+/**
+ * Compact horizontal meter with a numeric readout. `reduction` meters (comp
+ * gain reduction) grow from the right, 0..24 dB; level meters show -60..0 dBFS.
+ */
+export function LevelBar({
+    meterRef,
+    pick,
+    label,
+    reduction = false,
+}: {
+    meterRef: React.RefObject<VocalMeter | null>;
+    pick: (m: VocalMeter) => number;
+    label: string;
+    reduction?: boolean;
+}) {
     const fill = useRef<HTMLDivElement>(null);
+    const value = useRef<HTMLSpanElement>(null);
     const pickRef = useRef(pick);
     useEffect(() => {
         pickRef.current = pick;
     }, [pick]);
     useEffect(() => {
         let raf = 0;
+        let shown = reduction ? 0 : -90;
         const tick = () => {
             raf = requestAnimationFrame(tick);
             const m = meterRef.current;
-            const db = m ? pickRef.current(m) : -90;
-            const pct = Math.max(0, Math.min(1, (db + 60) / 60));
+            const db = m?.running ? pickRef.current(m) : reduction ? 0 : -90;
+            // Fast attack, slower fall, like a hardware meter.
+            shown = db > shown ? db : shown + (db - shown) * 0.12;
+            const pct = reduction ? Math.max(0, Math.min(1, shown / 24)) : Math.max(0, Math.min(1, (shown + 60) / 60));
             if (fill.current) {
-                fill.current.style.transform = `scaleY(${pct})`;
-                fill.current.dataset["hot"] = db > -3 ? "1" : "0";
+                fill.current.style.transform = `scaleX(${pct})`;
+                fill.current.dataset["hot"] = !reduction && shown > -3 ? "1" : "0";
             }
+            if (value.current) value.current.textContent = reduction ? (shown > 0.05 ? `-${shown.toFixed(1)}` : "0.0") : shown <= -89 ? "-∞" : shown.toFixed(0);
         };
         raf = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(raf);
-    }, [meterRef]);
+    }, [meterRef, reduction]);
     return (
-        <div className="flex flex-col items-center gap-1" role="meter" aria-label={label}>
-            <div className="relative h-24 w-2 overflow-hidden rounded-full bg-fg/10">
+        <div className="grid grid-cols-[2.25rem_1fr_2rem] items-center gap-2" role="meter" aria-label={label}>
+            <span className="text-[0.5625rem] font-semibold uppercase tracking-wider text-fg-subtle">{label}</span>
+            <div className="relative h-1.5 overflow-hidden rounded-full bg-fg/10">
                 <div
                     ref={fill}
-                    className="absolute inset-0 origin-bottom bg-gradient-to-t from-success via-accent to-warning transition-transform duration-75 data-[hot=1]:to-danger"
-                    style={{ transform: "scaleY(0)" }}
+                    className={cn(
+                        "absolute inset-0",
+                        reduction ? "origin-right bg-warning" : "origin-left bg-gradient-to-r from-success via-accent to-warning data-[hot=1]:to-danger",
+                    )}
+                    style={{ transform: "scaleX(0)" }}
                 />
             </div>
-            <span className="text-[0.5625rem] uppercase tracking-wider text-fg-subtle">{label}</span>
+            <span ref={value} className="text-right font-mono text-[0.625rem] tabular-nums text-fg-muted">
+                –
+            </span>
         </div>
     );
 }

@@ -14,6 +14,7 @@
 //!   and doubler, reverb and delay sends, limiter ([`fx`]).
 //! * Music bus: key detection and ducking ([`key`]).
 
+pub mod analysis;
 pub mod corrector;
 pub mod engine;
 pub mod fx;

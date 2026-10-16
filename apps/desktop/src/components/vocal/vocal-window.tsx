@@ -4,18 +4,18 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { load } from "@tauri-apps/plugin-store";
 import {
     NOTE_NAMES,
-    VOCAL_PRESETS,
     VOCAL_SCALES,
-    applyVocalPreset,
     noteName,
+    parseVocalImport,
     parseSettings,
     vocalParamsSchema,
     type Settings,
+    type VocalChain,
     type VocalParams,
     type VocalSettings,
 } from "@tiksee/core";
 import { ChipSelector, SliderRow, SwitchRow, applyAppearance, cn, transitions } from "@tiksee/ui";
-import { AudioLines, GripHorizontal, Mic2, Pin, PinOff, Power, X } from "lucide-react";
+import { AudioLines, Download, GripHorizontal, Mic2, Pin, PinOff, Power, Upload, Wand2, X } from "lucide-react";
 import { AnimatePresence, LayoutGroup, MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,7 +23,10 @@ import { Toaster, toast } from "sonner";
 
 import { setLocale } from "../../i18n/index.js";
 import { activeParams, type StripInfo, type VocalMeter, type VocalStatus } from "../../lib/vocal.js";
+import { downloadJson, pickJsonFile } from "../../lib/vocal-files.js";
+import { Calibration } from "./calibration.js";
 import { NoteLane } from "./note-lane.js";
+import { PresetBar } from "./preset-bar.js";
 import { EqCurve, KeyWheel, LevelBar, Tuner } from "./visuals.js";
 
 const TABS = ["tune", "voice", "fx", "harmony", "setup"] as const;
@@ -159,6 +162,7 @@ export function VocalWindow() {
 
     const onTop = settings?.alwaysOnTop ?? true;
     useEffect(() => {
+        if (!isTauri()) return;
         void getCurrentWindow()
             .setAlwaysOnTop(onTop)
             .catch(() => undefined);
@@ -242,11 +246,11 @@ export function VocalWindow() {
                 </header>
 
                 {/* Stage: note lane + tuner + meters, always visible. */}
-                <section className="relative flex h-44 shrink-0 gap-3 border-b border-fg/10 px-3 py-2">
+                <section className="relative grid h-44 shrink-0 grid-cols-[1fr_9.5rem] gap-3 overflow-hidden border-b border-fg/10 px-3 py-2">
                     <div className="relative min-w-0 flex-1 overflow-hidden rounded-chip bg-panel-alt/40">
                         <NoteLane meterRef={meterRef} allowedMask={mask} label={t("vocal.lane")} />
                         {!running && (
-                            <div className="absolute inset-0 grid place-items-center text-xs text-fg-subtle">
+                            <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-fg-subtle">
                                 <span className="flex items-center gap-2">
                                     <Mic2 className="size-4" aria-hidden />
                                     {t("vocal.laneIdle")}
@@ -254,12 +258,12 @@ export function VocalWindow() {
                             </div>
                         )}
                     </div>
-                    <div className="flex shrink-0 flex-col items-center justify-between">
+                    <div className="flex min-w-0 flex-col justify-between gap-2 py-1">
                         <Tuner meterRef={meterRef} label={t("vocal.tuner")} />
-                        <div className="flex gap-2">
+                        <div className="space-y-1.5">
                             <LevelBar meterRef={meterRef} pick={(m) => m.inputDb} label={t("vocal.in")} />
                             <LevelBar meterRef={meterRef} pick={(m) => m.outputDb} label={t("vocal.out")} />
-                            <LevelBar meterRef={meterRef} pick={(m) => -m.compReductionDb - 0.0001} label={t("vocal.gr")} />
+                            <LevelBar meterRef={meterRef} pick={(m) => m.compReductionDb} label={t("vocal.gr")} reduction />
                         </div>
                     </div>
                 </section>
@@ -314,7 +318,9 @@ export function VocalWindow() {
                                 className="space-y-4"
                             >
                                 {tab === "tune" && (
-                                    <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
+                                        <>
+                                        <PresetBar section="tune" params={params} presets={settings.presets} onApply={setParams} onPresets={(presets) => patch({ presets })} />
+                                        <div className="grid gap-5 sm:grid-cols-[200px_1fr]">
                                         <div className="space-y-2">
                                             <KeyWheel
                                                 keyIndex={params.tune.key}
@@ -356,13 +362,6 @@ export function VocalWindow() {
                                                     ))}
                                                 </select>
                                             </label>
-                                            <ChipSelector
-                                                label={t("vocal.preset")}
-                                                options={VOCAL_PRESETS}
-                                                value={"" as (typeof VOCAL_PRESETS)[number]}
-                                                onSelect={(p) => setParams(applyVocalPreset(params, p))}
-                                                display={(p) => t(`vocal.presets.${p}`)}
-                                            />
                                             <SliderRow label={t("vocal.retune")} value={params.tune.retuneMs} min={0} max={400} step={1} format={(v) => (v === 0 ? t("vocal.hard") : `${Math.round(v)} ms`)} onCommit={(retuneMs) => tune({ retuneMs })} />
                                             <SliderRow label={t("vocal.humanize")} value={params.tune.humanize} min={0} max={1} format={(v) => `${Math.round(v * 100)} %`} onCommit={(humanize) => tune({ humanize })} />
                                             <SliderRow label={t("vocal.flex")} value={params.tune.flexCents} min={0} max={100} step={1} format={(v) => `${Math.round(v)} ¢`} onCommit={(flexCents) => tune({ flexCents })} />
@@ -375,11 +374,14 @@ export function VocalWindow() {
                                             <SwitchRow label={t("vocal.tuneOn")} checked={params.tune.enabled} onChange={(enabled) => tune({ enabled })} />
                                         </div>
                                     </div>
+                                        </>
                                 )}
 
                                 {tab === "voice" && (
                                     <div className="space-y-4">
+                                            <PresetBar section="voice" params={params} presets={settings.presets} onApply={setParams} onPresets={(presets) => patch({ presets })} />
                                         <EqCurve chain={params.chain} label={t("vocal.eq")} />
+                                            <NotchRow chain={params.chain} onChange={chain} />
                                         <div className="grid gap-4 sm:grid-cols-2">
                                             <SliderRow label={t("vocal.inputGain")} value={params.chain.inputGainDb} min={-24} max={24} step={0.5} format={(v) => `${v.toFixed(1)} dB`} onCommit={(inputGainDb) => chain({ inputGainDb })} />
                                             <SliderRow label={t("vocal.hpf")} value={params.chain.hpfHz} min={20} max={400} step={1} format={(v) => `${Math.round(v)} Hz`} onCommit={(hpfHz) => chain({ hpfHz })} />
@@ -408,7 +410,9 @@ export function VocalWindow() {
                                 )}
 
                                 {tab === "fx" && (
-                                    <div className="grid gap-4 sm:grid-cols-2">
+                                     <>
+                                     <PresetBar section="fx" params={params} presets={settings.presets} onApply={setParams} onPresets={(presets) => patch({ presets })} />
+                                     <div className="grid gap-4 sm:grid-cols-2">
                                         <SwitchRow label={t("vocal.reverb")} checked={params.chain.reverbOn} onChange={(reverbOn) => chain({ reverbOn })} />
                                         <SliderRow label={t("vocal.mix")} value={params.chain.reverbMix} min={0} max={1} format={(v) => `${Math.round(v * 100)} %`} onCommit={(reverbMix) => chain({ reverbMix })} disabled={!params.chain.reverbOn} />
                                         <SliderRow label={t("vocal.size")} value={params.chain.reverbSize} min={0} max={1} format={(v) => `${Math.round(v * 100)} %`} onCommit={(reverbSize) => chain({ reverbSize })} disabled={!params.chain.reverbOn} />
@@ -422,10 +426,12 @@ export function VocalWindow() {
                                         <SliderRow label={t("vocal.outputGain")} value={params.chain.outputGainDb} min={-24} max={24} step={0.5} format={(v) => `${v.toFixed(1)} dB`} onCommit={(outputGainDb) => chain({ outputGainDb })} />
                                         <SliderRow label={t("vocal.wet")} value={params.tune.mix} min={0} max={1} format={(v) => `${Math.round(v * 100)} %`} onCommit={(mix) => tune({ mix })} />
                                     </div>
+                                        </>
                                 )}
 
                                 {tab === "harmony" && (
                                     <div className="space-y-4">
+                                            <PresetBar section="harmony" params={params} presets={settings.presets} onApply={setParams} onPresets={(presets) => patch({ presets })} />
                                         <p className="text-xs text-fg-muted">{t("vocal.harmonyHint")}</p>
                                         {params.harmony.voices.map((v, i) => {
                                             const setVoice = (p: Partial<typeof v>) =>
@@ -462,9 +468,38 @@ export function VocalWindow() {
     );
 }
 
+/** Whine / hum notches (filled by calibration; editable and switchable). */
+function NotchRow({ chain, onChange }: { chain: VocalChain; onChange: (p: Partial<VocalChain>) => void }) {
+    const { t } = useTranslation();
+    const active = chain.notchHz.filter((hz) => hz > 20);
+    return (
+        <div className="flex flex-wrap items-center gap-2 rounded-chip border border-fg/10 px-3 py-2">
+            <SwitchRow label={t("vocal.notch")} description={active.length === 0 ? t("vocal.notchNone") : t("vocal.notchHint")} checked={chain.notchOn} onChange={(notchOn) => onChange({ notchOn })} />
+            <div className="flex flex-wrap gap-1.5">
+                {chain.notchHz.map((hz, i) =>
+                    hz > 20 ? (
+                        <span key={i} className="inline-flex items-center gap-1 rounded-full bg-warning/12 py-0.5 pl-2.5 pr-1 font-mono text-[0.6875rem] text-warning">
+                            {hz >= 1000 ? `${(hz / 1000).toFixed(2)} kHz` : `${hz.toFixed(1)} Hz`}
+                            <button
+                                type="button"
+                                aria-label={t("vocal.notchRemove")}
+                                onClick={() => onChange({ notchHz: chain.notchHz.map((v, j) => (j === i ? 0 : v)) })}
+                                className="grid size-4 place-items-center rounded-full outline-none hover:bg-warning/20 focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                <X className="size-3" aria-hidden />
+                            </button>
+                        </span>
+                    ) : null,
+                )}
+            </div>
+        </div>
+    );
+}
+
 function SetupPanel({ settings, status, onPatch, onReset }: { settings: VocalSettings; status: VocalStatus | null; onPatch: (p: Partial<VocalSettings>) => void; onReset: () => void }) {
     const { t } = useTranslation();
     const [strips, setStrips] = useState<StripInfo[]>([]);
+    const [calibrating, setCalibrating] = useState(false);
     useEffect(() => {
         if (!isTauri()) return;
         void invoke<StripInfo[]>("vocal_strips").then(setStrips).catch(() => setStrips([]));
@@ -475,8 +510,46 @@ function SetupPanel({ settings, status, onPatch, onReset }: { settings: VocalSet
             .then((path) => toast.success(t(ok, { path })))
             .catch((e: unknown) => toast.error(String(e)));
     const peaks = status?.channelPeaksDb ?? [];
+    const exportAll = () => {
+        downloadJson(`tiksee-vocal-${new Date().toISOString().slice(0, 10)}.json`, { kind: "tiksee-vocal", version: 1, exportedAt: Date.now(), settings });
+        toast.success(t("vocal.exported"));
+    };
+    const importAny = () =>
+        void pickJsonFile().then((text) => {
+            if (text === null) return;
+            try {
+                const { settings: full, presets } = parseVocalImport(text);
+                if (full) {
+                    // Keep the machine-specific routing; take everything else.
+                    onPatch({ ...full, micStrip: settings.micStrip, musicStrip: settings.musicStrip, phonesBus: settings.phonesBus, enabled: settings.enabled });
+                    toast.success(t("vocal.importedAll", { count: full.presets.length }));
+                } else {
+                    const ids = new Set(presets.map((p) => p.id));
+                    onPatch({ presets: [...settings.presets.filter((p) => !ids.has(p.id)), ...presets] });
+                    toast.success(t("vocal.importedPresets", { count: presets.length }));
+                }
+            } catch (e) {
+                toast.error(t("vocal.importFailed", { error: e instanceof Error ? e.message : String(e) }));
+            }
+        });
+
+    if (calibrating) {
+        return <Calibration settings={settings} running={status?.running === true} onDone={(p) => { onPatch(p); setCalibrating(false); }} onCancel={() => setCalibrating(false)} />;
+    }
     return (
         <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3 rounded-chip border border-accent/30 bg-accent/5 p-3">
+                <Wand2 className="size-5 shrink-0 text-accent" aria-hidden />
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-fg">{t("vocal.cal.title")}</p>
+                    <p className="text-xs text-fg-muted">
+                        {settings.calibratedAt > 0 ? t("vocal.cal.last", { date: new Date(settings.calibratedAt).toLocaleString() }) : t("vocal.cal.never")}
+                    </p>
+                </div>
+                <button type="button" onClick={() => setCalibrating(true)} className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {t("vocal.cal.start")}
+                </button>
+            </div>
             {status?.conflict && <p className="rounded-chip bg-warning/12 px-3 py-2 text-xs text-warning">{t("vocal.conflict", { app: status.conflict })}</p>}
             {status?.error && !status.available && <p className="rounded-chip bg-danger/12 px-3 py-2 text-xs text-danger">{status.error}</p>}
             <div className="grid gap-4 sm:grid-cols-2">
@@ -526,6 +599,17 @@ function SetupPanel({ settings, status, onPatch, onReset }: { settings: VocalSet
                 </button>
                 <button type="button" onClick={onReset} className="rounded-full bg-panel-alt px-3 py-1.5 text-xs text-fg-muted outline-none hover:text-danger focus-visible:ring-2 focus-visible:ring-ring">
                     {t("vocal.reset")}
+                </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-t border-fg/10 pt-3">
+                <span className="mr-auto text-xs text-fg-muted">{t("vocal.configHint", { count: settings.presets.length })}</span>
+                <button type="button" onClick={exportAll} className="inline-flex items-center gap-1.5 rounded-full bg-panel-alt px-3 py-1.5 text-xs text-fg outline-none hover:text-accent focus-visible:ring-2 focus-visible:ring-ring">
+                    <Download className="size-3.5" aria-hidden />
+                    {t("vocal.exportAll")}
+                </button>
+                <button type="button" onClick={importAny} className="inline-flex items-center gap-1.5 rounded-full bg-panel-alt px-3 py-1.5 text-xs text-fg outline-none hover:text-accent focus-visible:ring-2 focus-visible:ring-ring">
+                    <Upload className="size-3.5" aria-hidden />
+                    {t("vocal.import")}
                 </button>
             </div>
             <ol className="list-decimal space-y-1 pl-5 text-xs text-fg-muted">

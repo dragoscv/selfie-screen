@@ -56,6 +56,7 @@ pub struct Engine {
     gate: Gate,
     hpf: Biquad,
     eq: [Biquad; 5],
+    notches: [Biquad; 4],
     deess: DeEsser,
     comp: Compressor,
     reverb: Box<Reverb>,
@@ -123,6 +124,7 @@ impl Engine {
             gate: Gate::default(),
             hpf: Biquad::default(),
             eq: [Biquad::default(); 5],
+            notches: [Biquad::default(); 4],
             deess: DeEsser::default(),
             comp: Compressor::default(),
             reverb: Reverb::new(sample_rate),
@@ -164,6 +166,11 @@ impl Engine {
         let c = &self.params.chain;
         self.gate.set(c.gate_threshold_db, sr);
         self.hpf.highpass(c.hpf_hz, 0.707, sr);
+        for (bq, &hz) in self.notches.iter_mut().zip(c.notch_hz.iter()) {
+            if hz > 20.0 {
+                bq.notch(hz, 30.0, sr);
+            }
+        }
         for (bq, band) in self.eq.iter_mut().zip(c.eq.iter()) {
             bq.band(band, sr);
         }
@@ -305,6 +312,13 @@ impl Engine {
         }
         let c = p.chain;
         let mut v = x * db(c.input_gain_db);
+        if c.notch_on {
+            for (bq, &hz) in self.notches.iter_mut().zip(c.notch_hz.iter()) {
+                if hz > 20.0 {
+                    v = bq.run(v);
+                }
+            }
+        }
         self.in_env.run(v);
         if c.gate_on {
             v = self.gate.run(v);
@@ -575,6 +589,40 @@ mod tests {
 
     #[test]
     fn bypass_is_transparent() {
+        // (kept below)
+        bypass_is_transparent_body();
+    }
+
+    #[test]
+    fn notch_removes_the_whine_only() {
+        let sr = 48_000.0;
+        let mut chain = quiet_chain();
+        chain.notch_hz = [493.9, 0.0, 0.0, 0.0];
+        let params = VocalParams {
+            tune: Tune {
+                enabled: false,
+                ..Tune::default()
+            },
+            chain,
+            ..VocalParams::default()
+        };
+        let rms_out = |hz: f32| {
+            let mut e = Engine::new(sr, params);
+            let x: Vec<f32> = (0..24_000)
+                .map(|i| 0.3 * (std::f32::consts::TAU * hz * i as f32 / sr).sin())
+                .collect();
+            let mut l = vec![0.0; x.len()];
+            let mut r = vec![0.0; x.len()];
+            e.process(&x, &mut l, &mut r);
+            (l[12_000..].iter().map(|v| v * v).sum::<f32>() / 12_000.0).sqrt()
+        };
+        let whine = to_db(rms_out(493.9) / 0.212);
+        let voice = to_db(rms_out(1000.0) / 0.212);
+        assert!(whine < -25.0, "whine {whine} dB");
+        assert!(voice.abs() < 0.5, "1 kHz {voice} dB");
+    }
+
+    fn bypass_is_transparent_body() {
         let mut e = Engine::new(
             48_000.0,
             VocalParams {

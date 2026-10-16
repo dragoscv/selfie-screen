@@ -66,6 +66,12 @@ impl Biquad {
         self.set([al, 0.0, -al], [1.0 + al, -2.0 * c, 1.0 - al]);
     }
 
+    /// Narrow notch (Q ≈ 30 removes a whine without touching the voice around it).
+    pub fn notch(&mut self, hz: f32, q: f32, sr: f32) {
+        let (c, al, _) = Self::w(hz, sr, q);
+        self.set([1.0, -2.0 * c, 1.0], [1.0 + al, -2.0 * c, 1.0 - al]);
+    }
+
     pub fn band(&mut self, b: &Band, sr: f32) {
         let a = 10f64.powf(f64::from(b.gain_db) / 40.0);
         let (c, al, _) = Self::w(b.hz, sr, b.q);

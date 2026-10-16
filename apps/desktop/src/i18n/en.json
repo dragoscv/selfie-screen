@@ -787,7 +787,6 @@
         "autoKeyHint": "Listens to the music strip and sets the key",
         "detected": "Detected: {{key}} {{scale}} ({{conf}} %)",
         "scale": "Scale",
-        "preset": "Preset",
         "retune": "Retune speed",
         "hard": "Hard tune",
         "humanize": "Humanize (long notes)",
@@ -879,18 +878,96 @@
             "blues": "blues"
         },
         "presets": {
-            "natural": "Natural",
-            "pop": "Pop",
-            "hardTune": "Hard-tune",
-            "trap": "Trap",
-            "karaoke": "Karaoke",
-            "radio": "Radio (no tune)"
+            "title": "Presets"
         },
         "singing": "Singing",
         "silent": "Silence",
         "open": "Open the vocal window (autotune)",
         "focus": "Show the vocal window",
-        "phonesBus": "Headphones bus"
+        "phonesBus": "Headphones bus",
+        "presetSave": "Save",
+        "presetName": "Preset name",
+        "presetSaved": "Preset saved: {{name}}",
+        "presetUpdated": "Preset updated: {{name}}",
+        "presetDeleted": "Preset deleted: {{name}}",
+        "presetDelete": "Delete {{name}}",
+        "presetExport": "Export this tab's presets",
+        "builtin": {
+            "tune": {
+                "natural": "Natural",
+                "pop": "Pop",
+                "hardTune": "Hard-tune",
+                "off": "Off"
+            },
+            "voice": {
+                "clean": "Clean",
+                "broadcast": "Broadcast",
+                "warm": "Warm",
+                "bright": "Bright"
+            },
+            "fx": {
+                "dry": "Dry",
+                "room": "Room",
+                "hall": "Hall",
+                "slapback": "Slapback",
+                "trap": "Trap"
+            },
+            "harmony": {
+                "off": "Off",
+                "double": "Double",
+                "thirds": "Thirds",
+                "choir": "Choir"
+            }
+        },
+        "notch": "Whine filter",
+        "notchHint": "Removes the whine/hum found by calibration without touching your voice",
+        "notchNone": "None set: run calibration to find the whine",
+        "notchRemove": "Remove this filter",
+        "exportAll": "Export everything",
+        "import": "Import",
+        "exported": "Exported to Downloads",
+        "importedAll": "Settings imported ({{count}} presets)",
+        "importedPresets": "{{count}} preset(s) imported",
+        "importFailed": "Import failed: {{error}}",
+        "configHint": "All vocal settings and {{count}} preset(s) in one file",
+        "cal": {
+            "title": "Calibrate my voice",
+            "never": "Not calibrated yet: 4 short recordings, about 1 minute",
+            "last": "Last calibration: {{date}}",
+            "start": "Start",
+            "progress": "Calibration progress",
+            "needsEngine": "Turn the vocal engine on (power button) before recording.",
+            "record": "Record {{s}} s",
+            "recording": "Recording… {{s}} s",
+            "defaultName": "My voice",
+            "save": "Apply and save preset",
+            "redo": "Start over",
+            "silence": {
+                "title": "1 · Silence",
+                "body": "Stay quiet and still. TikSee measures the mic's noise floor and finds any whine or hum."
+            },
+            "speak": {
+                "title": "2 · Speak normally",
+                "body": "Talk as you do on a live, at your usual distance from the mic. This sets the input level, gate and compressor."
+            },
+            "range": {
+                "title": "3 · Your range",
+                "body": "Sing slowly from your lowest comfortable note to your highest (\"aaa\"). This sets the pitch detection range and the low cut."
+            },
+            "sibilance": {
+                "title": "4 · S sounds",
+                "body": "Say a few words with lots of s / ș / ț: \"sase sasi si sapte sute\". This sets the de-esser."
+            },
+            "review": {
+                "title": "Result",
+                "floor": "Noise floor",
+                "whine": "Whine / hum",
+                "none": "none",
+                "hum": "mains hum {{hz}} Hz",
+                "range": "Your range",
+                "whineHint": "A steady whine comes from the microphone, cable or audio interface (often a USB ground loop): TikSee filters it, but it is best to also try another USB port, a powered hub or the mic's own gain."
+            }
+        }
     },
     "cameraRemote": {
         "button": "Camera",

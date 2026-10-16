@@ -62,6 +62,11 @@ pub struct Shared {
     sample_rate: AtomicU64,
     block: AtomicU64,
     peaks: Box<[AtomicU32]>,
+    /// Diagnostic raw capture of the mic strip (left channel, pre-engine):
+    /// `capture_len` > 0 arms it, the callback writes f32 bits, `capture_pos` counts.
+    capture: Box<[AtomicU32]>,
+    capture_len: AtomicU64,
+    capture_pos: AtomicU64,
 }
 
 impl Default for Shared {
@@ -78,11 +83,39 @@ impl Default for Shared {
             sample_rate: AtomicU64::default(),
             block: AtomicU64::default(),
             peaks: (0..34).map(|_| AtomicU32::new(0)).collect(),
+            capture: Box::new([]),
+            capture_len: AtomicU64::new(0),
+            capture_pos: AtomicU64::new(0),
         }
     }
 }
 
 impl Shared {
+    /// Allocates a diagnostic capture of `samples` mic samples (probe only).
+    pub fn with_capture(samples: usize) -> Self {
+        Self {
+            capture: (0..samples).map(|_| AtomicU32::new(0)).collect(),
+            ..Self::default()
+        }
+    }
+
+    /// Arms the capture from the start; returns false if none was allocated.
+    pub fn arm_capture(&self) -> bool {
+        self.capture_pos.store(0, Ordering::Relaxed);
+        self.capture_len
+            .store(self.capture.len() as u64, Ordering::Release);
+        !self.capture.is_empty()
+    }
+
+    /// Captured samples so far.
+    pub fn captured(&self) -> Vec<f32> {
+        let n = self.capture_pos.load(Ordering::Acquire) as usize;
+        self.capture[..n.min(self.capture.len())]
+            .iter()
+            .map(|v| f32::from_bits(v.load(Ordering::Relaxed)))
+            .collect()
+    }
+
     pub fn set_params(&self, p: VocalParams) {
         *self.params.lock().unwrap_or_else(PoisonError::into_inner) = p;
         self.version.fetch_add(1, Ordering::Release);
@@ -202,14 +235,23 @@ impl Dsp {
         if let Some((v0, _)) = strip_channels(vm_type, shared.mic_strip.load(Ordering::Relaxed))
             && v0 + 1 < n
         {
+            let cap_len = shared.capture_len.load(Ordering::Acquire) as usize;
+            let mut cap_pos = shared.capture_pos.load(Ordering::Relaxed) as usize;
             for i in 0..nbs {
                 // A mono mic on a hardware strip arrives on the left channel.
                 let x = unsafe { *read[v0].add(i) };
+                if cap_pos < cap_len.min(shared.capture.len()) {
+                    shared.capture[cap_pos].store(x.to_bits(), Ordering::Relaxed);
+                    cap_pos += 1;
+                }
                 let (l, r) = self.engine.sample(x);
                 unsafe {
                     *write[v0].add(i) = l;
                     *write[v0 + 1].add(i) = r;
                 }
+            }
+            if cap_len > 0 {
+                shared.capture_pos.store(cap_pos as u64, Ordering::Release);
             }
         }
         self.since_meter += nbs as u32;
@@ -412,6 +454,18 @@ mod imp {
     }
 
     impl VocalCtl {
+        /// Control with a diagnostic capture ring of `samples` (probe only).
+        pub fn with_capture(samples: usize) -> Self {
+            Self {
+                inner: Mutex::default(),
+                shared: Arc::new(Shared::with_capture(samples)),
+            }
+        }
+
+        pub fn shared(&self) -> &Shared {
+            &self.shared
+        }
+
         fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
             self.inner.lock().unwrap_or_else(PoisonError::into_inner)
         }
@@ -1124,9 +1178,96 @@ pub fn run_script(script: &str) {
     ctl.shutdown();
 }
 
+/// Records `secs` of the raw mic strip (engine bypassed, so nothing is
+/// altered) to a 32-bit float mono WAV at `path`. Prints `CAPTURE <n> <sr>`.
+pub fn capture(strip: i32, secs: u64, path: &str) {
+    let ctl = VocalCtl::with_capture((secs as usize) * 192_000);
+    ctl.set_params(VocalParams {
+        bypass: true,
+        ..VocalParams::default()
+    });
+    if let Err(e) = ctl.start(strip, -1) {
+        println!("start failed: {e}");
+        return;
+    }
+    // Let STARTING arrive, then arm.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    ctl.shared().arm_capture();
+    std::thread::sleep(std::time::Duration::from_secs(secs));
+    let sr = ctl.status().sample_rate.max(1);
+    let data = ctl.shared().captured();
+    ctl.shutdown();
+    let mut wav = Vec::with_capacity(44 + data.len() * 4);
+    let bytes = (data.len() * 4) as u32;
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + bytes).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&3u16.to_le_bytes()); // IEEE float
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&sr.to_le_bytes());
+    wav.extend_from_slice(&(sr * 4).to_le_bytes());
+    wav.extend_from_slice(&4u16.to_le_bytes());
+    wav.extend_from_slice(&32u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&bytes.to_le_bytes());
+    for v in &data {
+        wav.extend_from_slice(&v.to_le_bytes());
+    }
+    match std::fs::write(path, wav) {
+        Ok(()) => println!("CAPTURE {} {sr} {path}", data.len()),
+        Err(e) => println!("write failed: {e}"),
+    }
+    let report = tiksee_vocal::analysis::noise(&data, sr as f32);
+    println!(
+        "NOISE {}",
+        serde_json::to_string(&report).unwrap_or_default()
+    );
+}
+
 pub fn init(app: &tauri::AppHandle) {
     use tauri::Manager;
-    app.manage(VocalCtl::default());
+    // 12 s at 192 kHz for the calibration wizard and diagnostics (~9 MB, allocated once).
+    app.manage(VocalCtl::with_capture(12 * 192_000));
+}
+
+/// Starts recording the raw mic strip (pre-engine). Needs the engine running.
+#[tauri::command]
+pub fn vocal_capture_start(state: tauri::State<'_, VocalCtl>) -> Result<(), String> {
+    if !state.status().running {
+        return Err("vocal engine is not running".into());
+    }
+    state.shared().arm_capture();
+    Ok(())
+}
+
+/// Returns the raw mic samples recorded since `vocal_capture_start`, plus the sample rate.
+#[tauri::command]
+pub fn vocal_capture_take(state: tauri::State<'_, VocalCtl>) -> (u32, Vec<f32>) {
+    let sr = state.status().sample_rate;
+    (sr, state.shared().captured())
+}
+
+/// Analyses the capture so far: `kind` = "noise" (nobody singing) or "voice".
+#[tauri::command]
+pub async fn vocal_analyze(
+    state: tauri::State<'_, VocalCtl>,
+    kind: String,
+) -> Result<serde_json::Value, String> {
+    let sr = state.status().sample_rate as f32;
+    let data = state.shared().captured();
+    if data.len() < (sr * 0.5) as usize || sr <= 0.0 {
+        return Err("not enough audio captured".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let v = match kind.as_str() {
+            "noise" => serde_json::to_value(tiksee_vocal::analysis::noise(&data, sr)),
+            _ => serde_json::to_value(tiksee_vocal::analysis::voice(&data, sr)),
+        };
+        v.map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 pub fn shutdown(app: &tauri::AppHandle) {

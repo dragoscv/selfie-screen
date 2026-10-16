@@ -11,6 +11,16 @@ fn main() {
         tiksee_lib::vocal_script(args.get(2).map_or("", String::as_str));
         return;
     }
+    if args.get(1).is_some_and(|a| a == "capture") {
+        let strip = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let secs = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(5);
+        tiksee_lib::vocal_capture(
+            strip,
+            secs,
+            args.get(4).map_or("capture.wav", String::as_str),
+        );
+        return;
+    }
     if args.get(1).is_some_and(|a| a == "vmcycle") {
         // vmcycle <dir> <mic0> <music0> <phonesBus1-5>
         let n = |i: usize, d: i32| args.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);

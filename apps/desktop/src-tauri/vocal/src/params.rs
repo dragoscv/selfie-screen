@@ -134,6 +134,9 @@ pub struct Chain {
     pub limiter_on: bool,
     pub limiter_ceiling_db: f32,
     pub output_gain_db: f32,
+    /// Narrow notches against whine / hum found by calibration (Hz; 0 = unused).
+    pub notch_hz: [f32; 4],
+    pub notch_on: bool,
 }
 
 impl Default for Chain {
@@ -199,6 +202,8 @@ impl Default for Chain {
             limiter_on: true,
             limiter_ceiling_db: -1.0,
             output_gain_db: 0.0,
+            notch_hz: [0.0; 4],
+            notch_on: true,
         }
     }
 }

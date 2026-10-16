@@ -94,6 +94,9 @@ const chainSchema = z.object({
     limiterOn: z.boolean().default(true),
     limiterCeilingDb: z.number().min(-12).max(0).default(-1),
     outputGainDb: z.number().min(-24).max(24).default(0),
+    /** Narrow notches against whine / hum found by calibration (Hz; 0 = unused). */
+    notchHz: z.array(z.number().min(0).max(20_000)).length(4).default([0, 0, 0, 0]),
+    notchOn: z.boolean().default(true),
 });
 
 const voiceSchema = z.object({
@@ -132,6 +135,135 @@ export type VocalParams = z.infer<typeof vocalParamsSchema>;
 export type VocalTune = VocalParams["tune"];
 export type VocalChain = VocalParams["chain"];
 
+/* ------------------------------------------------------------------ *
+ * Presets per tab (WS30-06): each section owns a slice of the params.
+ * ------------------------------------------------------------------ */
+
+export const VOCAL_SECTIONS = ["tune", "voice", "fx", "harmony"] as const;
+export type VocalSection = (typeof VOCAL_SECTIONS)[number];
+
+/** Chain fields that belong to the Voice tab (cleanup + tone + dynamics). */
+const VOICE_KEYS = [
+    "inputGainDb", "gateOn", "gateThresholdDb", "hpfOn", "hpfHz", "eqOn", "eq", "deessOn", "deessHz", "deessThresholdDb",
+    "compOn", "compThresholdDb", "compRatio", "compAttackMs", "compReleaseMs", "compMakeupDb", "notchHz", "notchOn",
+] as const satisfies readonly (keyof VocalChain)[];
+/** Chain fields that belong to the Effects tab. */
+const FX_KEYS = [
+    "reverbOn", "reverbMix", "reverbSize", "reverbDamp", "delayOn", "delayMix", "delayMs", "delayFeedback",
+    "limiterOn", "limiterCeilingDb", "outputGainDb",
+] as const satisfies readonly (keyof VocalChain)[];
+/** Tune fields a preset carries (key/scale stay with the song, range/sensitivity with the singer's calibration). */
+const TUNE_KEYS = [
+    "enabled", "retuneMs", "humanize", "flexCents", "vibrato", "vibratoAddCents", "vibratoRateHz", "transpose", "formant", "mode", "mix",
+] as const satisfies readonly (keyof VocalTune)[];
+
+const pick = <T extends object, K extends keyof T>(o: T, keys: readonly K[]): Pick<T, K> =>
+    Object.fromEntries(keys.map((k) => [k, o[k]])) as Pick<T, K>;
+
+/** The slice of `p` a section preset stores. */
+export function sectionValues(p: VocalParams, section: VocalSection): Record<string, unknown> {
+    switch (section) {
+        case "tune":
+            return pick(p.tune, TUNE_KEYS);
+        case "voice":
+            return pick(p.chain, VOICE_KEYS);
+        case "fx":
+            return pick(p.chain, FX_KEYS);
+        case "harmony":
+            return { voices: p.harmony.voices, double: p.harmony.double, duck: p.duck };
+    }
+}
+
+/** Applies a stored section slice over `p` (unknown or invalid fields fall back through the schema). */
+export function applySection(p: VocalParams, section: VocalSection, values: Record<string, unknown>): VocalParams {
+    const v = values as Partial<Record<string, never>>;
+    switch (section) {
+        case "tune":
+            return vocalParamsSchema.parse({ ...p, tune: { ...p.tune, ...pick(v, TUNE_KEYS as readonly string[]) } });
+        case "voice":
+            return vocalParamsSchema.parse({ ...p, chain: { ...p.chain, ...pick(v, VOICE_KEYS as readonly string[]) } });
+        case "fx":
+            return vocalParamsSchema.parse({ ...p, chain: { ...p.chain, ...pick(v, FX_KEYS as readonly string[]) } });
+        case "harmony": {
+            const h = values as { voices?: unknown; double?: unknown; duck?: unknown };
+            return vocalParamsSchema.parse({
+                ...p,
+                harmony: { ...p.harmony, ...(h.voices !== undefined && { voices: h.voices }), ...(h.double !== undefined && { double: h.double }) },
+                duck: { ...p.duck, ...(typeof h.duck === "object" && h.duck) },
+            });
+        }
+    }
+}
+
+export const vocalUserPresetSchema = z.object({
+    id: z.string().min(1).max(64),
+    name: z.string().min(1).max(60),
+    section: z.enum(VOCAL_SECTIONS),
+    values: z.record(z.string(), z.unknown()),
+    createdAt: z.number().int().nonnegative().default(0),
+});
+export type VocalUserPreset = z.infer<typeof vocalUserPresetSchema>;
+
+/** Built-in presets per section (names are i18n keys `vocal.builtin.<section>.<id>`). */
+export const BUILTIN_SECTION_PRESETS: Record<VocalSection, Record<string, Record<string, unknown>>> = {
+    tune: {
+        natural: { enabled: true, retuneMs: 80, humanize: 0.6, flexCents: 15, vibrato: 1, mode: "natural", transpose: 0 },
+        pop: { enabled: true, retuneMs: 25, humanize: 0.3, flexCents: 0, vibrato: 0.8, mode: "live", transpose: 0 },
+        hardTune: { enabled: true, retuneMs: 0, humanize: 0, flexCents: 0, vibrato: 0, mode: "live", transpose: 0 },
+        off: { enabled: false },
+    },
+    voice: {
+        clean: { gateOn: true, hpfOn: true, hpfHz: 90, compOn: true, compRatio: 3, compThresholdDb: -20, compMakeupDb: 4, deessOn: true, deessThresholdDb: -28 },
+        broadcast: { gateOn: true, hpfOn: true, hpfHz: 80, compOn: true, compRatio: 5, compThresholdDb: -24, compMakeupDb: 7, deessOn: true, deessThresholdDb: -32 },
+        warm: { eq: DEFAULT_EQ.map((b, i) => (i === 0 ? { ...b, gainDb: 2.5 } : i === 4 ? { ...b, gainDb: 0 } : b)) },
+        bright: { eq: DEFAULT_EQ.map((b, i) => (i === 2 ? { ...b, gainDb: 3 } : i === 4 ? { ...b, gainDb: 4 } : b)) },
+    },
+    fx: {
+        dry: { reverbOn: false, delayOn: false },
+        room: { reverbOn: true, reverbMix: 0.12, reverbSize: 0.4, reverbDamp: 0.5, delayOn: false },
+        hall: { reverbOn: true, reverbMix: 0.28, reverbSize: 0.85, reverbDamp: 0.3, delayOn: false },
+        slapback: { reverbOn: true, reverbMix: 0.1, delayOn: true, delayMix: 0.18, delayMs: 110, delayFeedback: 0.1 },
+        trap: { reverbOn: true, reverbMix: 0.14, delayOn: true, delayMix: 0.2, delayMs: 375, delayFeedback: 0.35 },
+    },
+    harmony: {
+        off: { voices: [{ on: false, degrees: 2, gainDb: -6, pan: -0.4 }, { on: false, degrees: 4, gainDb: -6, pan: 0.4 }, { on: false, degrees: -3, gainDb: -6, pan: 0 }], double: 0 },
+        double: { double: 0.6 },
+        thirds: { voices: [{ on: true, degrees: 2, gainDb: -8, pan: -0.5 }, { on: false, degrees: 4, gainDb: -6, pan: 0.4 }, { on: false, degrees: -3, gainDb: -6, pan: 0 }], double: 0.3 },
+        choir: { voices: [{ on: true, degrees: 2, gainDb: -9, pan: -0.6 }, { on: true, degrees: 4, gainDb: -10, pan: 0.6 }, { on: true, degrees: -3, gainDb: -12, pan: 0 }], double: 0.4 },
+    },
+};
+
+/** Full export: every vocal setting plus the user presets, versioned. */
+export const vocalExportSchema = z.object({
+    kind: z.literal("tiksee-vocal"),
+    version: z.literal(1),
+    exportedAt: z.number().int().nonnegative(),
+    settings: z.lazy(() => vocalSchema),
+});
+export type VocalExport = z.infer<typeof vocalExportSchema>;
+
+/** Single-preset file (shared between people). */
+export const vocalPresetFileSchema = z.object({
+    kind: z.literal("tiksee-vocal-preset"),
+    version: z.literal(1),
+    presets: z.array(vocalUserPresetSchema).min(1).max(200),
+});
+
+/** Parses an imported file: a full export or a preset file. Throws a readable error. */
+export function parseVocalImport(text: string): { settings?: VocalSettings; presets: VocalUserPreset[] } {
+    let raw: unknown;
+    try {
+        raw = JSON.parse(text);
+    } catch {
+        throw new Error("not a JSON file");
+    }
+    const full = vocalExportSchema.safeParse(raw);
+    if (full.success) return { settings: full.data.settings, presets: full.data.settings.presets };
+    const file = vocalPresetFileSchema.safeParse(raw);
+    if (file.success) return { presets: file.data.presets };
+    throw new Error("not a TikSee vocal export or preset file");
+}
+
 export const vocalSchema = z.object({
     /** Engine running inside Voicemeeter. */
     enabled: z.boolean().default(false),
@@ -148,33 +280,12 @@ export const vocalSchema = z.object({
     /** Second slot for A/B comparison. */
     paramsB: vocalParamsSchema.optional(),
     slot: z.enum(["a", "b"]).default("a"),
+    /** User presets, per tab. */
+    presets: z.array(vocalUserPresetSchema).max(200).default([]),
+    /** Last calibration (shown in Setup; re-run any time). */
+    calibratedAt: z.number().int().nonnegative().default(0),
 });
 export type VocalSettings = z.infer<typeof vocalSchema>;
-
-export const VOCAL_PRESETS = ["natural", "pop", "hardTune", "trap", "karaoke", "radio"] as const;
-export type VocalPreset = (typeof VOCAL_PRESETS)[number];
-
-type PresetPatch = { tune?: Partial<VocalTune>; chain?: Partial<VocalChain>; harmony?: Partial<VocalParams["harmony"]> };
-
-const PRESET_PATCHES: Record<VocalPreset, PresetPatch> = {
-    natural: { tune: { retuneMs: 80, humanize: 0.6, flexCents: 15, vibrato: 1, mode: "natural" }, chain: { reverbMix: 0.12 } },
-    pop: { tune: { retuneMs: 25, humanize: 0.3, flexCents: 0, vibrato: 0.8, mode: "live" }, chain: { reverbMix: 0.18, compRatio: 4 } },
-    hardTune: { tune: { retuneMs: 0, humanize: 0, flexCents: 0, vibrato: 0, mode: "live" }, chain: { reverbMix: 0.1 } },
-    trap: { tune: { retuneMs: 5, humanize: 0, vibrato: 0, mode: "live" }, chain: { delayOn: true, delayMix: 0.18, delayMs: 375, reverbMix: 0.14 } },
-    karaoke: { tune: { retuneMs: 60, humanize: 0.5, flexCents: 20, mode: "natural" }, chain: { reverbMix: 0.28, reverbSize: 0.8 } },
-    radio: { tune: { enabled: false }, chain: { compRatio: 5, compThresholdDb: -24, reverbMix: 0.05, deessThresholdDb: -32 } },
-};
-
-/** Applies a preset over `base`, keeping key/scale and the device-specific bits. */
-export function applyVocalPreset(base: VocalParams, preset: VocalPreset): VocalParams {
-    const p = PRESET_PATCHES[preset];
-    return vocalParamsSchema.parse({
-        ...base,
-        tune: { ...base.tune, ...p.tune, key: base.tune.key, scale: base.tune.scale },
-        chain: { ...base.chain, ...p.chain },
-        harmony: { ...base.harmony, ...p.harmony },
-    });
-}
 
 /** "A minor" / "La minor" style label (names come from the UI locale). */
 export function noteName(midi: number): string {

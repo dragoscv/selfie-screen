@@ -794,7 +794,6 @@
         "autoKeyHint": "Ascultă strip-ul de muzică și setează tonalitatea",
         "detected": "Detectat: {{key}} {{scale}} ({{conf}} %)",
         "scale": "Gamă",
-        "preset": "Presetare",
         "retune": "Viteza corecției",
         "hard": "Hard tune",
         "humanize": "Umanizare (note lungi)",
@@ -887,18 +886,96 @@
             "blues": "blues"
         },
         "presets": {
-            "natural": "Natural",
-            "pop": "Pop",
-            "hardTune": "Hard-tune",
-            "trap": "Trap",
-            "karaoke": "Karaoke",
-            "radio": "Radio (fără tune)"
+            "title": "Presetări"
         },
         "singing": "Cânți",
         "silent": "Liniște",
         "open": "Deschide fereastra Voce (autotune)",
         "focus": "Arată fereastra Voce",
-        "phonesBus": "Bus căști"
+        "phonesBus": "Bus căști",
+        "presetSave": "Salvează",
+        "presetName": "Numele presetării",
+        "presetSaved": "Presetare salvată: {{name}}",
+        "presetUpdated": "Presetare actualizată: {{name}}",
+        "presetDeleted": "Presetare ștearsă: {{name}}",
+        "presetDelete": "Șterge {{name}}",
+        "presetExport": "Exportă presetările acestei file",
+        "builtin": {
+            "tune": {
+                "natural": "Natural",
+                "pop": "Pop",
+                "hardTune": "Hard-tune",
+                "off": "Oprit"
+            },
+            "voice": {
+                "clean": "Curat",
+                "broadcast": "Radio",
+                "warm": "Cald",
+                "bright": "Luminos"
+            },
+            "fx": {
+                "dry": "Sec",
+                "room": "Cameră",
+                "hall": "Sală",
+                "slapback": "Slapback",
+                "trap": "Trap"
+            },
+            "harmony": {
+                "off": "Oprit",
+                "double": "Dublare",
+                "thirds": "Terțe",
+                "choir": "Cor"
+            }
+        },
+        "notch": "Filtru de țiuit",
+        "notchHint": "Scoate țiuitul/brumul găsit la calibrare fără să-ți atingă vocea",
+        "notchNone": "Nesetat: rulează calibrarea ca să găsească țiuitul",
+        "notchRemove": "Scoate acest filtru",
+        "exportAll": "Exportă tot",
+        "import": "Importă",
+        "exported": "Exportat în Descărcări",
+        "importedAll": "Setări importate ({{count}} presetări)",
+        "importedPresets": "{{count}} presetare(ări) importată(e)",
+        "importFailed": "Importul a eșuat: {{error}}",
+        "configHint": "Toate setările vocii și {{count}} presetare(ări) într-un singur fișier",
+        "cal": {
+            "title": "Calibrează-mi vocea",
+            "never": "Necalibrat încă: 4 înregistrări scurte, cam 1 minut",
+            "last": "Ultima calibrare: {{date}}",
+            "start": "Începe",
+            "progress": "Progresul calibrării",
+            "needsEngine": "Pornește procesarea vocii (butonul de pornire) înainte să înregistrezi.",
+            "record": "Înregistrează {{s}} s",
+            "recording": "Înregistrez… {{s}} s",
+            "defaultName": "Vocea mea",
+            "save": "Aplică și salvează presetarea",
+            "redo": "De la capăt",
+            "silence": {
+                "title": "1 · Liniște",
+                "body": "Stai liniștit și nemișcat. TikSee măsoară zgomotul de fond al microfonului și găsește țiuitul sau brumul."
+            },
+            "speak": {
+                "title": "2 · Vorbește normal",
+                "body": "Vorbește ca pe live, la distanța obișnuită de microfon. Așa se setează nivelul de intrare, poarta și compresorul."
+            },
+            "range": {
+                "title": "3 · Ambitusul tău",
+                "body": "Cântă rar de la cea mai joasă notă confortabilă la cea mai înaltă („aaa”). Așa se setează domeniul de detecție a notelor și tăierea de joase."
+            },
+            "sibilance": {
+                "title": "4 · Sunete S",
+                "body": "Spune câteva cuvinte cu mulți s / ș / ț: „șase sași și șapte sute”. Așa se setează de-esser-ul."
+            },
+            "review": {
+                "title": "Rezultat",
+                "floor": "Zgomot de fond",
+                "whine": "Țiuit / brum",
+                "none": "niciunul",
+                "hum": "brum de rețea {{hz}} Hz",
+                "range": "Ambitusul tău",
+                "whineHint": "Un țiuit constant vine din microfon, cablu sau placa audio (des o buclă de masă pe USB): TikSee îl filtrează, dar încearcă și alt port USB, un hub alimentat sau gain-ul microfonului."
+            }
+        }
     },
     "cameraRemote": {
         "button": "Cameră",

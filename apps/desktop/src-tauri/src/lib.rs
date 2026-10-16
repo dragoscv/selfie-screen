@@ -404,6 +404,11 @@ pub fn vocal_script(script: &str) {
     vocal_host::run_script(script);
 }
 
+/// Raw mic capture to WAV (`examples/vocal_probe.rs capture <strip0> <secs> <path>`).
+pub fn vocal_capture(strip: i32, secs: u64, path: &str) {
+    vocal_host::capture(strip, secs, path);
+}
+
 /// Prints the Voicemeeter state (`examples/vocal_probe.rs dump`).
 pub fn vocal_dump() {
     vocal_host::dump();
@@ -459,6 +464,9 @@ pub fn run() {
             vocal_host::vocal_status,
             vocal_host::vocal_meter,
             vocal_host::vocal_strips,
+            vocal_host::vocal_capture_start,
+            vocal_host::vocal_capture_take,
+            vocal_host::vocal_analyze,
             vocal_host::vocal_start,
             vocal_host::vocal_stop,
             vocal_host::vocal_set_params,
