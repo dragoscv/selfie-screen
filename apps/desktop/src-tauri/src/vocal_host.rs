@@ -645,6 +645,91 @@ mod imp {
             }
         }
 
+        /// Diagnostic: records `samples` of bus channel `channel` from the OUT
+        /// insert (after strip EQ/gate, i.e. what the bus really carries).
+        /// Passes every channel through untouched. Returns (sample rate, data).
+        pub fn capture_bus(
+            &self,
+            channel: usize,
+            samples: usize,
+        ) -> Result<(u32, Vec<f32>), String> {
+            struct Bus {
+                channel: usize,
+                data: Vec<f32>,
+                cap: usize,
+                sr: u32,
+            }
+            unsafe extern "system" fn cb(
+                user: *mut c_void,
+                cmd: c_long,
+                data: *mut c_void,
+                _n: c_long,
+            ) -> c_long {
+                // SAFETY: `user` is the Bus box below; single-threaded callback.
+                let st = unsafe { &mut *user.cast::<Bus>() };
+                if cmd == CB_STARTING && !data.is_null() {
+                    st.sr = unsafe { (*data.cast::<AudioInfo>()).samplerate } as u32;
+                }
+                if cmd == 11 && !data.is_null() {
+                    // SAFETY: BUFFER_OUT passes an AudioBuffer valid for nbs samples.
+                    let buf = unsafe { &*data.cast::<AudioBuffer>() };
+                    let nbs = buf.nbs.max(0) as usize;
+                    let n = (buf.nbi.max(0) as usize)
+                        .min(buf.nbo.max(0) as usize)
+                        .min(128);
+                    for ch in 0..n {
+                        if buf.r[ch] != buf.w[ch] && !buf.r[ch].is_null() && !buf.w[ch].is_null() {
+                            unsafe { std::ptr::copy_nonoverlapping(buf.r[ch], buf.w[ch], nbs) };
+                        }
+                    }
+                    if st.channel < n && !buf.r[st.channel].is_null() {
+                        for i in 0..nbs {
+                            if st.data.len() >= st.cap {
+                                break;
+                            }
+                            st.data.push(unsafe { *buf.r[st.channel].add(i) });
+                        }
+                    }
+                }
+                0
+            }
+            let mut inner = self.lock();
+            let api = Self::api(&mut inner)?;
+            let st = Box::into_raw(Box::new(Bus {
+                channel,
+                data: Vec::with_capacity(samples),
+                cap: samples,
+                sr: 0,
+            }));
+            let mut name = [0 as c_char; 64];
+            for (d, s) in name.iter_mut().zip(b"TikSee probe\0") {
+                *d = *s as c_char;
+            }
+            // SAFETY: callback + box live until unregister below.
+            let rep = unsafe { (api.cb_register)(2, cb, st.cast(), name.as_mut_ptr()) };
+            if rep != 0 {
+                drop(unsafe { Box::from_raw(st) });
+                return Err(format!("OUT insert register failed ({rep})"));
+            }
+            unsafe { (api.cb_start)() };
+            drop(inner);
+            let deadline = std::time::Instant::now() + Duration::from_secs(30);
+            loop {
+                std::thread::sleep(Duration::from_millis(100));
+                // SAFETY: read-only peek at the length; the callback only pushes up to cap.
+                let len = unsafe { (*st).data.len() };
+                if len >= samples || std::time::Instant::now() > deadline {
+                    break;
+                }
+            }
+            let inner = self.lock();
+            if let Some(api) = inner.api.as_ref() {
+                unsafe { (api.cb_unregister)() };
+            }
+            let st = unsafe { Box::from_raw(st) };
+            Ok((st.sr, st.data))
+        }
+
         /// Device name and label of every strip (`(index, device, label)`).
         /// Voicemeeter's own pre-fader input meters, dBFS per input channel.
         /// Reads one float parameter (`Strip[0].A5`).
@@ -1246,6 +1331,84 @@ pub fn vocal_capture_start(state: tauri::State<'_, VocalCtl>) -> Result<(), Stri
 pub fn vocal_capture_take(state: tauri::State<'_, VocalCtl>) -> (u32, Vec<f32>) {
     let sr = state.status().sample_rate;
     (sr, state.shared().captured())
+}
+
+/// Analyses the capture so far: `kind` = "noise" (nobody singing) or "voice".
+/// Probe: records `secs` of OUT-insert channel `channel` (Potato: B2 left = 48) to a float WAV.
+/// Probe: engine on `strip`, switching key every 4 s (C major, D major, A minor);
+/// prints what the audio thread uses and the notes it targets.
+pub fn keytest(strip: i32) {
+    let ctl = VocalCtl::default();
+    let keys = [
+        (0u8, tiksee_vocal::scale::Scale::Major),
+        (2, tiksee_vocal::scale::Scale::Major),
+        (9, tiksee_vocal::scale::Scale::Minor),
+    ];
+    let mut p = VocalParams::default();
+    p.tune.retune_ms = 0.0;
+    p.tune.humanize = 0.0;
+    p.tune.vibrato = 0.0;
+    if let Err(e) = ctl.start(strip, -1) {
+        println!("start failed: {e}");
+        return;
+    }
+    for (key, scale) in keys {
+        p.tune.key = key;
+        p.tune.scale = scale;
+        ctl.set_params(p);
+        for _ in 0..8 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let m = ctl.meter().meter;
+            println!(
+                "set key={key} {scale:?} | engine key={} {:?} | in={:.0} dB clarity={:.2} voiced={} detected={:.2} target={} out={:.2}",
+                m.active_key,
+                m.active_scale,
+                m.input_db,
+                m.clarity,
+                m.voiced,
+                m.detected_midi,
+                m.target_midi,
+                m.corrected_midi
+            );
+        }
+    }
+    ctl.shutdown();
+}
+
+/// Probe: records `secs` of OUT-insert channel `channel` (Potato: B2 left = 48) to a float WAV.
+pub fn capture_bus(channel: usize, secs: u64, path: &str) {
+    let ctl = VocalCtl::default();
+    let _ = ctl.status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    match ctl.capture_bus(channel, secs as usize * 48_000) {
+        Ok((sr, data)) => {
+            let mut wav = Vec::with_capacity(44 + data.len() * 4);
+            let bytes = (data.len() * 4) as u32;
+            for chunk in [
+                &b"RIFF"[..],
+                &(36 + bytes).to_le_bytes(),
+                b"WAVEfmt ",
+                &16u32.to_le_bytes(),
+                &3u16.to_le_bytes(),
+                &1u16.to_le_bytes(),
+                &sr.to_le_bytes(),
+                &(sr * 4).to_le_bytes(),
+                &4u16.to_le_bytes(),
+                &32u16.to_le_bytes(),
+                b"data",
+                &bytes.to_le_bytes(),
+            ] {
+                wav.extend_from_slice(chunk);
+            }
+            for v in &data {
+                wav.extend_from_slice(&v.to_le_bytes());
+            }
+            let _ = std::fs::write(path, wav);
+            println!("BUS {} {sr} {path}", data.len());
+        }
+        Err(e) => println!("bus capture failed: {e}"),
+    }
+    ctl.shutdown();
 }
 
 /// Analyses the capture so far: `kind` = "noise" (nobody singing) or "voice".

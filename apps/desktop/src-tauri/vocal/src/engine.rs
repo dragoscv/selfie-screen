@@ -36,6 +36,11 @@ pub struct Meter {
     pub duck_gain_db: f32,
     pub latency_ms: f32,
     pub key: Option<(u8, bool, f32)>,
+    /// Key, scale and mode the audio thread is using right now (proves params arrived).
+    pub active_key: u8,
+    pub active_scale: crate::scale::Scale,
+    pub active_mode: ShiftMode,
+    pub tune_on: bool,
 }
 
 pub struct Engine {
@@ -242,6 +247,10 @@ impl Engine {
                 .key
                 .guess()
                 .map(|g| (g.key, g.scale == crate::scale::Scale::Minor, g.confidence)),
+            active_key: self.params.tune.key,
+            active_scale: self.params.tune.scale,
+            active_mode: self.params.tune.mode,
+            tune_on: self.params.tune.enabled && !self.params.bypass,
         }
     }
 
@@ -486,6 +495,65 @@ mod tests {
 
     #[test]
     fn live_mode_latency_is_a_few_ms() {
+        key_change_body();
+        live_latency_body();
+    }
+
+    /// Owner report 2026-10-16: "when I change the key nothing happens".
+    /// Real settings (Natural, retune 80 ms, humanize 0.6, flex 15 c); a held
+    /// 466 Hz note (A#4). In C major the nearest note is B (or A); after
+    /// switching to A# major, A#4 itself is in key and must pass through.
+    fn key_change_body() {
+        let sr = 48_000.0;
+        let mut tune = Tune {
+            key: 0,
+            scale: Scale::Major,
+            retune_ms: 80.0,
+            humanize: 0.6,
+            flex_cents: 15.0,
+            mode: ShiftMode::Natural,
+            ..Tune::default()
+        };
+        let mut e = Engine::new(
+            sr,
+            VocalParams {
+                tune,
+                chain: quiet_chain(),
+                ..VocalParams::default()
+            },
+        );
+        let input = tone(466.16, sr, sr as usize);
+        let mut l = vec![0.0; input.len()];
+        let mut r = vec![0.0; input.len()];
+        e.process(&input, &mut l, &mut r);
+        let in_c = e.meter();
+        assert!(
+            in_c.target_midi == 69.0 || in_c.target_midi == 71.0,
+            "C major target {in_c:?}"
+        );
+        let c_out = measure(&l[24_000..], sr);
+        tune.key = 10; // A#
+        e.set_params(VocalParams {
+            tune,
+            chain: quiet_chain(),
+            ..VocalParams::default()
+        });
+        e.process(&input, &mut l, &mut r);
+        let in_as = e.meter();
+        assert_eq!(in_as.target_midi, 70.0, "A# major target {in_as:?}");
+        let as_out = measure(&l[24_000..], sr);
+        let cents = 1200.0 * (as_out / 466.16).log2();
+        assert!(
+            cents.abs() < 10.0,
+            "after key change output {as_out} Hz ({cents} c), before {c_out} Hz"
+        );
+        assert!(
+            (1200.0 * (c_out / 466.16).log2()).abs() > 60.0,
+            "in C major the note must move: {c_out} Hz"
+        );
+    }
+
+    fn live_latency_body() {
         let sr = 48_000.0;
         let mut e = Engine::new(
             sr,

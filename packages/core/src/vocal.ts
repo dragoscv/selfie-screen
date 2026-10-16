@@ -31,7 +31,7 @@ export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A",
 const tuneSchema = z.object({
     enabled: z.boolean().default(true),
     key: z.number().int().min(0).max(11).default(0),
-    scale: z.enum(VOCAL_SCALES).default("chromatic"),
+    scale: z.enum(VOCAL_SCALES).default("major"),
     /** Notes switched off, bit per pitch class (bit 0 = C). */
     bypass: z.number().int().min(0).max(4095).default(0),
     retuneMs: z.number().min(0).max(400).default(40),

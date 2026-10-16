@@ -975,7 +975,11 @@
                 "range": "Ambitusul tău",
                 "whineHint": "Un țiuit constant vine din microfon, cablu sau placa audio (des o buclă de masă pe USB): TikSee îl filtrează, dar încearcă și alt port USB, un hub alimentat sau gain-ul microfonului."
             }
-        }
+        },
+        "chromaticHint": "Gama cromatică acceptă toate semitonurile, deci tonalitatea nu contează. Alege gama melodiei (major/minor) ca să conteze tonalitatea.",
+        "sensitivity": "Sensibilitatea detecției",
+        "sensitivityHint": "Mai mare = corectează și cântatul șoptit sau încet; mai mică dacă se corectează zgomotul.",
+        "applying": "se aplică…"
     },
     "cameraRemote": {
         "button": "Cameră",

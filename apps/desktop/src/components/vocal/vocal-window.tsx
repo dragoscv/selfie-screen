@@ -91,11 +91,12 @@ export function VocalWindow() {
     const [status, setStatus] = useState<VocalStatus | null>(null);
     const meterRef = useMeter();
     /** 10 Hz snapshot for text (the canvas/needles read the ref at 60 Hz). */
-    const [view, setView] = useState<{ heard: number | null; target: number; latency: number; key: VocalMeter["key"] }>({
+    const [view, setView] = useState<{ heard: number | null; target: number; latency: number; key: VocalMeter["key"]; active: { key: number; scale: string } | null }>({
         heard: null,
         target: 0,
         latency: 0,
         key: null,
+        active: null,
     });
     const heard = view.heard;
     const detectedKey = view.key;
@@ -136,6 +137,7 @@ export function VocalWindow() {
                 target: m?.targetMidi ?? 0,
                 latency: m?.latencyMs ?? 0,
                 key: m?.key ?? null,
+                active: m?.running ? { key: m.activeKey, scale: m.activeScale } : null,
             });
             const v = settingsRef.current;
             if (v?.autoKey && m?.key) {
@@ -362,6 +364,11 @@ export function VocalWindow() {
                                                     ))}
                                                 </select>
                                             </label>
+                                            {params.tune.scale === "chromatic" && (
+                                                <p className="rounded-chip bg-warning/12 px-3 py-2 text-xs text-warning" role="note">
+                                                    {t("vocal.chromaticHint")}
+                                                </p>
+                                            )}
                                             <SliderRow label={t("vocal.retune")} value={params.tune.retuneMs} min={0} max={400} step={1} format={(v) => (v === 0 ? t("vocal.hard") : `${Math.round(v)} ms`)} onCommit={(retuneMs) => tune({ retuneMs })} />
                                             <SliderRow label={t("vocal.humanize")} value={params.tune.humanize} min={0} max={1} format={(v) => `${Math.round(v * 100)} %`} onCommit={(humanize) => tune({ humanize })} />
                                             <SliderRow label={t("vocal.flex")} value={params.tune.flexCents} min={0} max={100} step={1} format={(v) => `${Math.round(v)} ¢`} onCommit={(flexCents) => tune({ flexCents })} />
@@ -372,6 +379,15 @@ export function VocalWindow() {
                                                 <SliderRow label={t("vocal.formant")} value={params.tune.formant} min={-6} max={6} step={0.5} format={(v) => `${v > 0 ? "+" : ""}${v} st`} onCommit={(formant) => tune({ formant })} />
                                             )}
                                             <SwitchRow label={t("vocal.tuneOn")} checked={params.tune.enabled} onChange={(enabled) => tune({ enabled })} />
+                                            <SliderRow
+                                                label={t("vocal.sensitivity")}
+                                                value={params.tune.sensitivity}
+                                                min={0}
+                                                max={1}
+                                                format={(v) => `${Math.round(v * 100)} %`}
+                                                onCommit={(sensitivity) => tune({ sensitivity })}
+                                            />
+                                            <p className="-mt-2 text-[0.6875rem] text-fg-subtle">{t("vocal.sensitivityHint")}</p>
                                         </div>
                                     </div>
                                         </>
@@ -460,6 +476,9 @@ export function VocalWindow() {
                 </main>
                 <footer className="flex h-7 shrink-0 items-center gap-3 border-t border-fg/10 px-3 text-[0.625rem] text-fg-subtle">
                     <span>{heard !== null ? `${t("vocal.singing")} ${noteName(view.target)}` : t("vocal.silent")}</span>
+                    {running && view.active && params && (view.active.key !== params.tune.key || view.active.scale !== params.tune.scale) && (
+                        <span className="text-warning">{t("vocal.applying")}</span>
+                    )}
                     <span className="ml-auto">{params ? `${NOTE_NAMES[params.tune.key]} ${t(`vocal.scales.${params.tune.scale}`)}` : ""}</span>
                 </footer>
                 <Toaster position="bottom-center" toastOptions={{ classNames: { toast: "surface !rounded-panel !text-fg" } }} />

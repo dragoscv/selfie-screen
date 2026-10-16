@@ -32,6 +32,11 @@ export interface VocalMeter {
     latencyMs: number;
     /** [key 0-11, minor, confidence] from the music strip. */
     key: [number, boolean, number] | null;
+    /** What the audio thread is using now (proves settings arrived). */
+    activeKey: number;
+    activeScale: string;
+    activeMode: string;
+    tuneOn: boolean;
 }
 
 export interface StripInfo {

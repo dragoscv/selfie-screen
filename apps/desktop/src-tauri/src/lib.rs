@@ -409,6 +409,16 @@ pub fn vocal_capture(strip: i32, secs: u64, path: &str) {
     vocal_host::capture(strip, secs, path);
 }
 
+/// Bus capture after the strip processing (`examples/vocal_probe.rs bus <ch> <secs> <path>`).
+pub fn vocal_capture_bus(channel: usize, secs: u64, path: &str) {
+    vocal_host::capture_bus(channel, secs, path);
+}
+
+/// Live key-switch check (`examples/vocal_probe.rs keytest <strip0>`).
+pub fn vocal_keytest(strip: i32) {
+    vocal_host::keytest(strip);
+}
+
 /// Prints the Voicemeeter state (`examples/vocal_probe.rs dump`).
 pub fn vocal_dump() {
     vocal_host::dump();

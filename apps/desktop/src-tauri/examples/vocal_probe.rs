@@ -21,6 +21,43 @@ fn main() {
         );
         return;
     }
+    if args.get(1).is_some_and(|a| a == "keytest") {
+        tiksee_lib::vocal_keytest(args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0));
+        return;
+    }
+    if args.get(1).is_some_and(|a| a == "bus") {
+        let ch = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(48);
+        let secs = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(5);
+        tiksee_lib::vocal_capture_bus(ch, secs, args.get(4).map_or("bus.wav", String::as_str));
+        return;
+    }
+    if args.get(1).is_some_and(|a| a == "analyze") {
+        let path = args.get(2).map_or("capture.wav", String::as_str);
+        let bytes = std::fs::read(path).expect("read wav");
+        let sr = u32::from_le_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]) as f32;
+        let data: Vec<f32> = bytes[44..]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| f32::from_le_bytes(*c))
+            .collect();
+        let r = tiksee_vocal::analysis::noise(&data, sr);
+        println!(
+            "sr={sr} n={} rms={:.1} floor={:.1} peak={:.1} hum={:?}",
+            data.len(),
+            r.rms_db,
+            r.floor_db,
+            r.peak_db,
+            r.hum_hz
+        );
+        for t in &r.tones {
+            println!(
+                "tone {:.1} Hz {:.1} dBFS (+{:.1} dB)",
+                t.hz, t.db, t.prominence_db
+            );
+        }
+        return;
+    }
     if args.get(1).is_some_and(|a| a == "vmcycle") {
         // vmcycle <dir> <mic0> <music0> <phonesBus1-5>
         let n = |i: usize, d: i32| args.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);

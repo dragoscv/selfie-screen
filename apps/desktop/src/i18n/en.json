@@ -967,7 +967,11 @@
                 "range": "Your range",
                 "whineHint": "A steady whine comes from the microphone, cable or audio interface (often a USB ground loop): TikSee filters it, but it is best to also try another USB port, a powered hub or the mic's own gain."
             }
-        }
+        },
+        "chromaticHint": "Chromatic snaps to every semitone, so the key has no effect. Pick the song's scale (major/minor) for the key to matter.",
+        "sensitivity": "Detection sensitivity",
+        "sensitivityHint": "Higher = corrects breathy or quiet singing too; lower if noise gets corrected.",
+        "applying": "applying…"
     },
     "cameraRemote": {
         "button": "Camera",

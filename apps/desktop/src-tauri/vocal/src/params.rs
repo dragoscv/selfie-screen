@@ -54,7 +54,9 @@ impl Default for Tune {
         Self {
             enabled: true,
             key: 0,
-            scale: Scale::Chromatic,
+            // Chromatic snaps to every semitone, which makes the key meaningless:
+            // default to a real scale so changing the key audibly changes the result.
+            scale: Scale::Major,
             bypass: 0,
             retune_ms: 40.0,
             humanize: 0.3,
@@ -298,6 +300,23 @@ mod tests {
 
     #[test]
     fn partial_json_fills_defaults() {
+        real_settings_json_parses();
+        partial_body();
+    }
+
+    /// The exact params the renderer saved on the owner's machine (2026-10-16).
+    fn real_settings_json_parses() {
+        let text = include_str!("testdata-params.json");
+        let p: VocalParams = serde_json::from_str(text).expect("renderer params must parse");
+        assert_eq!(p.tune.mode, ShiftMode::Natural);
+        let mut v: serde_json::Value = serde_json::from_str(text).unwrap();
+        v["tune"]["key"] = serde_json::json!(9);
+        v["tune"]["scale"] = serde_json::json!("minor");
+        let p: VocalParams = serde_json::from_value(v).expect("changed key must parse");
+        assert_eq!((p.tune.key, p.tune.scale), (9, Scale::Minor));
+    }
+
+    fn partial_body() {
         let p: VocalParams = serde_json::from_str(r#"{"tune":{"key":9,"scale":"minor"}}"#).unwrap();
         assert_eq!(p.tune.key, 9);
         assert_eq!(p.tune.scale, Scale::Minor);
