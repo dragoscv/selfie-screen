@@ -514,8 +514,21 @@
             "filtersHint": "Aplicate pe GPU înainte de a desena animăluțele",
             "smoothing": "Netezire piele",
             "backgroundBlur": "Fundal estompat",
-            "exposure": "Expunere",
-            "warmth": "Căldură culoare",
+            "lookTitle": "Imagine și culoare",
+            "lookHint": "Corecție digitală pe imaginea camerei (previzualizare, cameră virtuală și clipuri)",
+            "lookReset": "Resetează imaginea",
+            "look": {
+                "exposure": "Expunere",
+                "brightness": "Luminozitate",
+                "contrast": "Contrast",
+                "highlights": "Lumini",
+                "shadows": "Umbre",
+                "warmth": "Căldură culoare",
+                "tint": "Nuanță (verde / magenta)",
+                "saturation": "Saturație",
+                "vibrance": "Vivacitate",
+                "sharpness": "Claritate"
+            },
             "vcam": {
                 "title": "Cameră virtuală",
                 "hint": "„TikSee Camera” pentru TikTok LIVE Studio, OBS, Zoom sau orice aplicație",

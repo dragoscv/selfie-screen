@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu";
-import { abs, dot, exp, float, length, max, mix, positionGeometry, texture, uniform, uv, vec2, vec3, vec4 } from "three/tsl";
+import { abs, dot, exp, float, length, max, min, mix, positionGeometry, texture, uniform, uv, vec2, vec3, vec4 } from "three/tsl";
 
 import { uprightToRawAffine, type Framing, type Rotation } from "./framing.js";
 
@@ -12,6 +12,15 @@ export interface BackdropLook {
     smoothing: number;
     /** 0..1 background blur; needs a person mask. */
     backgroundBlur: number;
+    /** Grade, all -1..1 (0 = untouched) except sharpness 0..1. */
+    tint: number;
+    brightness: number;
+    contrast: number;
+    shadows: number;
+    highlights: number;
+    saturation: number;
+    vibrance: number;
+    sharpness: number;
 }
 
 /** Synthetic depth of field: the face stays sharp, the rest blurs by depth (or by mask + distance). */
@@ -68,6 +77,14 @@ function makeUniforms() {
         texel: uniform(new THREE.Vector2(1 / 1920, 1 / 1080)),
         exposure: uniform(0),
         warmth: uniform(0),
+        tint: uniform(0),
+        brightness: uniform(0),
+        contrast: uniform(0),
+        shadows: uniform(0),
+        highlights: uniform(0),
+        saturation: uniform(0),
+        vibrance: uniform(0),
+        sharpness: uniform(0),
         smoothing: uniform(0),
         blur: uniform(0),
         hasMask: uniform(0),
@@ -276,11 +293,19 @@ export class Backdrop {
         const radial = length(d).smoothstep(u.focusR, u.focusR.mul(3)).mul(0.6);
         const byMask = max(float(1).sub(keep), radial);
         const dofAmount: FloatNode = u.dof.mul(u.hasDepth.greaterThan(0.5).select(byDepth, byMask));
-        const background = mix(base, bg, max(blurAmount, dofAmount).clamp(0, 1));
+        // Unsharp mask on the in-focus image: centre minus a 1 px cross.
+        const cross = at(1, 0).add(at(-1, 0)).add(at(0, 1)).add(at(0, -1)).mul(0.25);
+        const sharpened = base.add(centre.sub(cross).mul(u.sharpness.mul(2.5))).clamp(0, 1);
+        const background = mix(sharpened, bg, max(blurAmount, dofAmount).clamp(0, 1));
 
         const gain = float(2).pow(u.exposure);
-        const wb = vec3(float(1).add(u.warmth.mul(0.08)), float(1), float(1).sub(u.warmth.mul(0.08)));
-        const graded = background.mul(gain).mul(wb).clamp(0, 1);
+        const wb = vec3(
+            float(1).add(u.warmth.mul(0.08)).add(u.tint.mul(0.04)),
+            float(1).sub(u.tint.mul(0.08)),
+            float(1).sub(u.warmth.mul(0.08)).add(u.tint.mul(0.04)),
+        );
+        const linear = background.mul(gain).mul(wb).clamp(0, 1);
+        const graded = this.#grade(linear);
 
         const material = new THREE.MeshBasicNodeMaterial();
         // Full-screen in CLIP space, independent of the camera (the stage camera is a
@@ -298,7 +323,28 @@ export class Backdrop {
         this.mesh.frustumCulled = false;
     }
 
-    /** Output uv -> upright camera uv (cover crop + mirror). */
+    /**
+     * Tone and colour grade in a perceptual (gamma 2.2) space so the sliders feel even:
+     * brightness, contrast around mid grey, shadow/highlight lift, saturation, vibrance.
+     */
+    #grade(linear: Vec3Node): Vec3Node {
+        const u = this.#u;
+        const lumW = vec3(0.2126, 0.7152, 0.0722);
+        let p: Vec3Node = linear.max(0).pow(vec3(1 / 2.2));
+        p = p.add(u.brightness.mul(0.15));
+        p = p.sub(0.5).mul(float(1).add(u.contrast.mul(0.7))).add(0.5);
+        const l0: FloatNode = dot(p, lumW).clamp(0, 1);
+        const shadowW = float(1).sub(l0.smoothstep(0, 0.55));
+        const highW = l0.smoothstep(0.45, 1);
+        p = p.add(u.shadows.mul(0.3).mul(shadowW.mul(shadowW)));
+        p = p.add(u.highlights.mul(0.3).mul(highW.mul(highW)));
+        const l: FloatNode = dot(p, lumW);
+        const chroma: FloatNode = max(p.r, max(p.g, p.b)).sub(min(p.r, min(p.g, p.b))).clamp(0, 1);
+        const satK: FloatNode = float(1).add(u.saturation).mul(float(1).add(u.vibrance.mul(float(1).sub(chroma))));
+        p = mix(vec3(l), p, satK.max(0));
+        return p.clamp(0, 1).pow(vec3(2.2));
+    }
+
     /** Smooth bump 1 at `c` -> 0 at radius `r` (aspect-corrected output uv). */
     #falloff(p: Vec2Node, c: Vec2Node, r: FloatNode, aspect: Vec2Node): FloatNode {
         const d = p.sub(c).mul(aspect);
@@ -339,6 +385,7 @@ export class Backdrop {
         return q;
     }
 
+    /** Output uv -> upright camera uv (cover crop + mirror). */
     #upright(out: Vec2Node): [FloatNode, FloatNode] {
         const u = this.#u;
         const ux = mix(out.x, float(1).sub(out.x), u.mirror);
@@ -387,6 +434,14 @@ export class Backdrop {
     setLook(look: BackdropLook): void {
         this.#u.exposure.value = look.exposure;
         this.#u.warmth.value = look.warmth;
+        this.#u.tint.value = look.tint;
+        this.#u.brightness.value = look.brightness;
+        this.#u.contrast.value = look.contrast;
+        this.#u.shadows.value = look.shadows;
+        this.#u.highlights.value = look.highlights;
+        this.#u.saturation.value = look.saturation;
+        this.#u.vibrance.value = look.vibrance;
+        this.#u.sharpness.value = look.sharpness;
         this.#u.smoothing.value = look.smoothing;
         this.#u.blur.value = look.backgroundBlur;
     }

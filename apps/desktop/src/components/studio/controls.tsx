@@ -3,6 +3,7 @@ import { Box, Camera, Focus, Frame, Hand, MonitorCog, PawPrint, Search, Smile, S
 import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { lookIsDefault } from "../../lib/look.js";
 import { FOCUS_RING, GLASS, INSTANT, SPRING, useFrame, useStudio } from "./context.js";
 
 const AiPanel = lazy(() => import("./ai-panel.js").then((m) => ({ default: m.AiPanel })));
@@ -55,7 +56,8 @@ function usePillValue(id: PanelId): string {
         case "focus":
             return focused ? t("studio.controls.focus.locked") : studio.framing.afIntervalS > 0 ? "AF-C" : "AF";
         case "look":
-            return `${signed(studio.exposure)} EV`;
+            if (lookIsDefault(studio)) return t("studio.common.off");
+            return studio.exposure !== 0 ? `${signed(studio.exposure)} EV` : t("studio.common.on");
         case "beauty":
             return studio.beauty.enabled ? t("studio.common.on") : t("studio.common.off");
         case "framing":

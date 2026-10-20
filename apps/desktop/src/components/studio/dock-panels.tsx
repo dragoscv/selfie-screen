@@ -1,9 +1,10 @@
 import { PET_CHOICES, type StudioSettings } from "@tiksee/core";
 import { ChipSelector, SliderRow, SwitchRow } from "@tiksee/ui";
-import { Aperture, Circle, Crosshair, Minus, Plus, Ruler, ScanFace, ZoomIn, ZoomOut } from "lucide-react";
+import { Aperture, Circle, Crosshair, Minus, Plus, RotateCcw, Ruler, ScanFace, ZoomIn, ZoomOut } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { LOOK_CONTROLS, LOOK_RESET } from "../../lib/look.js";
 import { sidecarClient } from "../../lib/sidecar-client.js";
 import { useFrame, useStudio } from "./context.js";
 import { ActionButton, Section } from "./controls-parts.js";
@@ -16,7 +17,6 @@ const CameraExposureSection = lazy(() => import("./camera-exposure.js").then((m)
 const AF_INTERVALS = ["0", "5", "10", "30", "60"] as const;
 const SPEEDS = ["1", "2", "3"] as const;
 const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
-const signed = (v: number, digits = 1) => `${v > 0 ? "+" : ""}${v.toFixed(digits)}`;
 export function ZoomPanel() {
     const { studio, controller, frames, patchStudio } = useStudio();
     const { t } = useTranslation();
@@ -159,12 +159,27 @@ export function LookPanel() {
     const { studio, patchStudio } = useStudio();
     const { t } = useTranslation();
     return (
-        <Section title={t("studio.controls.look.title")}>
-            <SliderRow label={t("studio.controls.look.exposure")} value={studio.exposure} min={-2} max={2} step={0.1} format={(v) => `${signed(v)} EV`} onCommit={(exposure) => patchStudio({ exposure })} />
-            <SliderRow label={t("studio.controls.look.warmth")} value={studio.warmth} min={-1} max={1} step={0.05} format={(v) => signed(v, 2)} onCommit={(warmth) => patchStudio({ warmth })} />
-            <SliderRow label={t("studio.controls.look.smoothing")} value={studio.smoothing} min={0} max={1} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onCommit={(smoothing) => patchStudio({ smoothing })} />
-            <SliderRow label={t("studio.controls.look.blur")} value={studio.backgroundBlur} min={0} max={1} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onCommit={(backgroundBlur) => patchStudio({ backgroundBlur })} />
-        </Section>
+        <>
+            <Section title={t("studio.controls.look.title")}>
+                {LOOK_CONTROLS.map((c) => (
+                    <SliderRow
+                        key={c.key}
+                        label={t(`studio.controls.look.${c.key}`)}
+                        value={studio[c.key]}
+                        min={c.min}
+                        max={c.max}
+                        step={c.step}
+                        format={c.format}
+                        onCommit={(v) => patchStudio({ [c.key]: v })}
+                    />
+                ))}
+                <ActionButton icon={<RotateCcw className="size-4" aria-hidden />} label={t("studio.controls.look.reset")} onClick={() => patchStudio(LOOK_RESET)} />
+            </Section>
+            <Section title={t("studio.controls.look.filters")}>
+                <SliderRow label={t("studio.controls.look.smoothing")} value={studio.smoothing} min={0} max={1} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onCommit={(smoothing) => patchStudio({ smoothing })} />
+                <SliderRow label={t("studio.controls.look.blur")} value={studio.backgroundBlur} min={0} max={1} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onCommit={(backgroundBlur) => patchStudio({ backgroundBlur })} />
+            </Section>
+        </>
     );
 }
 export function FramingPanel() {

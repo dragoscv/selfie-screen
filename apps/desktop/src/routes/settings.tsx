@@ -57,9 +57,11 @@ import {
     Palette,
     Play,
     Plus,
+    RotateCcw,
     Ruler,
     Shield,
     Sparkles,
+    SunMedium,
     Target,
     Trash2,
     Video,
@@ -84,6 +86,7 @@ import {
 import { useSettingsUpdate } from "../hooks/use-settings.js";
 import { isVoicemeeter, listAudioDevices, requestDeviceAccess, type AudioDeviceList } from "../lib/audio/devices.js";
 import { acceleratorKey, isValidAccelerator } from "../lib/hotkeys.js";
+import { LOOK_CONTROLS, LOOK_RESET, lookIsDefault } from "../lib/look.js";
 import { sidecarClient } from "../lib/sidecar-client.js";
 import { useOpenStudio } from "../lib/vision/use-vision.js";
 import { useAppStore } from "../store/app-store.js";
@@ -1528,24 +1531,24 @@ function StudioSection() {
                     format={(v) => (v < 0.02 ? t("settings.overlay.blurOff") : `${Math.round(v * 100)}%`)}
                     onCommit={(backgroundBlur) => update("studio", { backgroundBlur })}
                 />
-                <SliderRow
-                    label={t("settings.studio.exposure")}
-                    value={s.exposure}
-                    min={-2}
-                    max={2}
-                    step={0.05}
-                    format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(2)} EV`}
-                    onCommit={(exposure) => update("studio", { exposure })}
-                />
-                <SliderRow
-                    label={t("settings.studio.warmth")}
-                    value={s.warmth}
-                    min={-1}
-                    max={1}
-                    step={0.02}
-                    format={(v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}`}
-                    onCommit={(warmth) => update("studio", { warmth })}
-                />
+            </Card>
+            <Card title={t("settings.studio.lookTitle")} subtitle={t("settings.studio.lookHint")} icon={<SunMedium />} tint="var(--kind-join)">
+                {LOOK_CONTROLS.map((c) => (
+                    <SliderRow
+                        key={c.key}
+                        label={t(`settings.studio.look.${c.key}`)}
+                        value={s[c.key]}
+                        min={c.min}
+                        max={c.max}
+                        step={c.step}
+                        format={c.format}
+                        onCommit={(v) => update("studio", { [c.key]: v })}
+                    />
+                ))}
+                <Button variant="outline" size="sm" disabled={lookIsDefault(s)} onClick={() => update("studio", LOOK_RESET)}>
+                    <RotateCcw aria-hidden />
+                    {t("settings.studio.lookReset")}
+                </Button>
             </Card>
         </>
     );

@@ -1,6 +1,6 @@
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "../lib/cn.js";
 
@@ -120,6 +120,9 @@ export function SliderRow({
     // change is adopted on the next render once the drag ends. An effect here
     // would cause a cascading re-render on every prop tick.
     const [drag, setDrag] = useState<{ value: number; committedFrom: number } | null>(null);
+    // Keyboard steps (Home/End/arrows) fire onValueCommit BEFORE onValueChange: without this the
+    // late change re-creates a drag that resurfaces as a stale value after an external reset.
+    const justCommitted = useRef<number | null>(null);
     const local = drag !== null && drag.committedFrom === value ? drag.value : value;
 
     const shown = format ? format(local) : String(local);
@@ -150,9 +153,12 @@ export function SliderRow({
                 step={step}
                 disabled={disabled}
                 onValueChange={([next]) => {
-                    if (next !== undefined) setDrag({ value: next, committedFrom: value });
+                    const committed = justCommitted.current;
+                    justCommitted.current = null;
+                    if (next !== undefined && next !== committed) setDrag({ value: next, committedFrom: value });
                 }}
                 onValueCommit={([next]) => {
+                    justCommitted.current = next ?? null;
                     setDrag(null);
                     if (next !== undefined) onCommit(next);
                 }}

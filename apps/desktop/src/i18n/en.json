@@ -513,8 +513,21 @@
             "filtersHint": "Applied on the GPU before the pets are drawn",
             "smoothing": "Skin smoothing",
             "backgroundBlur": "Background blur",
-            "exposure": "Exposure",
-            "warmth": "Warmth",
+            "lookTitle": "Image & colour",
+            "lookHint": "Digital grade on the camera picture (preview, virtual camera and clips)",
+            "lookReset": "Reset image",
+            "look": {
+                "exposure": "Exposure",
+                "brightness": "Brightness",
+                "contrast": "Contrast",
+                "highlights": "Highlights",
+                "shadows": "Shadows",
+                "warmth": "Warmth",
+                "tint": "Tint (green / magenta)",
+                "saturation": "Saturation",
+                "vibrance": "Vibrance",
+                "sharpness": "Sharpness"
+            },
             "vcam": {
                 "title": "Virtual camera",
                 "hint": "\"TikSee Camera\" for TikTok LIVE Studio, OBS, Zoom or any app",

@@ -655,6 +655,20 @@ export const studioSchema = z.object({
     exposure: z.number().min(-2).max(2).default(0),
     /** White-balance shift, -1 cool .. 1 warm. */
     warmth: z.number().min(-1).max(1).default(0),
+    /** Digital grade (all -1..1, 0 = untouched), applied after exposure/warmth on the camera only. */
+    /** Green (-1) .. magenta (+1) tint, the second white-balance axis. */
+    tint: z.number().min(-1).max(1).default(0),
+    brightness: z.number().min(-1).max(1).default(0),
+    contrast: z.number().min(-1).max(1).default(0),
+    /** Lift (+) or crush (-) the dark tones. */
+    shadows: z.number().min(-1).max(1).default(0),
+    /** Brighten (+) or recover (-) the light tones. */
+    highlights: z.number().min(-1).max(1).default(0),
+    saturation: z.number().min(-1).max(1).default(0),
+    /** Saturation weighted toward muted colours (skin stays natural). */
+    vibrance: z.number().min(-1).max(1).default(0),
+    /** 0..1 unsharp mask. */
+    sharpness: z.number().min(0).max(1).default(0),
     /** Show the fps/frame-time HUD in the studio window (never in the captured frame). */
     showStats: z.boolean().default(false),
     /** Feed the composited frame to the native "TikSee Camera" (WS25-01). */
