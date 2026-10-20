@@ -171,7 +171,8 @@ export class StudioVision implements VisionRuntime {
 
     #send(video: HTMLVideoElement, captureMs: number): void {
         const b = this.#backend;
-        if (!b || this.#closed || this.#inFlight || !this.#config?.settings.enabled) return;
+        // Beauty needs the owner's face landmarks even when the vision signals are switched off.
+        if (!b || this.#closed || this.#inFlight || !(this.#config?.settings.enabled || this.#config?.beauty)) return;
         if (video.readyState < 2 || video.videoWidth === 0) return;
         this.#inFlight = true;
         const tMs = captureMs;

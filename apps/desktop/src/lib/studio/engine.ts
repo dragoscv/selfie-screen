@@ -391,6 +391,8 @@ export class StudioEngine implements StudioController {
     #beauty: BeautyMask | null = null;
     #beautyLoading = false;
     #beautyTraceAt = 0;
+    /** Capture time (performance.now clock) of the newest presented camera frame, 0 = unknown. */
+    #frameCaptureMs = 0;
     /** Which gesture owns the zoom right now. */
     #zoomBy: "pinch" | "dial" | null = null;
     #zoomLastT = 0;
@@ -662,9 +664,11 @@ export class StudioEngine implements StudioController {
             void this.#reopen("track ended");
         };
         this.#lastFrameSeen = performance.now();
-        const onFrame = () => {
+        const onFrame = (now: number, meta: VideoFrameCallbackMetadata) => {
             this.#videoFrames++;
             this.#lastFrameSeen = performance.now();
+            const capture = meta.captureTime ?? meta.expectedDisplayTime - (meta.processingDuration ?? 0) * 1000;
+            this.#frameCaptureMs = Number.isFinite(capture) && capture > 0 ? capture : now;
             if (this.#stream?.getVideoTracks()[0] === track) this.#video.requestVideoFrameCallback(onFrame);
         };
         this.#video.requestVideoFrameCallback(onFrame);
@@ -813,7 +817,7 @@ export class StudioEngine implements StudioController {
             return;
         }
         if (mask.target.width !== Math.max(1, W >> 1) || mask.target.height !== Math.max(1, H >> 1)) mask.resize(W, H);
-        mask.render(stage.renderer, now, (x, y) => rawToOutput(f, rotation, x, y), dt);
+        mask.render(stage.renderer, now, this.#frameCaptureMs > 0 ? this.#frameCaptureMs : now, (x, y) => rawToOutput(f, rotation, x, y), dt, W / Math.max(H, 1));
         if (this.#trace && now - this.#beautyTraceAt > 1000) {
             this.#beautyTraceAt = now;
             void mask.debugLine(stage.renderer).then((l) => console.error(l), (e: unknown) => console.error(`[beauty] readback ${String(e)}`));

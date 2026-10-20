@@ -238,17 +238,16 @@ export class Backdrop {
             this.#maskTaps.push(t);
             return t;
         };
-        const mask = tap(out)
-            .add(tap(out.add(vec2(mt.x, 0))))
-            .add(tap(out.sub(vec2(mt.x, 0))))
-            .add(tap(out.add(vec2(0, mt.y))))
-            .add(tap(out.sub(vec2(0, mt.y))))
-            .div(5);
+        const taps5 = [tap(out), tap(out.add(vec2(mt.x, 0))), tap(out.sub(vec2(mt.x, 0))), tap(out.add(vec2(0, mt.y))), tap(out.sub(vec2(0, mt.y)))] as const;
+        const mask = taps5[0].add(taps5[1]).add(taps5[2]).add(taps5[3]).add(taps5[4]).div(5);
+        // Lowest lips/mouth value around the pixel: ~0 on the outer lip edge (skin side), where the
+        // feathered B ramp 1 -> 0 also passes through the mouth code 0.5.
+        const bMin: FloatNode = min(taps5[0].b, min(taps5[1].b, min(taps5[2].b, min(taps5[3].b, taps5[4].b))));
         const skin: FloatNode = mask.r.mul(u.bOn);
         const eyes: FloatNode = mask.g.mul(float(1).sub(mask.r)).mul(u.bOn);
         const under: FloatNode = mask.g.mul(mask.r).mul(u.bOn);
         // B: lips = 1, mouth opening (teeth) = 0.5, elsewhere 0 (feathered in between).
-        const teethM: FloatNode = float(1).sub(abs(mask.b.sub(0.5)).mul(4)).clamp(0, 1).mul(u.bOn);
+        const teethM: FloatNode = float(1).sub(abs(mask.b.sub(0.5)).mul(4)).clamp(0, 1).mul(bMin.smoothstep(0.3, 0.45)).mul(u.bOn);
         const lipsM: FloatNode = mask.b.sub(0.5).mul(2).clamp(0, 1).mul(u.bOn);
         const lumW = vec3(0.2126, 0.7152, 0.0722);
         // Skin smoothing: with beauty on, smoothing is the face skin only (strength bSmooth).

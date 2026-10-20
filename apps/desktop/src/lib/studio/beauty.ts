@@ -2,7 +2,7 @@ import type { BeautySettings } from "@tiksee/core";
 import * as THREE from "three/webgpu";
 import { attribute, float, positionGeometry, vec4 } from "three/tsl";
 
-import { FACE_OVAL, FACE_TRIANGLES, LEFT_BROW, LEFT_EYE, LEFT_IRIS, LIPS_INNER, LIPS_OUTER, RIGHT_BROW, RIGHT_EYE, RIGHT_IRIS } from "./face-regions.js";
+import { FACE_OVAL, FACE_TRIANGLES, LEFT_BROW, LEFT_EYE, LIPS_INNER, LIPS_OUTER, RIGHT_BROW, RIGHT_EYE } from "./face-regions.js";
 
 /**
  * Beauty (lazy chunk): the owner's 478 face landmarks -> a region mask in OUTPUT space
@@ -36,13 +36,53 @@ export interface BeautyAnchors {
 
 const N = 478;
 /** Landmarks used as anchors (MediaPipe face mesh indices). */
-const IDX = { noseTip: 1, chin: 152, cheekL: 425, cheekR: 205, jawL: 397, jawR: 172, forehead: 10, eyeLOuter: 263, eyeLInner: 362, eyeROuter: 33, eyeRInner: 133 };
+const IDX = { noseTip: 1, chin: 152, cheekL: 425, cheekR: 205, jawL: 397, jawR: 172, forehead: 10, eyeLOuter: 263, eyeLInner: 362, eyeROuter: 33, eyeRInner: 133, faceL: 234, faceR: 454 };
 /** Under-eye band: lower-lid landmarks pushed down by this share of the eye width. */
 const UNDER_EYE_DROP = 0.55;
 /** Maximum forward prediction (ms): beyond this a wrong guess hurts more than the lag. */
 const MAX_PREDICT_MS = 90;
 /** Head speed (face widths per second) where warps are fully faded out. */
 const WARP_FADE_SPEED = 1.2;
+
+/**
+ * Warp anchors from landmark positions in OUTPUT uv (`uvs[i * 2]`, `uvs[i * 2 + 1]`, y down).
+ * Radii and the face width are in OUTPUT-HEIGHT units (x distances scaled by `aspect` = W / H),
+ * the units the camera shader's falloffs use. Measuring them in raw uv made every region 1.78x too
+ * wide in portrait and 0.56x too narrow in landscape.
+ */
+export function anchorsFrom(uvs: Float32Array, aspect: number, warpGain: number): BeautyAnchors {
+    const at = (i: number): [number, number] => [uvs[i * 2] ?? 0, uvs[i * 2 + 1] ?? 0];
+    const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot((ax - bx) * aspect, ay - by);
+    const ring = (ids: readonly number[]): [number, number, number] => {
+        let x = 0;
+        let y = 0;
+        for (const id of ids) {
+            x += uvs[id * 2] ?? 0;
+            y += uvs[id * 2 + 1] ?? 0;
+        }
+        x /= ids.length;
+        y /= ids.length;
+        let r = 0;
+        for (const id of ids) r = Math.max(r, dist(uvs[id * 2] ?? 0, uvs[id * 2 + 1] ?? 0, x, y));
+        return [x, y, r];
+    };
+    const [ox, oy] = ring(FACE_OVAL);
+    const [lx, ly] = at(IDX.faceL);
+    const [rx, ry] = at(IDX.faceR);
+    return {
+        eyeL: ring(LEFT_EYE),
+        eyeR: ring(RIGHT_EYE),
+        centre: [ox, oy],
+        faceW: dist(lx, ly, rx, ry),
+        cheekL: at(IDX.cheekL),
+        cheekR: at(IDX.cheekR),
+        jawL: at(IDX.jawL),
+        jawR: at(IDX.jawR),
+        nose: at(IDX.noseTip),
+        chin: at(IDX.chin),
+        warpGain,
+    };
+}
 
 interface Pose2 {
     cx: number;
@@ -202,8 +242,15 @@ export class BeautyMask {
         this.#seenAt = performance.now();
     }
 
-    /** Update vertex positions for render time `nowMs` and render the mask. */
-    render(renderer: THREE.WebGPURenderer, nowMs: number, toOutput: RawToOutput, dt: number): void {
+    readonly #clear = new THREE.Color();
+
+    /**
+     * Update vertex positions and render the mask. `nowMs` = render time (presence fade);
+     * `frameMs` = capture time of the camera frame being drawn, the instant the face pose is
+     * predicted to (predicting to `nowMs` put the mask ahead of the lagging camera picture).
+     * `aspect` = output W / H.
+     */
+    render(renderer: THREE.WebGPURenderer, nowMs: number, frameMs: number, toOutput: RawToOutput, dt: number, aspect: number): void {
         const last = this.#last;
         const fresh = last !== null && nowMs - this.#seenAt < 400;
         this.presence += ((fresh ? 1 : 0) - this.presence) * (1 - Math.exp(-dt / 0.15));
@@ -218,7 +265,7 @@ export class BeautyMask {
         let ka = 0;
         const prev = this.#prev;
         if (prev && last.t > prev.t) {
-            const ahead = Math.min(nowMs - last.t, MAX_PREDICT_MS);
+            const ahead = Math.min(frameMs - last.t, MAX_PREDICT_MS);
             const f = Math.max(0, ahead) / (last.t - prev.t);
             tx = (last.pose.cx - prev.pose.cx) * f;
             ty = (last.pose.cy - prev.pose.cy) * f;
@@ -265,42 +312,10 @@ export class BeautyMask {
         }
         this.#pos.needsUpdate = true;
 
-        const at = (i: number): [number, number] => [uvs[i * 2] ?? 0, uvs[i * 2 + 1] ?? 0];
-        const ring = (ids: readonly number[]): [number, number, number] => {
-            let x = 0;
-            let y = 0;
-            for (const id of ids) {
-                x += uvs[id * 2] ?? 0;
-                y += uvs[id * 2 + 1] ?? 0;
-            }
-            x /= ids.length;
-            y /= ids.length;
-            let r = 0;
-            for (const id of ids) r = Math.max(r, Math.hypot((uvs[id * 2] ?? 0) - x, (uvs[id * 2 + 1] ?? 0) - y));
-            return [x, y, r];
-        };
-        const eyeL = ring(LEFT_EYE);
-        const eyeR = ring(RIGHT_EYE);
-        const [ox, oy, faceR] = ring(FACE_OVAL);
-        void LEFT_IRIS;
-        void RIGHT_IRIS;
-        this.anchors = {
-            eyeL,
-            eyeR,
-            centre: [ox, oy],
-            faceW: faceR * 2,
-            cheekL: at(IDX.cheekL),
-            cheekR: at(IDX.cheekR),
-            jawL: at(IDX.jawL),
-            jawR: at(IDX.jawR),
-            nose: at(IDX.noseTip),
-            chin: at(IDX.chin),
-            warpGain: Math.max(0, 1 - this.#speed / WARP_FADE_SPEED) * this.presence,
-        };
+        this.anchors = anchorsFrom(uvs, aspect, Math.max(0, 1 - this.#speed / WARP_FADE_SPEED) * this.presence);
 
         const prevTarget = renderer.getRenderTarget();
-        const clear = new THREE.Color();
-        renderer.getClearColor(clear);
+        const clear = renderer.getClearColor(this.#clear);
         const alpha = renderer.getClearAlpha();
         renderer.setClearColor(0x000000, 0);
         renderer.setRenderTarget(this.target);

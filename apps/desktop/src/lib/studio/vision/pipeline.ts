@@ -542,10 +542,11 @@ export class VisionPipeline {
     /** Process one frame. Closes `bitmap`. */
     async process(bitmap: ImageBitmap, tMs: number, rawW: number, rawH: number): Promise<VisionFrame> {
         const cfg = this.#cfg;
-        if (!cfg || !cfg.settings.enabled) {
+        if (!cfg || (!cfg.settings.enabled && !cfg.beauty)) {
             bitmap.close();
             return this.#frame(tMs, [], [], [], null, [], undefined);
         }
+        if (!cfg.settings.enabled) return this.#beautyOnly(bitmap, tMs);
         const tStart = performance.now();
         const ts = Math.max(Math.round(tMs), this.#lastTs + 1);
         this.#lastTs = ts;
@@ -904,6 +905,46 @@ export class VisionPipeline {
                 frame.ownerFace = { lm, tMs };
             }
         }
+        return frame;
+    }
+
+    /**
+     * Vision off, beauty on: face landmarks only (no signals, tracks, rules or log). The owner is
+     * the largest face, which is what pickOwner settles on for a single streamer anyway.
+     */
+    #beautyOnly(bitmap: ImageBitmap, tMs: number): VisionFrame {
+        const frame = this.#frame(tMs, [], [], [], null, [], undefined);
+        const face = this.#tasks.face;
+        if (face) {
+            const t0 = performance.now();
+            try {
+                const ts = Math.max(Math.round(tMs), this.#lastTs + 1);
+                this.#lastTs = ts;
+                const r = face.detectForVideo(bitmap, ts);
+                let best: (typeof r.faceLandmarks)[number] | null = null;
+                let bestArea = 0;
+                for (const lm of r.faceLandmarks) {
+                    const box = boxOfPoints(lm, 0);
+                    const area = box ? box.w * box.h : 0;
+                    if (area > bestArea) {
+                        best = lm;
+                        bestArea = area;
+                    }
+                }
+                if (best) {
+                    const lm = new Float32Array(best.length * 2);
+                    best.forEach((p, i) => {
+                        lm[i * 2] = p.x;
+                        lm[i * 2 + 1] = p.y;
+                    });
+                    frame.ownerFace = { lm, tMs };
+                }
+            } catch (e) {
+                console.warn("[vision] face failed", e);
+            }
+            ema(this.#timings, "face", performance.now() - t0);
+        }
+        bitmap.close();
         return frame;
     }
 

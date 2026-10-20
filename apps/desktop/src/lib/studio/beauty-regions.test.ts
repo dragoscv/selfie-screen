@@ -2,6 +2,7 @@ import { beautySchema } from "@tiksee/core";
 import { describe, expect, it } from "vitest";
 
 import { lipColor } from "./beauty-color.js";
+import { anchorsFrom } from "./beauty.js";
 import { FACE_OVAL, FACE_TRIANGLES, LEFT_BROW, LEFT_EYE, LIPS_INNER, LIPS_OUTER, RIGHT_BROW, RIGHT_EYE } from "./face-regions.js";
 
 describe("beauty face regions", () => {
@@ -45,5 +46,38 @@ describe("beauty settings and colours", () => {
         }
         const red = lipColor(0);
         expect(red[0]).toBeGreaterThan(red[1]);
+    });
+});
+
+describe("beauty anchors", () => {
+    /** A face whose landmarks all sit on a circle of `rH` output heights around (0.5, 0.4). */
+    function roundFace(aspect: number, rH: number): Float32Array {
+        const uvs = new Float32Array(478 * 2);
+        for (let i = 0; i < 478; i++) {
+            const a = (i / 478) * Math.PI * 2;
+            uvs[i * 2] = 0.5 + (Math.cos(a) * rH) / aspect;
+            uvs[i * 2 + 1] = 0.4 + Math.sin(a) * rH;
+        }
+        // Face edges (234 left, 454 right) at +-rH horizontally, in output-height units.
+        uvs[234 * 2] = 0.5 - rH / aspect;
+        uvs[234 * 2 + 1] = 0.4;
+        uvs[454 * 2] = 0.5 + rH / aspect;
+        uvs[454 * 2 + 1] = 0.4;
+        return uvs;
+    }
+
+    it("measures the face width in output-height units in portrait and landscape", () => {
+        for (const aspect of [9 / 16, 16 / 9]) {
+            const a = anchorsFrom(roundFace(aspect, 0.1), aspect, 1);
+            expect(a.faceW).toBeCloseTo(0.2, 3);
+            expect(Math.abs(a.centre[0] - 0.5)).toBeLessThan(0.1 / aspect);
+        }
+    });
+
+    it("gives the same eye radius for the same face whatever the output aspect", () => {
+        const portrait = anchorsFrom(roundFace(9 / 16, 0.1), 9 / 16, 1);
+        const landscape = anchorsFrom(roundFace(16 / 9, 0.1), 16 / 9, 1);
+        expect(portrait.eyeL[2]).toBeCloseTo(landscape.eyeL[2], 4);
+        expect(portrait.warpGain).toBe(1);
     });
 });
