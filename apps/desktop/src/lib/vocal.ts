@@ -45,6 +45,9 @@ export interface StripInfo {
     label: string;
 }
 
+/** Index = the host's mic channel code (0 left, 1 right, 2 both). */
+export const MIC_CHANNELS = ["left", "right", "both"] as const;
+
 export const activeParams = (v: VocalSettings): VocalParams => (v.slot === "b" && v.paramsB ? v.paramsB : v.params);
 
 let started: string | null = null;
@@ -61,7 +64,7 @@ export async function syncVocalEngine(v: VocalSettings): Promise<void> {
         lastParams = params;
         await invoke("vocal_set_params", { params: JSON.parse(params) as unknown }).catch((e: unknown) => console.error("[vocal] params", e));
     }
-    const want = v.enabled ? `${v.micStrip}:${v.musicStrip}` : null;
+    const want = v.enabled ? `${v.micStrip}:${v.musicStrip}:${v.micChannel}` : null;
     if (want === started) return;
     if (want === null) {
         await invoke("vocal_stop").catch(() => undefined);
@@ -69,7 +72,7 @@ export async function syncVocalEngine(v: VocalSettings): Promise<void> {
         return;
     }
     try {
-        await invoke("vocal_start", { micStrip: v.micStrip, musicStrip: v.musicStrip });
+        await invoke("vocal_start", { micStrip: v.micStrip, musicStrip: v.musicStrip, micChannel: MIC_CHANNELS.indexOf(v.micChannel) });
         started = want;
     } catch (e) {
         started = null;

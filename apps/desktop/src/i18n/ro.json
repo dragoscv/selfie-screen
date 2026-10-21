@@ -862,6 +862,12 @@
         "duckHint": "Folosește strip-ul de muzică ales la Setare",
         "duckDepth": "Cât coboară muzica",
         "micStrip": "Strip microfon",
+        "micChannel": "Canalul microfonului pe strip",
+        "micChannels": {
+            "left": "Stânga (intrarea 1)",
+            "right": "Dreapta (intrarea 2)",
+            "both": "Ambele"
+        },
         "musicStrip": "Strip muzică",
         "none": "Niciunul",
         "stripEmpty": "gol",

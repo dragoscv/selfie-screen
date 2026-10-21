@@ -55,6 +55,8 @@ pub struct Shared {
     version: AtomicU64,
     meter: Mutex<Meter>,
     mic_strip: AtomicI32,
+    /// Mic input channel: 0 = left, 1 = right, 2 = both (mixed).
+    mic_channel: AtomicI32,
     music_strip: AtomicI32,
     vm_type: AtomicI32,
     restart: AtomicBool,
@@ -76,6 +78,7 @@ impl Default for Shared {
             version: AtomicU64::default(),
             meter: Mutex::default(),
             mic_strip: AtomicI32::default(),
+            mic_channel: AtomicI32::default(),
             music_strip: AtomicI32::new(-1),
             vm_type: AtomicI32::default(),
             restart: AtomicBool::default(),
@@ -237,9 +240,18 @@ impl Dsp {
         {
             let cap_len = shared.capture_len.load(Ordering::Acquire) as usize;
             let mut cap_pos = shared.capture_pos.load(Ordering::Relaxed) as usize;
+            let channel = shared.mic_channel.load(Ordering::Relaxed);
             for i in 0..nbs {
-                // A mono mic on a hardware strip arrives on the left channel.
-                let x = unsafe { *read[v0].add(i) };
+                // A mono mic on a hardware strip: left by default, right for an interface's
+                // second input (Line In 2), or both mixed.
+                // SAFETY: v0 + 1 < n and pointers are valid for nbs.
+                let x = unsafe {
+                    match channel {
+                        1 => *read[v0 + 1].add(i),
+                        2 => (*read[v0].add(i) + *read[v0 + 1].add(i)) * 0.5,
+                        _ => *read[v0].add(i),
+                    }
+                };
                 if cap_pos < cap_len.min(shared.capture.len()) {
                     shared.capture[cap_pos].store(x.to_bits(), Ordering::Relaxed);
                     cap_pos += 1;
@@ -535,7 +547,15 @@ mod imp {
             self.shared.set_params(params);
         }
 
-        pub fn start(&self, mic_strip: i32, music_strip: i32) -> Result<(), String> {
+        pub fn start(
+            &self,
+            mic_strip: i32,
+            music_strip: i32,
+            mic_channel: i32,
+        ) -> Result<(), String> {
+            self.shared
+                .mic_channel
+                .store(mic_channel.clamp(0, 2), Ordering::Relaxed);
             let mut inner = self.lock();
             let api = Self::api(&mut inner)?;
             let vm_type = Self::vm_type(&api).ok_or("Voicemeeter is not running")?;
@@ -858,7 +878,7 @@ mod imp {
             VocalMeter::default()
         }
         pub fn set_params(&self, _p: tiksee_vocal::VocalParams) {}
-        pub fn start(&self, _m: i32, _s: i32) -> Result<(), String> {
+        pub fn start(&self, _m: i32, _s: i32, _c: i32) -> Result<(), String> {
             Err("Voicemeeter is Windows-only".into())
         }
         pub fn stop(&self) {}
@@ -891,28 +911,30 @@ fn vm_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 /// Routing script for singing live (Potato strip numbering, 0-based).
-/// Mic and music go to the headphones (`phones` = 1..5 → A1..A5) and the
-/// live (B1); TikSee's own voice (AUX) too; VAIO3 stays private (headphones
-/// only). Voicemeeter's strip comp/gate is turned off on the mic because
-/// TikSee's chain already does it.
+/// TikTok LIVE Studio takes its microphone from Voicemeeter Out B2 and the music
+/// from B3 (owner setup since 2026-10-16), so the mic goes to the headphones
+/// (`phones` = 1..5 → A1..A5) and B2, the music to the headphones and B3, and
+/// neither to B1. TikSee's own voice (AUX) goes to B2 too; VAIO3 stays private
+/// (headphones only). Voicemeeter's strip comp/gate/denoiser are turned off on
+/// the mic: TikSee's chain does it, and the denoiser adds latency.
 pub fn live_script(mic: i32, music: i32, phones: i32) -> String {
     let a = format!("A{}", phones.clamp(1, 5));
     let mut s = format!(
-        "Strip[{mic}].{a}=1; Strip[{mic}].B1=1; Strip[{mic}].B2=0; Strip[{mic}].Comp=0; Strip[{mic}].Gate=0; Strip[{mic}].Label=\"Voce TikSee\"; "
+        "Strip[{mic}].{a}=1; Strip[{mic}].B2=1; Strip[{mic}].B1=0; Strip[{mic}].B3=0; Strip[{mic}].Comp=0; Strip[{mic}].Gate=0; Strip[{mic}].Denoiser=0; Strip[{mic}].Label=\"Voce TikSee\"; "
     );
     if music >= 0 && music != mic {
         s.push_str(&format!(
-            "Strip[{music}].{a}=1; Strip[{music}].B1=1; Strip[{music}].Label=\"Muzica\"; "
+            "Strip[{music}].{a}=1; Strip[{music}].B3=1; Strip[{music}].B1=0; Strip[{music}].B2=0; Strip[{music}].Label=\"Muzica\"; "
         ));
     }
     if mic != 6 && music != 6 {
         s.push_str(&format!(
-            "Strip[6].{a}=1; Strip[6].B1=1; Strip[6].Label=\"TikSee\"; "
+            "Strip[6].{a}=1; Strip[6].B2=1; Strip[6].B1=0; Strip[6].Label=\"TikSee\"; "
         ));
     }
     if mic != 7 && music != 7 {
         s.push_str(&format!(
-            "Strip[7].{a}=1; Strip[7].B1=0; Strip[7].Label=\"Privat\"; "
+            "Strip[7].{a}=1; Strip[7].B1=0; Strip[7].B2=0; Strip[7].B3=0; Strip[7].Label=\"Privat\"; "
         ));
     }
     s.push_str("Bus[5].Mute=0;");
@@ -955,8 +977,9 @@ pub fn vocal_start(
     state: tauri::State<'_, VocalCtl>,
     mic_strip: i32,
     music_strip: i32,
+    mic_channel: Option<i32>,
 ) -> Result<(), String> {
-    state.start(mic_strip, music_strip)
+    state.start(mic_strip, music_strip, mic_channel.unwrap_or(0))
 }
 
 #[tauri::command]
@@ -1043,6 +1066,15 @@ pub fn vm_restore(
     Ok(path)
 }
 
+/// Mic channel for the diagnostic helpers: `TIKSEE_MIC_CHANNEL` = left | right | both (default left).
+fn probe_channel() -> i32 {
+    match std::env::var("TIKSEE_MIC_CHANNEL").as_deref() {
+        Ok("right") => 1,
+        Ok("both") => 2,
+        _ => 0,
+    }
+}
+
 /// Live check without the UI: run the engine on `strip` for `secs` and print status/meters.
 pub fn probe(strip: i32, secs: u64, monitor_bus: Option<i32>) {
     let ctl = VocalCtl::default();
@@ -1073,7 +1105,7 @@ pub fn probe(strip: i32, secs: u64, monitor_bus: Option<i32>) {
         let _ = ctl.script(&format!("{m}=1;"));
         println!("monitoring on {m} (was {was:?})");
     }
-    match ctl.start(strip, -1) {
+    match ctl.start(strip, -1, probe_channel()) {
         Ok(()) => println!("started on strip {}", strip + 1),
         Err(e) => {
             println!("start failed: {e}");
@@ -1271,7 +1303,7 @@ pub fn capture(strip: i32, secs: u64, path: &str) {
         bypass: true,
         ..VocalParams::default()
     });
-    if let Err(e) = ctl.start(strip, -1) {
+    if let Err(e) = ctl.start(strip, -1, probe_channel()) {
         println!("start failed: {e}");
         return;
     }
@@ -1348,7 +1380,7 @@ pub fn keytest(strip: i32) {
     p.tune.retune_ms = 0.0;
     p.tune.humanize = 0.0;
     p.tune.vibrato = 0.0;
-    if let Err(e) = ctl.start(strip, -1) {
+    if let Err(e) = ctl.start(strip, -1, probe_channel()) {
         println!("start failed: {e}");
         return;
     }
@@ -1463,11 +1495,13 @@ mod tests {
 
     #[test]
     fn live_script_routes_mic_and_music() {
-        let s = live_script(0, 5, 5);
-        assert!(s.contains("Strip[0].A5=1; Strip[0].B1=1;"));
-        assert!(s.contains("Strip[5].A5=1; Strip[5].B1=1;"));
-        assert!(s.contains("Strip[7].A5=1; Strip[7].B1=0;"));
-        assert!(!s.contains(".A1="));
+        let s = live_script(4, 5, 1);
+        // TikTok mic = B2, TikTok music = B3, nothing on B1.
+        assert!(s.contains("Strip[4].A1=1; Strip[4].B2=1; Strip[4].B1=0; Strip[4].B3=0;"));
+        assert!(s.contains("Strip[4].Denoiser=0;"));
+        assert!(s.contains("Strip[5].A1=1; Strip[5].B3=1; Strip[5].B1=0; Strip[5].B2=0;"));
+        assert!(s.contains("Strip[7].A1=1; Strip[7].B1=0; Strip[7].B2=0; Strip[7].B3=0;"));
+        assert!(!s.contains(".B1=1"));
     }
 
     #[test]
@@ -1495,5 +1529,34 @@ mod tests {
         );
         assert!((chans[12][0] - 1.2).abs() < 1e-6, "untouched strip changed");
         assert!(shared.meter.lock().unwrap().input_db > -60.0);
+    }
+
+    /// Line In 2 of an interface arrives on the strip's RIGHT channel: with
+    /// `mic_channel` = right the engine hears it, with left it hears silence.
+    #[test]
+    fn mic_channel_selects_the_interface_input() {
+        let input_db = |channel: i32| {
+            let shared = Shared::default();
+            shared.vm_type.store(3, Ordering::Relaxed);
+            shared.mic_strip.store(4, Ordering::Relaxed);
+            shared.music_strip.store(-1, Ordering::Relaxed);
+            shared.mic_channel.store(channel, Ordering::Relaxed);
+            let mut dsp = Dsp::new(48_000.0, &shared);
+            let nbs = 256;
+            let mut chans: Vec<Vec<f32>> = (0..34).map(|_| vec![0.0; nbs]).collect();
+            let (left, _) = strip_channels(3, 4).unwrap();
+            for _ in 0..50 {
+                for (i, v) in chans[left + 1].iter_mut().enumerate() {
+                    *v = (i as f32 * 0.05).sin() * 0.3;
+                }
+                let ptrs: Vec<*mut f32> = chans.iter_mut().map(|c| c.as_mut_ptr()).collect();
+                // SAFETY: each pointer is valid for nbs floats (in-place insert, r == w).
+                unsafe { dsp.process(&shared, &ptrs, &ptrs, nbs) };
+            }
+            shared.meter.lock().unwrap().input_db
+        };
+        assert!(input_db(1) > -30.0, "right channel not heard");
+        assert!(input_db(2) > -30.0, "both: right channel not heard");
+        assert!(input_db(0) < -80.0, "left channel should be silent");
     }
 }

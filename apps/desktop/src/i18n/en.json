@@ -854,6 +854,12 @@
         "duckHint": "Uses the music strip chosen in Setup",
         "duckDepth": "Music drop",
         "micStrip": "Microphone strip",
+        "micChannel": "Microphone channel on that strip",
+        "micChannels": {
+            "left": "Left (input 1)",
+            "right": "Right (input 2)",
+            "both": "Both"
+        },
         "musicStrip": "Music strip",
         "none": "None",
         "stripEmpty": "empty",

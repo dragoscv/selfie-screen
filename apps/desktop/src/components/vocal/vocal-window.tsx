@@ -22,7 +22,7 @@ import { useTranslation } from "react-i18next";
 import { Toaster, toast } from "sonner";
 
 import { setLocale } from "../../i18n/index.js";
-import { activeParams, type StripInfo, type VocalMeter, type VocalStatus } from "../../lib/vocal.js";
+import { activeParams, MIC_CHANNELS, type StripInfo, type VocalMeter, type VocalStatus } from "../../lib/vocal.js";
 import { downloadJson, pickJsonFile } from "../../lib/vocal-files.js";
 import { Calibration } from "./calibration.js";
 import { NoteLane } from "./note-lane.js";
@@ -594,6 +594,13 @@ function SetupPanel({ settings, status, onPatch, onReset }: { settings: VocalSet
                     </select>
                 </label>
             </div>
+            <ChipSelector
+                label={t("vocal.micChannel")}
+                options={MIC_CHANNELS}
+                value={settings.micChannel}
+                onSelect={(micChannel) => onPatch({ micChannel })}
+                display={(v) => t(`vocal.micChannels.${v}`)}
+            />
             <ChipSelector
                 label={t("vocal.phonesBus")}
                 options={["1", "2", "3", "4", "5"] as const}

@@ -269,6 +269,8 @@ export const vocalSchema = z.object({
     enabled: z.boolean().default(false),
     /** Voicemeeter strip (0-based) carrying the microphone. */
     micStrip: z.number().int().min(0).max(7).default(0),
+    /** Which channel of the mic strip carries the voice: an interface's Line In 2 arrives on the right. */
+    micChannel: z.enum(["left", "right", "both"]).default("left"),
     /** Strip carrying music/backing track (key detection + ducking); -1 = none. */
     musicStrip: z.number().int().min(-1).max(7).default(5),
     /** Hardware bus with the headphones (1..5 = A1..A5) for the live routing preset. */
