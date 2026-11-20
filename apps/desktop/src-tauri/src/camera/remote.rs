@@ -119,6 +119,7 @@ pub fn dispatch(
     let usb = app.try_state::<super::CameraCtl>();
     let connected = usb.as_ref().is_some_and(|c| c.usb_connected());
     let chosen = route(transport, connected)?;
+    log::info!("[camera] remote {action:?} down={down} speed={speed} via {chosen:?}");
     match chosen {
         Route::Usb => {
             let usb = usb.ok_or("camera control is not running")?;
